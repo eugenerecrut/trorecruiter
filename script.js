@@ -1,15 +1,1 @@
-const form = document.getElementById('applicationForm');
-const status = document.getElementById('formStatus');
-
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const data = Object.fromEntries(new FormData(form).entries());
-
-  // Поки що форма працює локально. Після розгортання підключимо
-  // безпечний серверний endpoint/CRM, щоб не світити секретний webhook у браузері.
-  console.log('Заявка:', data);
-
-  status.textContent = 'Заявку підготовлено. Підключення до CRM буде додано на наступному кроці.';
-  status.style.color = '#45610d';
-  form.reset();
-});
+const data=[['Петренко Олександр','Оператор БпЛА','Новий','Не проходив','Євген'],['Сидоренко Максим','Водій','Співбесіда','Придатний','Євген'],['Коваленко Віталій','Зв’язок','Документи','Очікується','Іван'],['Мельник Андрій','БпЛА','ВЛК','Направлений','Євген'],['Бондар Сергій','Старший водій','Призначений','Придатний','Іван']];function cls(s){return {Новий:'new',Співбесіда:'work',Документи:'doc',ВЛК:'vlk',Призначений:'done'}[s]}function draw(){let q=document.getElementById('q').value.toLowerCase(),f=document.getElementById('f').value;document.getElementById('rows').innerHTML=data.filter(x=>(!q||x.join(' ').toLowerCase().includes(q))&&(!f||x[2]==f)).map(x=>`<tr><td><b>${x[0]}</b></td><td>${x[1]}</td><td><span class="status ${cls(x[2])}">${x[2]}</span></td><td>${x[3]}</td><td>${x[4]}</td></tr>`).join('')}function openModal(){document.getElementById('modal').classList.add('show')}function closeModal(){document.getElementById('modal').classList.remove('show')}document.getElementById('form').onsubmit=e=>{e.preventDefault();let d=new FormData(e.target);data.unshift([d.get('name'),d.get('position')||'Не визначено','Новий','Не проходив','Євген']);draw();closeModal();e.target.reset();document.getElementById('new').textContent=+document.getElementById('new').textContent+1};draw();
