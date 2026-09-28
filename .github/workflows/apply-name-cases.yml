@@ -1,3 +1,4 @@
+# PSK_RECRUTER name-cases integration workflow
 name: Apply name cases integration
 
 on:
@@ -148,7 +149,7 @@ jobs:
 
           text = text.rstrip() + '\n\n' + patch.strip() + '\n'
           path.write_text(text, encoding='utf-8')
-      
+
       - name: Commit patched CRM
         shell: bash
         run: |
