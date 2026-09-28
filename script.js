@@ -60,7 +60,7 @@ function showCandidates() {
   const content = document.querySelector('.content');
   if (!content) return;
 
-  content.innerHTML = `
+  content.innerHTML = \`
     <div class="dashboard-top">
       <div>
         <div class="page-title">Кандидати</div>
@@ -89,7 +89,7 @@ function showCandidates() {
     </div>
 
     <div class="card" style="padding:0;overflow:auto">
-      <table style="width:100%;border-collapse:collapse;min-width:820px">
+      <table style="width:100%;border-collapse:collapse;min-width:920px">
         <thead>
           <tr style="background:#f7f9f9;text-align:left">
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">ПІБ</th>
@@ -102,7 +102,7 @@ function showCandidates() {
         </thead>
         <tbody id="candidateRows"></tbody>
       </table>
-    </div>`;
+    </div>\`;
 
   async function render() {
     const candidates = await getCandidates();
@@ -120,18 +120,20 @@ function showCandidates() {
     });
 
     const rows = document.getElementById('candidateRows');
-    rows.innerHTML = filtered.length ? filtered.map(c => `
+    rows.innerHTML = filtered.length ? filtered.map(c => \`
       <tr style="border-top:1px solid #edf0f1">
-        <td style="padding:14px"><b>${escapeHtml(c.full_name || '')}</b></td>
-        <td style="padding:14px">${escapeHtml(c.phone || '—')}</td>
-        <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
-        <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
-        <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
-        <td style="padding:14px;white-space:nowrap">
-          <button type="button" onclick="deleteCandidateCase('${c.id}', ${JSON.stringify(c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити справу</button>
+        <td style="padding:14px"><b>\${escapeHtml(c.name_nominative || c.full_name || '')}</b></td>
+        <td style="padding:14px">\${escapeHtml(c.phone || '—')}</td>
+        <td style="padding:14px">\${escapeHtml(c.desired_position || '—')}</td>
+        <td style="padding:14px">\${escapeHtml(c.direction || '—')}</td>
+        <td style="padding:14px"><span class="status status-new">\${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
+        <td style="padding:14px;white-space:nowrap;display:flex;gap:7px">
+          <button type="button" onclick="openCandidateCard('\${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">↗ Відкрити</button>
+          <button type="button" onclick="deleteCandidateCase('\${c.id}', \${JSON.stringify(c.name_nominative || c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити</button>
         </td>
-      </tr>`).join('') : `
-      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
+      </tr>\`).join('') : \`
+      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>\`;
+
   }
 
   document.getElementById('candidateSearch').oninput = render;
@@ -998,88 +1000,314 @@ startCRM();
   };
 })();
 
-/* PSK_DELETE_CANDIDATE_V1 */
-async function deleteCandidate(candidateId, candidateName) {
-  if (!candidateId) return;
-  const ok = window.confirm(`Видалити кандидата «${candidateName || 'Без ПІБ'}»?\n\nБуде видалена особова справа та пов'язані записи документів. Цю дію не можна скасувати.`);
-  if (!ok) return;
 
-  const status = document.getElementById('candidateDeleteStatus');
-  if (status) status.textContent = 'Видалення…';
+/* PSK_CANDIDATE_CARD_V1 */
+function candidateBoolValue(value) {
+  if (value === true) return 'true';
+  if (value === false) return 'false';
+  return '';
+}
 
-  const { error } = await supabaseClient
-    .from('candidates')
-    .delete()
-    .eq('id', candidateId);
+function normalizeNameForStorage(value) {
+  const parts = String(value || '').trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
+  if (!parts.length) return '';
+  return [parts[0].toLocaleUpperCase('uk-UA'), ...parts.slice(1)].join(' ');
+}
 
-  if (error) {
-    console.error('Помилка видалення кандидата:', error);
-    alert(`Не вдалося видалити кандидата: ${error.message || 'невідома помилка'}`);
-    if (status) status.textContent = '';
+function maritalOptions(sex, current) {
+  const common = sex === 'female'
+    ? ['Одружена','Розлучена','Не одружена']
+    : sex === 'male'
+      ? ['Одружений','Розлучений','Не одружений']
+      : ['Одружений','Одружена','Розлучений','Розлучена','Не одружений','Не одружена'];
+  const values = current && !common.includes(current) ? [current, ...common] : common;
+  return values.map(v => \`<option value="\${escapeHtml(v)}" \${v === current ? 'selected' : ''}>\${escapeHtml(v)}</option>\`).join('');
+}
+
+function yesNoOptions(value) {
+  return \`
+    <option value="" \${value === '' ? 'selected' : ''}>Не визначено</option>
+    <option value="true" \${value === 'true' ? 'selected' : ''}>Так</option>
+    <option value="false" \${value === 'false' ? 'selected' : ''}>Ні</option>\`;
+}
+
+function profileField(label, name, value, extra='') {
+  return \`<div><label>\${escapeHtml(label)}</label><input name="\${escapeHtml(name)}" value="\${escapeHtml(value || '')}" \${extra}></div>\`;
+}
+
+async function openCandidateDocument(path) {
+  if (!path) return;
+  try {
+    const { data, error } = await supabaseClient.storage
+      .from('candidate-documents')
+      .createSignedUrl(path, 600);
+    if (error) throw error;
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener');
+  } catch (e) {
+    alert('Не вдалося відкрити документ: ' + (e.message || e));
+  }
+}
+
+async function openCandidateCard(candidateId) {
+  const content = document.querySelector('.content');
+  if (!content || !candidateId) return;
+
+  content.innerHTML = \`
+    <div style="padding:40px;text-align:center;color:#7d8a93">Завантажуємо картку кандидата...</div>\`;
+
+  const [candidateRes, fileRes, docsRes] = await Promise.all([
+    supabaseClient.from('candidates').select('*').eq('id', candidateId).single(),
+    supabaseClient.from('personal_files').select('*').eq('candidate_id', candidateId).maybeSingle(),
+    supabaseClient.from('documents').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: true })
+  ]);
+
+  if (candidateRes.error) {
+    content.innerHTML = \`<div class="card"><b>Не вдалося завантажити кандидата.</b><div style="margin-top:8px;color:#a23f38">\${escapeHtml(candidateRes.error.message || '')}</div></div>\`;
     return;
   }
 
-  if (typeof updateDashboard === 'function') await updateDashboard();
-  showCandidates();
-}
+  const c = candidateRes.data || {};
+  const pf = fileRes.data || {};
+  const docs = docsRes.data || [];
 
-function addDeleteCandidateColumn() {
-  const table = document.querySelector('#candidateRows')?.closest('table');
-  if (!table) return;
-  const headRow = table.querySelector('thead tr');
-  if (headRow && !headRow.querySelector('[data-delete-column]')) {
-    const th = document.createElement('th');
-    th.dataset.deleteColumn = '1';
-    th.style.cssText = 'padding:14px;border-bottom:1px solid #e0e6e8;text-align:right';
-    th.textContent = 'Дії';
-    headRow.appendChild(th);
+  const nameNom = c.name_nominative || c.full_name || '';
+  const nameGen = c.name_genitive || '';
+  const sex = c.sex || '';
+  const marital = c.marital_status || '';
+  const hasChildren = candidateBoolValue(c.has_children);
+  const worked = candidateBoolValue(c.worked_before);
+  const served = candidateBoolValue(c.served_before);
+
+  content.innerHTML = \`
+    <div class="dashboard-top">
+      <div>
+        <div class="page-title">Картка кандидата</div>
+        <p class="page-subtitle">Єдина форма перевірки та підтвердження даних з документів.</p>
+      </div>
+      <div class="quick-actions">
+        <button onclick="showCandidates()">← До кандидатів</button>
+      </div>
+    </div>
+
+    <form id="candidateCardForm" style="max-width:1220px">
+      <div class="card" style="margin-bottom:16px">
+        <div class="panel-head" style="margin:-20px -20px 20px">
+          <div><h3 style="margin:0">Основні дані</h3><small>Дані, які CRM зібрала та обробила з документів.</small></div>
+          <span class="status status-new">ID: \${escapeHtml(candidateId.slice(0,8))}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
+          \${profileField('ПІБ у називному відмінку','name_nominative',nameNom,'data-nominative="1"')}
+          \${profileField('ПІБ у родовому відмінку','name_genitive',nameGen)}
+          \${profileField('Дата народження','birth_date',c.birth_date,'type="date"')}
+          \${profileField('Місце народження','birth_place',c.birth_place || pf.birth_place)}
+          \${profileField('РНОКПП','rnokpp',c.rnokpp)}
+          \${profileField('Паспортні дані','passport_data',c.passport_data || pf.passport_data)}
+          \${profileField('Телефон','phone',c.phone)}
+          \${profileField('Email','email',c.email)}
+          \${profileField('Адреса','address',pf.address)}
+          <div>
+            <label>Стать</label>
+            <select name="sex" id="candidateSex">
+              <option value="">Не визначено</option>
+              <option value="male" \${sex === 'male' ? 'selected' : ''}>Чоловіча</option>
+              <option value="female" \${sex === 'female' ? 'selected' : ''}>Жіноча</option>
+            </select>
+          </div>
+          <div>
+            <label>Сімейний стан</label>
+            <select name="marital_status" id="maritalStatus">\${maritalOptions(sex, marital)}</select>
+          </div>
+          <div>
+            <label>Діти</label>
+            <select name="has_children">\${yesNoOptions(hasChildren).replace('Так','Є діти').replace('Ні','Не має дітей')}</select>
+          </div>
+          \${profileField('Інформація про дітей','children_info',pf.children_info)}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="panel-head" style="margin:-20px -20px 20px">
+          <div><h3 style="margin:0">Освіта та робота</h3><small>Інформація, зібрана з анкети, автобіографії та інших документів.</small></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
+          <div>
+            <label>Працював / Працювала</label>
+            <select name="worked_before">\${yesNoOptions(worked).replace('Так','Працював / Працювала').replace('Ні','Не працював / Не працювала')}</select>
+          </div>
+          <div>
+            <label>Служив / Служила</label>
+            <select name="served_before">\${yesNoOptions(served).replace('Так','Служив / Служила').replace('Ні','Не служив / Не служила')}</select>
+          </div>
+          <div style="grid-column:1/-1">
+            <label>Освіта</label>
+            <textarea name="education" rows="4">\${escapeHtml(pf.education || '')}</textarea>
+          </div>
+          <div style="grid-column:1/-1">
+            <label>Трудова діяльність</label>
+            <textarea name="work_history" rows="5">\${escapeHtml(pf.work_history || pf.civilian_experience || '')}</textarea>
+          </div>
+          <div style="grid-column:1/-1">
+            <label>Військова служба</label>
+            <textarea name="military_service_history" rows="5">\${escapeHtml(pf.military_service_history || pf.military_experience || '')}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="panel-head" style="margin:-20px -20px 20px">
+          <div><h3 style="margin:0">Військові дані та рекрутинг</h3><small>Поточні службові та рекрутингові відомості.</small></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
+          \${profileField('Військове звання','military_rank',c.military_rank)}
+          \${profileField('ВОС','military_specialty',c.military_specialty)}
+          \${profileField('Військова частина','military_unit',(c.profile_data && c.profile_data.military_unit) || '')}
+          \${profileField('Бажаний підрозділ / напрям','desired_unit',c.direction)}
+          \${profileField('Бажана посада','desired_position',c.desired_position)}
+          \${profileField('ТЦК','tcc',c.tcc)}
+          \${profileField('Статус ВЛК','vlk_status',c.vlk_status)}
+          <div>
+            <label>Статус кандидата</label>
+            <select name="recruitment_status">
+              \${['Новий','Первинний контакт','Співбесіда','Перевірка документів','ВЛК','Рішення','Призначений','Відмова','Втрачено контакт','Відкладено'].map(v=>\`<option \${c.recruitment_status===v?'selected':''}>\${escapeHtml(v)}</option>\`).join('')}
+            </select>
+          </div>
+          <div style="grid-column:1/-1">
+            <label>Примітки рекрутера</label>
+            <textarea name="notes" rows="5">\${escapeHtml(c.notes || '')}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="panel-head" style="margin:-20px -20px 20px">
+          <div><h3 style="margin:0">Документи</h3><small>Завантажені документи та їхній поточний статус.</small></div>
+          <span style="color:#7d8a93;font-size:11px">\${docs.length} документ(ів)</span>
+        </div>
+        <div style="display:grid;gap:9px">
+          \${docs.length ? docs.map(d => \`
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #e6eaec;border-radius:9px;background:#fbfcfc">
+              <div>
+                <div style="font-weight:800;color:#34414a">\${escapeHtml(d.document_name || d.document_type || d.file_name || 'Документ')}</div>
+                <div style="font-size:10px;color:#89959c;margin-top:3px">\${escapeHtml(d.file_name || '')} · \${d.required ? 'Обов’язковий' : 'Додатковий'} · \${escapeHtml(d.status || 'Завантажено')}</div>
+              </div>
+              <button type="button" onclick="openCandidateDocument(this.dataset.path)" data-path="\${escapeHtml(d.storage_path || '')}" style="border:1px solid #cfd8dc;background:#fff;border-radius:7px;padding:7px 10px;font-weight:800">Відкрити</button>
+            </div>\`).join('') : '<div style="padding:18px;color:#89959c;text-align:center">Документи ще не завантажені.</div>'}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="panel-head" style="margin:-20px -20px 20px">
+          <div><h3 style="margin:0">Бланки CRM</h3><small>Підготовлені точки для майбутніх шаблонів документів.</small></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px">
+          \${[
+            ['Анкета','anketa'],
+            ['Згода на обробку персональних даних','consent_processing'],
+            ['Згода на збір та обробку даних','consent_collection_processing'],
+            ['Заява на контракт','contract_application'],
+            ['Розписка кандидата','candidate_receipt']
+          ].map(([label,key]) => \`
+            <button type="button" data-template-key="\${key}" onclick="alert('Бланк «\${label}» буде підключено після завантаження затвердженого шаблону.')" style="padding:13px;border:1px solid #d8e0e3;background:#f7f9f9;border-radius:8px;text-align:left;font-weight:800;color:#45525a">📝 \${label}</button>
+          \`).join('')}
+        </div>
+      </div>
+
+      <div style="display:flex;gap:9px;flex-wrap:wrap">
+        <button type="submit" style="background:#18232d;color:#fff">Зберегти зміни</button>
+        <button type="button" onclick="showCandidates()" style="border:1px solid #d8e0e3;background:#fff;color:#45525a">Скасувати</button>
+      </div>
+      <div id="candidateCardSaveStatus" style="margin-top:12px;color:#68757d;font-size:12px;min-height:18px"></div>
+    </form>\`;
+
+  const sexEl = document.getElementById('candidateSex');
+  const maritalEl = document.getElementById('maritalStatus');
+  if (sexEl && maritalEl) {
+    sexEl.addEventListener('change', () => {
+      maritalEl.innerHTML = maritalOptions(sexEl.value, '');
+    });
   }
-  const rows = document.querySelectorAll('#candidateRows > tr');
-  rows.forEach(row => {
-    if (row.querySelector('[data-delete-candidate]')) return;
-    const cells = row.querySelectorAll('td');
-    if (!cells.length || cells.length < 5) return;
-    const pib = cells[0]?.textContent?.trim() || 'кандидата';
-    const first = cells[0]?.querySelector('b');
-    const id = row.dataset.candidateId;
-    if (!id) return;
-    const td = document.createElement('td');
-    td.style.cssText = 'padding:10px 14px;text-align:right';
-    td.innerHTML = `<button data-delete-candidate="1" style="border:1px solid #e7c7c5;background:#fff5f4;color:#a34f4a;border-radius:7px;padding:7px 10px;font-weight:800;font-size:11px">🗑 Видалити</button>`;
-    td.querySelector('button').onclick = () => deleteCandidate(id, pib);
-    row.appendChild(td);
+
+  document.getElementById('candidateCardForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const status = document.getElementById('candidateCardSaveStatus');
+    const fd = new FormData(form);
+
+    const nameNominative = normalizeNameForStorage(fd.get('name_nominative'));
+    if (!nameNominative) {
+      status.textContent = 'Потрібно вказати ПІБ у називному відмінку.';
+      return;
+    }
+
+    const parseBool = v => v === '' ? null : v === 'true';
+    const previousProfile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
+
+    status.textContent = 'Зберігаємо підтверджені дані...';
+
+    const { error: candidateError } = await supabaseClient
+      .from('candidates')
+      .update({
+        full_name: nameNominative,
+        name_nominative: nameNominative,
+        name_genitive: String(fd.get('name_genitive') || '').trim() || null,
+        birth_date: fd.get('birth_date') || null,
+        birth_place: String(fd.get('birth_place') || '').trim() || null,
+        rnokpp: String(fd.get('rnokpp') || '').trim() || null,
+        passport_data: String(fd.get('passport_data') || '').trim() || null,
+        sex: String(fd.get('sex') || '') || null,
+        marital_status: String(fd.get('marital_status') || '').trim() || null,
+        has_children: parseBool(fd.get('has_children')),
+        worked_before: parseBool(fd.get('worked_before')),
+        served_before: parseBool(fd.get('served_before')),
+        phone: String(fd.get('phone') || '').trim() || null,
+        email: String(fd.get('email') || '').trim() || null,
+        desired_position: String(fd.get('desired_position') || '').trim() || null,
+        direction: String(fd.get('desired_unit') || '').trim() || null,
+        military_rank: String(fd.get('military_rank') || '').trim() || null,
+        military_specialty: String(fd.get('military_specialty') || '').trim() || null,
+        tcc: String(fd.get('tcc') || '').trim() || null,
+        vlk_status: String(fd.get('vlk_status') || '').trim() || null,
+        recruitment_status: String(fd.get('recruitment_status') || 'Новий'),
+        civilian_profession: String(fd.get('civilian_profession') || '').trim() || null,
+        notes: String(fd.get('notes') || '').trim() || null,
+        profile_data: {
+          ...previousProfile,
+          military_unit: String(fd.get('military_unit') || '').trim() || '',
+          updated_from_candidate_card: true
+        },
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', candidateId);
+
+    if (candidateError) {
+      status.textContent = 'Помилка збереження кандидата: ' + candidateError.message;
+      return;
+    }
+
+    const personalPayload = {
+      candidate_id: candidateId,
+      address: String(fd.get('address') || '').trim() || null,
+      family_status: String(fd.get('marital_status') || '').trim() || null,
+      birth_place: String(fd.get('birth_place') || '').trim() || null,
+      passport_data: String(fd.get('passport_data') || '').trim() || null,
+      children_info: String(fd.get('children_info') || '').trim() || null,
+      work_history: String(fd.get('work_history') || '').trim() || null,
+      military_service_history: String(fd.get('military_service_history') || '').trim() || null,
+      education: String(fd.get('education') || '').trim() || null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: fileError } = await supabaseClient
+      .from('personal_files')
+      .upsert(personalPayload, { onConflict:'candidate_id' });
+
+    if (fileError) {
+      status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + fileError.message;
+      return;
+    }
+
+    status.textContent = 'Готово. Дані кандидата оновлено.';
+    setTimeout(() => openCandidateCard(candidateId), 500);
   });
 }
 
-const originalShowCandidatesForDelete = window.showCandidates;
-if (typeof originalShowCandidatesForDelete === 'function') {
-  window.showCandidates = async function() {
-    await originalShowCandidatesForDelete();
-    const rows = document.querySelectorAll('#candidateRows > tr');
-    const candidates = await getCandidates();
-    const byName = new Map(candidates.map(c => [String(c.full_name || ''), c]));
-    rows.forEach(row => {
-      const name = row.querySelector('td b')?.textContent?.trim() || '';
-      const c = byName.get(name);
-      if (c) row.dataset.candidateId = c.id;
-    });
-    addDeleteCandidateColumn();
-  };
-}
-
-/* PSK_DELETE_CASE_V1 */
-async function deleteCandidateCase(candidateId, candidateName) {
-  if (!candidateId) return;
-  const ok = confirm(`Видалити особову справу кандидата «${candidateName}»?\n\nБуде видалено кандидата та пов'язані документи/особову справу. Цю дію неможливо скасувати.`);
-  if (!ok) return;
-  try {
-    const { error } = await supabaseClient.from('candidates').delete().eq('id', candidateId);
-    if (error) throw error;
-    alert(`Особову справу «${candidateName}» видалено.`);
-    await updateDashboard();
-    showCandidates();
-  } catch (e) {
-    console.error('Помилка видалення особової справи:', e);
-    alert(`Не вдалося видалити справу: ${e.message || e}`);
-  }
-}
