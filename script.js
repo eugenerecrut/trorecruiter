@@ -1,4 +1,4 @@
-// TRORECRUITER CRM — Supabase data layer
+// PSK_RECRUTER CRM — Supabase data layer
 // HelpCrunch is not used.
 
 async function getCurrentUser() {
@@ -59,7 +59,7 @@ function showCandidates() {
 
   content.innerHTML = `
     <div class="page-title">Кандидати</div>
-    <div class="page-subtitle">База кандидатів TRORECRUITER</div>
+    <div class="page-subtitle">База кандидатів PSK_RECRUTER</div>
     <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
       <input id="candidateSearch" placeholder="Пошук за ПІБ, телефоном, посадою" style="flex:1;min-width:260px">
       <select id="candidateStatus" style="padding:12px;border-radius:8px;border:1px solid #3a4650;background:#0f171e;color:#fff">
