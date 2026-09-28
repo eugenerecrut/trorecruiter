@@ -1311,3 +1311,71 @@ async function openCandidateCard(candidateId) {
   });
 }
 
+/* PSK_DELETE_CANDIDATE_V1 */
+async function deleteCandidate(candidateId, candidateName) {
+  if (!candidateId) return;
+  const ok = window.confirm(`Видалити кандидата «${candidateName || 'Без ПІБ'}»?\n\nБуде видалена особова справа та пов'язані записи документів. Цю дію не можна скасувати.`);
+  if (!ok) return;
+
+  const status = document.getElementById('candidateDeleteStatus');
+  if (status) status.textContent = 'Видалення…';
+
+  const { error } = await supabaseClient
+    .from('candidates')
+    .delete()
+    .eq('id', candidateId);
+
+  if (error) {
+    console.error('Помилка видалення кандидата:', error);
+    alert(`Не вдалося видалити кандидата: ${error.message || 'невідома помилка'}`);
+    if (status) status.textContent = '';
+    return;
+  }
+
+  if (typeof updateDashboard === 'function') await updateDashboard();
+  showCandidates();
+}
+
+function addDeleteCandidateColumn() {
+  const table = document.querySelector('#candidateRows')?.closest('table');
+  if (!table) return;
+  const headRow = table.querySelector('thead tr');
+  if (headRow && !headRow.querySelector('[data-delete-column]')) {
+    const th = document.createElement('th');
+    th.dataset.deleteColumn = '1';
+    th.style.cssText = 'padding:14px;border-bottom:1px solid #e0e6e8;text-align:right';
+    th.textContent = 'Дії';
+    headRow.appendChild(th);
+  }
+  const rows = document.querySelectorAll('#candidateRows > tr');
+  rows.forEach(row => {
+    if (row.querySelector('[data-delete-candidate]')) return;
+    const cells = row.querySelectorAll('td');
+    if (!cells.length || cells.length < 5) return;
+    const pib = cells[0]?.textContent?.trim() || 'кандидата';
+    const first = cells[0]?.querySelector('b');
+    const id = row.dataset.candidateId;
+    if (!id) return;
+    const td = document.createElement('td');
+    td.style.cssText = 'padding:10px 14px;text-align:right';
+    td.innerHTML = `<button data-delete-candidate="1" style="border:1px solid #e7c7c5;background:#fff5f4;color:#a34f4a;border-radius:7px;padding:7px 10px;font-weight:800;font-size:11px">🗑 Видалити</button>`;
+    td.querySelector('button').onclick = () => deleteCandidate(id, pib);
+    row.appendChild(td);
+  });
+}
+
+const originalShowCandidatesForDelete = window.showCandidates;
+if (typeof originalShowCandidatesForDelete === 'function') {
+  window.showCandidates = async function() {
+    await originalShowCandidatesForDelete();
+    const rows = document.querySelectorAll('#candidateRows > tr');
+    const candidates = await getCandidates();
+    const byName = new Map(candidates.map(c => [String(c.full_name || ''), c]));
+    rows.forEach(row => {
+      const name = row.querySelector('td b')?.textContent?.trim() || '';
+      const c = byName.get(name);
+      if (c) row.dataset.candidateId = c.id;
+    });
+    addDeleteCandidateColumn();
+  };
+}
