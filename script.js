@@ -97,6 +97,7 @@ function showCandidates() {
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Бажана посада</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Напрям</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Статус</th>
+            <th style="padding:14px;border-bottom:1px solid #e0e6e8">Дії</th>
           </tr>
         </thead>
         <tbody id="candidateRows"></tbody>
@@ -126,8 +127,11 @@ function showCandidates() {
         <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
         <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
+        <td style="padding:14px;white-space:nowrap">
+          <button type="button" onclick="deleteCandidateCase('${c.id}', ${JSON.stringify(c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити справу</button>
+        </td>
       </tr>`).join('') : `
-      <tr><td colspan="5" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
+      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
   }
 
   document.getElementById('candidateSearch').oninput = render;
@@ -1061,4 +1065,21 @@ if (typeof originalShowCandidatesForDelete === 'function') {
     });
     addDeleteCandidateColumn();
   };
+}
+
+/* PSK_DELETE_CASE_V1 */
+async function deleteCandidateCase(candidateId, candidateName) {
+  if (!candidateId) return;
+  const ok = confirm(`Видалити особову справу кандидата «${candidateName}»?\n\nБуде видалено кандидата та пов'язані документи/особову справу. Цю дію неможливо скасувати.`);
+  if (!ok) return;
+  try {
+    const { error } = await supabaseClient.from('candidates').delete().eq('id', candidateId);
+    if (error) throw error;
+    alert(`Особову справу «${candidateName}» видалено.`);
+    await updateDashboard();
+    showCandidates();
+  } catch (e) {
+    console.error('Помилка видалення особової справи:', e);
+    alert(`Не вдалося видалити справу: ${e.message || e}`);
+  }
 }
