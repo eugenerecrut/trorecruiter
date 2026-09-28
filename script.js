@@ -1379,3 +1379,20 @@ if (typeof originalShowCandidatesForDelete === 'function') {
     addDeleteCandidateColumn();
   };
 }
+
+/* PSK_GLOBAL_API_V2 */
+window.showCandidates = showCandidates;
+window.showNewCandidateForm = showNewCandidateForm;
+window.openCandidateCard = async function(candidateId) {
+  try {
+    return await openCandidateCard(candidateId);
+  } catch (e) {
+    console.error('Помилка відкриття картки кандидата:', e);
+    const content = document.querySelector('.content');
+    if (content) {
+      content.innerHTML = '<div class="card"><b>Помилка відкриття картки кандидата.</b><div style="margin-top:8px;color:#a23f38">' + escapeHtml(e?.message || e || 'Невідома помилка') + '</div><button type="button" onclick="showCandidates()" style="margin-top:14px;padding:9px 12px;border:1px solid #cfd8dc;border-radius:7px;background:#fff">← Назад до кандидатів</button></div>';
+    } else {
+      alert('Помилка відкриття картки кандидата: ' + (e?.message || e || 'Невідома помилка'));
+    }
+  }
+};
