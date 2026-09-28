@@ -206,9 +206,50 @@ td b{font-size:12px}
 .mobile-menu{display:none;border:0;background:none;font-size:22px;color:#25333d}
 
 /* forms rendered by script.js */
-.content form.card label,.content form label{display:block;color:#dce3e8}
-.content form.card input,.content form.card select,.content form.card textarea{
-  color:#fff;background:#0f171e;border:1px solid #3a4650;border-radius:8px;padding:11px 12px
+.content form.card,
+.content form{
+  background:var(--surface);
+}
+.content form.card label,
+.content form label{
+  display:block;
+  color:#44515a;
+  font-weight:700;
+  font-size:12px;
+  margin:0 0 6px;
+}
+.content form.card input,
+.content form.card select,
+.content form.card textarea,
+.content form input,
+.content form select,
+.content form textarea{
+  width:100%;
+  color:#24313a;
+  background:#fff;
+  border:1px solid #cfd8dc;
+  border-radius:8px;
+  padding:11px 12px;
+  outline:none;
+  transition:.15s;
+}
+.content form.card input:focus,
+.content form.card select:focus,
+.content form.card textarea:focus,
+.content form input:focus,
+.content form select:focus,
+.content form textarea:focus{
+  border-color:#9ebd45;
+  box-shadow:0 0 0 3px rgba(183,217,87,.16);
+}
+.content form.card ::placeholder,
+.content form ::placeholder{color:#9aa5aa}
+.content form.card button,
+.content form button{
+  border:0;
+  border-radius:8px;
+  padding:11px 16px;
+  font-weight:800;
 }
 
 /* mobile */
