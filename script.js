@@ -146,19 +146,19 @@ function showNewCandidateForm() {
     <div class="dashboard-top">
       <div>
         <div class="page-title">Нова особова справа</div>
-        <div class="page-subtitle">Спочатку завантажте рекомендаційний лист — він є основою для формування справи.</div>
+        <div class="page-subtitle">Вихідна точка — рекомендаційний лист. Система робить виборку, а рекрутер підтверджує дані.</div>
       </div>
       <div class="quick-actions">
         <button onclick="showCandidates()">← Назад до кандидатів</button>
       </div>
     </div>
 
-    <section class="card" style="max-width:1050px">
+    <section class="card" style="max-width:1120px">
       <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px">
         <div style="width:42px;height:42px;border-radius:11px;background:#e8f2cc;color:#5d741f;display:grid;place-items:center;font-weight:900;font-size:18px">1</div>
         <div>
-          <h3 style="margin:0 0 5px;font-size:17px">Рекомендаційний лист</h3>
-          <div style="color:#7d8a93;font-size:12px">PDF, JPG, JPEG або PNG. Документ буде збережений у захищеному сховищі.</div>
+          <h3 style="margin:0 0 5px;font-size:17px">Завантаження рекомендаційного листа</h3>
+          <div style="color:#7d8a93;font-size:12px">PDF, JPG, JPEG або PNG. Оригінал після створення справи збережеться у захищеному сховищі.</div>
         </div>
       </div>
 
@@ -174,88 +174,61 @@ function showNewCandidateForm() {
 
       <div id="ocrStatus" style="margin-top:15px;color:#68757d;font-size:12px;min-height:18px"></div>
 
+      <div id="extractionBox" class="hidden" style="margin-top:18px">
+        <div style="background:#f7faed;border:1px solid #dce8b7;border-radius:12px;padding:18px">
+          <div style="font-weight:900;font-size:14px;color:#35421f">Виборка з рекомендаційного листа</div>
+          <div style="color:#68757d;font-size:11px;margin:4px 0 15px">Система показує лише те, що вдалося знайти в документі. Незаповнені поля не вигадуються.</div>
+          <div id="extractionGrid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px"></div>
+        </div>
+      </div>
+
       <div id="ocrResultBox" class="hidden" style="margin-top:15px">
         <div style="font-weight:800;font-size:13px;margin-bottom:7px">Розпізнаний текст</div>
-        <textarea id="ocrText" rows="10" style="width:100%;padding:12px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a"></textarea>
-        <div style="font-size:11px;color:#89959c;margin-top:6px">Перед створенням справи перевірте текст — OCR може помилятися.</div>
+        <textarea id="ocrText" rows="8" style="width:100%;padding:12px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a"></textarea>
+        <div style="font-size:11px;color:#89959c;margin-top:6px">Текст можна виправити вручну. Він використовується тільки як допоміжний матеріал для виборки.</div>
       </div>
 
       <div id="candidateStage" class="hidden" style="margin-top:24px;border-top:1px solid #e5eaec;padding-top:22px">
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
           <div style="width:42px;height:42px;border-radius:11px;background:#e8f2cc;color:#5d741f;display:grid;place-items:center;font-weight:900;font-size:18px">2</div>
           <div>
-            <h3 style="margin:0 0 5px;font-size:17px">Перевірка даних кандидата</h3>
-            <div style="color:#7d8a93;font-size:12px">Перевірте автоматично заповнені поля та доповніть те, чого немає в рекомендаційному листі.</div>
+            <h3 style="margin:0 0 5px;font-size:17px">Перевірка та підтвердження даних</h3>
+            <div style="color:#7d8a93;font-size:12px">Виправте OCR-помилки або доповніть дані, яких немає у рекомендаційному листі.</div>
           </div>
         </div>
 
         <form id="candidateForm" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
-          <div>
-            <label>ПІБ *</label>
-            <input name="full_name" required placeholder="Прізвище Ім'я По батькові">
-          </div>
-          <div>
-            <label>Дата народження</label>
-            <input name="birth_date" type="date">
-          </div>
-          <div>
-            <label>Телефон</label>
-            <input name="phone" placeholder="+380...">
-          </div>
-          <div>
-            <label>ІПН / РНОКПП</label>
-            <input name="rnokpp">
-          </div>
-          <div>
-            <label>Військове звання</label>
-            <input name="military_rank">
-          </div>
-          <div>
-            <label>Військовий статус</label>
-            <input name="military_status" placeholder="військовослужбовець / цивільний">
-          </div>
-          <div>
-            <label>ВОС / військова спеціальність</label>
-            <input name="military_specialty">
-          </div>
-          <div>
-            <label>Військовий досвід</label>
-            <input name="military_experience">
-          </div>
-          <div>
-            <label>Цивільна професія</label>
-            <input name="civilian_profession">
-          </div>
-          <div>
-            <label>Бажана посада</label>
-            <input name="desired_position">
-          </div>
-          <div>
-            <label>Бажаний підрозділ</label>
-            <input name="desired_unit">
-          </div>
-          <div>
-            <label>Район / область</label>
-            <input name="region">
-          </div>
-          <div>
-            <label>ТЦК</label>
-            <input name="tcc">
-          </div>
-          <div>
-            <label>Статус ВЛК</label>
-            <input name="vlk_status" placeholder="не проходив / придатний / уточнення">
-          </div>
-          <div>
-            <label>Рекрутер</label>
-            <input name="recruiter_name" placeholder="Заповниться пізніше">
-          </div>
-          <div>
-            <label>Джерело кандидата</label>
-            <input name="candidate_source" value="Рекомендаційний лист">
-          </div>
+          <div><label>ПІБ *</label><input name="full_name" required placeholder="Прізвище Ім'я По батькові"></div>
+          <div><label>Дата народження</label><input name="birth_date" type="date"></div>
+
+          <div><label>Телефон</label><input name="phone" placeholder="+380..."></div>
+          <div><label>Адреса проживання</label><input name="address" placeholder="Населений пункт, вулиця, будинок, квартира"></div>
+
+          <div><label>Військова частина</label><input name="military_unit"></div>
+          <div><label>Підрозділ / центр</label><input name="desired_unit"></div>
+
+          <div style="grid-column:1/-1"><label>Запланована посада</label><input name="desired_position"></div>
+
+          <div><label>ШПК</label><input name="shpk" placeholder="наприклад: солдат"></div>
+          <div><label>ВОС</label><input name="military_specialty"></div>
+
+          <div><label>Тарифний розряд</label><input name="tariff_grade"></div>
+          <div><label>Вид служби</label><input name="service_type" placeholder="за контрактом"></div>
+
+          <div><label>Рекомендуючий підрозділ</label><input name="recommender_unit"></div>
+          <div><label>Підписант</label><input name="signatory"></div>
+
+          <div><label>ІПН / РНОКПП</label><input name="rnokpp"></div>
+          <div><label>Військове звання кандидата</label><input name="military_rank"></div>
+
+          <div><label>ТЦК</label><input name="tcc"></div>
+          <div><label>Статус ВЛК</label><input name="vlk_status" placeholder="не проходив / придатний / уточнення"></div>
+
+          <div><label>Цивільна професія</label><input name="civilian_profession"></div>
+          <div><label>Рекрутер</label><input name="recruiter_name" placeholder="Заповниться пізніше"></div>
+
           <div style="grid-column:1/-1">
-            <label>Примітки</label>
+            <label>Примітки рекрутера</label>
             <textarea name="notes" rows="4" placeholder="Додаткові відомості"></textarea>
           </div>
 
@@ -281,10 +254,12 @@ function showNewCandidateForm() {
     uploadZone.style.borderColor = '#9ebd45';
     uploadZone.style.background = '#f7faed';
   });
+
   uploadZone.addEventListener('dragleave', () => {
     uploadZone.style.borderColor = '#c6d1d6';
     uploadZone.style.background = '#fbfcfc';
   });
+
   uploadZone.addEventListener('drop', e => {
     e.preventDefault();
     uploadZone.style.borderColor = '#c6d1d6';
@@ -302,6 +277,7 @@ function showNewCandidateForm() {
 
 async function loadExternalScript(url, testName) {
   if (window[testName]) return;
+
   await new Promise((resolve, reject) => {
     const existing = document.querySelector('script[data-psk-lib="' + testName + '"]');
     if (existing) {
@@ -355,13 +331,26 @@ async function extractPdfText(file) {
     await loadExternalScript(pdfjsUrl, 'pdfjsLib');
     const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
     let text = '';
-    const pages = Math.min(pdf.numPages, 10);
 
+    const pages = Math.min(pdf.numPages, 10);
     for (let i = 1; i <= pages; i++) {
       const page = await pdf.getPage(i);
       const tc = await page.getTextContent();
-      text += tc.items.map(x => x.str).join(' ') + '\n';
+      const lines = {};
+      tc.items.forEach(item => {
+        const y = Math.round(item.transform?.[5] || 0);
+        const key = String(y);
+        (lines[key] ||= []).push(item.str);
+      });
+
+      const pageLines = Object.entries(lines)
+        .sort((a, b) => Number(b[0]) - Number(a[0]))
+        .map(([, parts]) => parts.join(' ').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+
+      text += pageLines.join('\n') + '\n';
     }
+
     return text.trim();
   } catch (err) {
     console.warn('Не вдалося прочитати текстовий шар PDF:', err);
@@ -388,101 +377,180 @@ async function runOcr(input) {
   return result.data.text?.trim() || '';
 }
 
-function normalizeText(text) {
-  return String(text || '')
+function normalizeLine(value) {
+  return String(value || '')
     .replace(/\r/g, '')
-    .replace(/[ \t]+/g, ' ')
     .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+/g, ' ')
     .trim();
 }
 
+function normalizeDocumentText(text) {
+  return String(text || '')
+    .split('\n')
+    .map(normalizeLine)
+    .filter(Boolean)
+    .join('\n');
+}
+
+function oneLine(text) {
+  return normalizeDocumentText(text).replace(/\n/g, ' ');
+}
+
 function guessDate(value) {
-  if (!value) return '';
-  const m = value.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
+  const m = String(value || '').match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
   if (!m) return '';
   return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
 
 function guessField(text, patterns) {
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m?.[1]) return m[1].trim().replace(/\s+/g, ' ');
+  for (const pattern of patterns) {
+    const m = text.match(pattern);
+    if (m?.[1]) return normalizeLine(m[1]);
   }
   return '';
 }
 
-function parseRecommendation(text) {
-  const t = normalizeText(text);
+function parseRecommendation(rawText) {
+  const t = normalizeDocumentText(rawText);
+  const flat = oneLine(t);
 
-  const fullName =
+  const name = (
     guessField(t, [
-      /(?:ПІБ|П\.\s*І\.\s*Б\.|прізвище\s*,?\s*ім['’]?я\s*,?\s*по\s*батькові)\s*[:\-–]\s*([^\n]{5,80})/iu,
-      /(?:громадянин|кандидат)\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+(?:\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)?)/u
-    ]);
+      /(?:кандидата\s+(?:для[^\n]*?)?на\s+військової\s+служби[^\n]*?)\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
+      /(?:ПІБ|П\.\s*І\.\s*Б\.|прізвище\s*,?\s*ім['’]?я\s*,?\s*по\s*батькові)\s*[:\-–]\s*([^\n]{5,100})/iu,
+      /(?:громадянина?|громадянин|кандидат(?:а)?)\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u
+    ])
+  );
 
-  const phone = guessField(t, [
-    /(?:тел(?:ефон)?|моб(?:ільний)?|контакт(?:ний)?)\s*[:\-]\s*(\+?\d[\d ()-]{7,})/iu
-  ]).replace(/[^+\d]/g, '');
-
-  const rnokpp = guessField(t, [
-    /(?:РНОКПП|ІПН|ідентифікацій(?:ний)?\s*(?:номер|код))\s*[:\-]?\s*(\d{10})/iu
-  ]).replace(/\D/g, '');
-
-  const birthRaw = guessField(t, [
-    /(?:дата\s*народження|народився|народилася)\s*[:\-]?\s*([^\n,;]{8,20})/iu
+  const birthLine = guessField(flat, [
+    /([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+),\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.н\./iu,
+    /(?:дата\s*народження|народився|народилася)\s*[:\-]?\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})/iu
   ]);
 
-  const rank = guessField(t, [
-    /(?:військове\s*звання|звання)\s*[:\-]\s*([^\n,;]{2,60})/iu
+  const birth = birthLine && /\d{4}/.test(birthLine) ? (
+    birthLine.match(/\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}/)?.[0] || ''
+  ) : '';
+
+  const phone = guessField(t, [
+    /\((0\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})\)/u,
+    /(?:тел(?:ефон)?|моб(?:ільний)?|контакт(?:ний)?)\s*[:\-]?\s*(\+?\d[\d ()-]{7,})/iu
+  ]).replace(/[^+\d]/g, '');
+
+  const address = guessField(t, [
+    /(?:мешкає\s+за\s+адресою)\s*:\s*([^\n]+?)(?=\s*\(0\d{2})/iu
   ]);
 
   const desiredPosition = guessField(t, [
-    /(?:бажана\s*посада|посада\s*кандидата|пропонована\s*посада)\s*[:\-]\s*([^\n;]{2,100})/iu
+    /планується\s+на\s+посаду\s+(.+?),\s*ШПК/iu,
+    /(?:бажана\s*посада|посада\s*кандидата|пропонована\s*посада)\s*[:\-]\s*([^\n;]{2,150})/iu
+  ]);
+
+  const militaryUnit = guessField(t, [
+    /(?:військова\s*частина|в\/ч)\s*([А-Я]\d{2,6})/iu
   ]);
 
   const desiredUnit = guessField(t, [
-    /(?:бажаний\s*підрозділ|підрозділ|військова\s*частина)\s*[:\-]\s*([^\n;]{2,100})/iu
+    /планується\s+на\s+посаду\s+.+?\s+([А-ЯІЇЄҐA-Z0-9]{2,20})?\s*ШПК/iu
   ]);
 
-  const tcc = guessField(t, [
-    /(?:ТЦК(?:\s*та\s*СП)?|військкомат)\s*[:\-]\s*([^\n;]{2,100})/iu
-  ]);
-
-  const civilian = guessField(t, [
-    /(?:цивільна\s*професія|професія|спеціальність)\s*[:\-]\s*([^\n;]{2,100})/iu
+  const shpk = guessField(t, [
+    /ШПК\s*[“"«]?\s*([^”"»",;\.]+)[”"»]?/iu
   ]);
 
   const militarySpecialty = guessField(t, [
-    /(?:ВОС|військово\s*облікова\s*спеціальність|військова\s*спеціальність)\s*[:\-]\s*([^\n;]{2,100})/iu
+    /ВОС\s*[-–:]?\s*([0-9]{3,8}[А-ЯІЇЄҐA-Z]?)/iu
   ]);
 
-  const region = guessField(t, [
-    /(?:область|район|місце\s*проживання)\s*[:\-]\s*([^\n;]{2,100})/iu
+  const tariffGrade = guessField(t, [
+    /тарифний\s+розряд\s*[-–:]?\s*(\d+)/iu
+  ]);
+
+  const serviceType = guessField(t, [
+    /військової\s+служби\s+(за\s+контрактом)/iu
+  ]) || guessField(t, [
+    /військову\s+службу\s+(за\s+контрактом)/iu
+  ]);
+
+  const recommenderUnit = guessField(t, [
+    /У\s+([0-9]+\s+центр[^\n]+?військової\s+частини\s+[А-Я]\d{2,6})\s+попередньо/iu,
+    /У\s+([0-9]+\s+центр[^\n]+?)(?:\s+попередньо|\s+попередньо\s+вивчено)/iu
+  ]);
+
+  const signatory = guessField(t, [
+    /підполковник\s+([А-ЯІЇЄҐ][А-ЯІЇЄҐ'’\-]+(?:\s+[А-ЯІЇЄҐ][А-ЯІЇЄҐ'’\-]+){1,2})\s*$/imu,
+    /полковник\s+([А-ЯІЇЄҐ][А-ЯІЇЄҐ'’\-]+(?:\s+[А-ЯІЇЄҐ][А-ЯІЇЄҐ'’\-]+){1,2})\s*$/imu
   ]);
 
   return {
-    full_name: fullName,
+    full_name: name,
+    birth_date: guessDate(birth),
     phone,
-    rnokpp,
-    birth_date: guessDate(birthRaw),
-    military_rank: rank,
-    desired_position: desiredPosition,
-    desired_unit: desiredUnit,
-    tcc,
-    civilian_profession: civilian,
-    military_specialty: militarySpecialty,
-    region,
+    address,
+    military_unit,
+    desired_unit: '',
+    desired_position,
+    shpk,
+    military_specialty,
+    tariff_grade: tariffGrade,
+    service_type: serviceType,
+    recommender_unit: recommenderUnit,
+    signatory,
+    rnokpp: '',
+    military_rank: '',
+    tcc: '',
+    vlk_status: '',
+    civilian_profession: '',
+    recruiter_name: '',
+    notes: '',
     raw_text: t
   };
+}
+
+function renderExtraction(parsed) {
+  const box = document.getElementById('extractionBox');
+  const grid = document.getElementById('extractionGrid');
+  if (!box || !grid) return;
+
+  const fields = [
+    ['ПІБ', parsed.full_name],
+    ['Дата народження', parsed.birth_date ? parsed.birth_date.split('-').reverse().join('.') : ''],
+    ['Телефон', parsed.phone],
+    ['Адреса', parsed.address],
+    ['Військова частина', parsed.military_unit],
+    ['Підрозділ', parsed.desired_unit || ''],
+    ['Запланована посада', parsed.desired_position],
+    ['ШПК', parsed.shpk],
+    ['ВОС', parsed.military_specialty],
+    ['Тарифний розряд', parsed.tariff_grade],
+    ['Вид служби', parsed.service_type],
+    ['Рекомендуючий підрозділ', parsed.recommender_unit],
+    ['Підписант', parsed.signatory]
+  ];
+
+  grid.innerHTML = fields.map(([label, value]) => `
+    <div style="padding:10px 0;border-bottom:1px solid #e6edcf">
+      <div style="font-size:10px;color:#89959c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${escapeHtml(label)}</div>
+      <div style="font-weight:800;color:#34414a">${escapeHtml(value || '—')}</div>
+    </div>`).join('');
+
+  box.classList.remove('hidden');
 }
 
 function fillCandidateForm(parsed) {
   const form = document.getElementById('candidateForm');
   if (!form) return;
 
-  Object.entries(parsed).forEach(([name, value]) => {
+  const supported = [
+    'full_name','birth_date','phone','address','military_unit','desired_unit',
+    'desired_position','shpk','military_specialty','tariff_grade','service_type',
+    'recommender_unit','signatory','rnokpp','military_rank','tcc','vlk_status',
+    'civilian_profession','recruiter_name','notes'
+  ];
+
+  supported.forEach(name => {
     const input = form.elements[name];
-    if (input && value) input.value = value;
+    if (input && parsed[name]) input.value = parsed[name];
   });
 
   const text = document.getElementById('ocrText');
@@ -521,24 +589,25 @@ async function handleRecommendationFile(file) {
       text = await runOcr(file);
     }
 
-    pendingRecommendationText = normalizeText(text);
+    pendingRecommendationText = normalizeDocumentText(text);
 
-    const box = document.getElementById('ocrResultBox');
+    const ocrBox = document.getElementById('ocrResultBox');
     const stage = document.getElementById('candidateStage');
-    if (box) box.classList.remove('hidden');
+    if (ocrBox) ocrBox.classList.remove('hidden');
     if (stage) stage.classList.remove('hidden');
+
+    const parsed = parseRecommendation(pendingRecommendationText);
+    renderExtraction(parsed);
+    fillCandidateForm(parsed);
 
     if (!pendingRecommendationText) {
       status.textContent = 'Текст не вдалося розпізнати. Заповніть дані вручну.';
     } else {
-      status.textContent = 'Документ розпізнано. Перевірте поля нижче.';
+      status.textContent = 'Документ розпізнано. Перевірте виборку та поля нижче.';
     }
-
-    const parsed = parseRecommendation(pendingRecommendationText);
-    fillCandidateForm(parsed);
   } catch (error) {
     console.error('OCR error:', error);
-    status.textContent = 'Не вдалося автоматично розпізнати документ. Його все одно можна зберегти та заповнити дані вручну.';
+    status.textContent = 'Автоматичне розпізнавання не вдалося. Заповніть дані вручну — оригінал документа все одно можна зберегти.';
     document.getElementById('ocrResultBox')?.classList.remove('hidden');
     document.getElementById('candidateStage')?.classList.remove('hidden');
     document.getElementById('ocrText').value = pendingRecommendationText || '';
@@ -602,6 +671,7 @@ async function saveCandidateFromRecommendation(event) {
   }
 
   const fd = new FormData(form);
+
   const candidate = {
     full_name: String(fd.get('full_name') || '').trim(),
     phone: String(fd.get('phone') || '').trim() || null,
@@ -609,7 +679,7 @@ async function saveCandidateFromRecommendation(event) {
     birth_date: fd.get('birth_date') || null,
     rnokpp: String(fd.get('rnokpp') || '').trim() || null,
     military_rank: String(fd.get('military_rank') || '').trim() || null,
-    military_status: String(fd.get('military_status') || '').trim() || null,
+    military_status: null,
     civilian_profession: String(fd.get('civilian_profession') || '').trim() || null,
     desired_position: String(fd.get('desired_position') || '').trim() || null,
     direction: String(fd.get('desired_unit') || '').trim() || null,
@@ -639,16 +709,26 @@ async function saveCandidateFromRecommendation(event) {
     return;
   }
 
+  const additional = [
+    ['Військова частина', fd.get('military_unit')],
+    ['Підрозділ', fd.get('desired_unit')],
+    ['ШПК', fd.get('shpk')],
+    ['ВОС', fd.get('military_specialty')],
+    ['Тарифний розряд', fd.get('tariff_grade')],
+    ['Вид служби', fd.get('service_type')],
+    ['Рекомендуючий підрозділ', fd.get('recommender_unit')],
+    ['Підписант', fd.get('signatory')]
+  ]
+    .filter(([, value]) => String(value || '').trim())
+    .map(([label, value]) => label + ': ' + String(value).trim())
+    .join('\n');
+
   const { error: fileError } = await supabaseClient
     .from('personal_files')
     .insert({
       candidate_id: data.id,
-      civilian_experience: String(fd.get('military_experience') || '').trim() || null,
-      additional_notes: [
-        String(fd.get('military_specialty') || '').trim(),
-        String(fd.get('region') || '').trim(),
-        String(fd.get('desired_unit') || '').trim()
-      ].filter(Boolean).join(' • ') || null
+      address: String(fd.get('address') || '').trim() || null,
+      additional_notes: additional || null
     });
 
   if (fileError) {
