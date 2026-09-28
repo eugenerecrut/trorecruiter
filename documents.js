@@ -15,7 +15,48 @@ function openAddDocumentModal(id,reqId=''){activeDocumentsCandidateId=id;makeDoc
 async function classifyStoredDocument(path,fileName,extractedText=''){const{data,error}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(path,600);if(error||!data?.signedUrl)throw new Error(error?.message||'Не вдалося створити тимчасове посилання');const body={file_name:fileName};if(extractedText&&extractedText.trim())body.text=extractedText;else body.file_url=data.signedUrl;const{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body});if(aiError)throw new Error(aiError.message||'Помилка AI');if(!ai?.extracted)throw new Error('AI не повернув структуровані дані');return ai}
 function normName(s){return String(s||'').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi,'')}
 function findCandidateByName(name,candidates){const n=normName(name);if(!n)return null;return candidates.find(c=>{const cn=normName(c.full_name);return cn===n||cn.includes(n)||n.includes(cn)})||null}
-async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId){if(file.type!=='application/pdf'&&!file.name.toLowerCase().endsWith('.pdf'))throw new Error('Дозволено тільки PDF');if(file.size>DOC_MAX_SIZE)throw new Error('Файл більший за 20 МБ');const reqs=await getDocumentRequirements();const forced=reqs.find(r=>r.id===requirementId);const tempType=forced?.document_type||'Обробка AI';const path=`${forcedCandidateId}/incoming/${Date.now()}_${Math.random().toString(36).slice(2,8)}_${String(file.name).replace(/[^a-zA-Z0-9._-]/g,'_')}`;const upload=await supabaseClient.storage.from(DOC_BUCKET).upload(path,file,{upsert:false,contentType:'application/pdf'});if(upload.error)throw new Error('Завантаження: '+upload.error.message);let ai=null;try{ai=await classifyStoredDocument(path,file.name)}catch(e){await supabaseClient.from('documents').insert({candidate_id:forcedCandidateId,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:'application/pdf',uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI помилка',notes:e.message});throw e}const aiType=ai?.document_type||tempType;const matchedReq=forced||reqs.find(r=>r.document_type===aiType);const matchedCandidate=findCandidateByName(ai?.candidate_name,candidates);const warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push(`AI визначив кандидата: ${matchedCandidate.full_name}. Документ завантажено до відкритої справи.`);const insert={candidate_id:forcedCandidateId,requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:'application/pdf',uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:ai?.extracted||{},ai_warnings:warnings};const{error}=await supabaseClient.from('documents').insert(insert);if(error){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація: '+error.message)}return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings}}
+async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId){
+const name=String(file.name||'').toLowerCase();
+const mime=String(file.type||'').toLowerCase();
+const ok=mime==='application/pdf'||mime==='image/jpeg'||mime==='image/png'||mime==='application/msword'||mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||/\.(pdf|jpe?g|png|docx?)$/i.test(name);
+if(!ok)throw new Error('Підтримуються PDF, JPG, JPEG, PNG, DOC та DOCX');
+if(file.size>DOC_MAX_SIZE)throw new Error('Файл більший за 20 МБ');
+const reqs=await getDocumentRequirements();
+const forced=reqs.find(r=>r.id===requirementId);
+const tempType=forced?.document_type||'Обробка AI';
+const cleanName=String(file.name).replace(/[^a-zA-Z0-9а-яА-ЯіїєґІЇЄҐ._-]/g,'_');
+const path=forcedCandidateId+'/incoming/'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+cleanName;
+const upload=await supabaseClient.storage.from(DOC_BUCKET).upload(path,file,{upsert:false,contentType:mime||'application/octet-stream'});
+if(upload.error)throw new Error('Завантаження: '+upload.error.message);
+let documentText='';
+try{
+ if(mime==='application/pdf'||/\.pdf$/i.test(name)){
+  documentText=await extractPdfText(file);
+  if(!documentText||documentText.length<100){
+   const images=await pdfToImages(file,10),parts=[];
+   for(let i=0;i<images.length;i++){const s=document.getElementById('docUploadStatus');if(s)s.textContent='OCR сторінки '+(i+1)+' із '+images.length+': '+file.name;const pt=await runOcr(images[i]);if(pt)parts.push(pt);}
+   documentText=parts.join('\n\n').trim();
+  }
+ }else if(mime==='image/jpeg'||mime==='image/png'||/\.(jpe?g|png)$/i.test(name)){
+  documentText=await runOcr(file);
+ }
+}catch(e){console.warn('OCR не вдався:',e)}
+let ai=null;
+try{ai=await classifyStoredDocument(path,file.name,documentText)}catch(e){
+ await supabaseClient.from('documents').insert({candidate_id:forcedCandidateId,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI помилка',notes:e.message});
+ throw e;
+}
+const extracted=ai?.extracted||{};
+const aiType=ai?.document_type||tempType;
+const matchedReq=forced||reqs.find(r=>r.document_type===aiType);
+const matchedCandidate=findCandidateByName(ai?.candidate_name,candidates);
+const warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];
+if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
+const insert={candidate_id:forcedCandidateId,requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings};
+const {error}=await supabaseClient.from('documents').insert(insert);
+if(error){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація: '+error.message)}
+return {file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
+}
 async function uploadSelectedDocuments(){const modal=document.getElementById('documentModal'),files=Array.from(modal?.querySelector('#docFileInput')?.files||[]),requirementId=modal?.querySelector('#docRequirement')?.value,status=modal?.querySelector('#docUploadStatus'),user=await getCurrentUser();if(!files.length||!activeDocumentsCandidateId)return;if(!user){status.textContent='Сесія завершилась. Увійдіть повторно.';return}status.textContent=`Підготовлено ${files.length} файл(ів). Починаємо AI-розпізнавання...`;const candidates=await getCandidates();let ok=0,failed=0,details=[];for(let i=0;i<files.length;i++){const file=files[i];status.textContent=`AI-обробка ${i+1} із ${files.length}: ${file.name}`;try{const r=await processOneDocument(file,requirementId,user,candidates,activeDocumentsCandidateId);ok++;details.push(`✓ ${file.name} → ${r.type} (${Math.round(r.confidence*100)}%)`);if(r.warnings.length)details.push(`  ⚠ ${r.warnings.join('; ')}`)}catch(e){failed++;details.push(`✕ ${file.name} → ${e.message}`)}}status.innerHTML=`<b>Готово.</b> Розпізнано: ${ok}. Помилки: ${failed}.<div style="margin-top:8px;white-space:pre-line;font-size:11px">${docEscape(details.join('\n'))}</div>`;setTimeout(()=>{modal.remove();showDocuments(activeDocumentsCandidateId)},1800)}
 
 // Guided batch scanning workflow. The browser receives each PDF produced by the installed Canon scan software.
