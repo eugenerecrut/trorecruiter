@@ -4,9 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'scanner_agent.py'
-      - 'requirements.txt'
-      - 'PSK_Scanner_Agent.spec'
+      - 'scanner_agent_windows.go'
       - '.github/workflows/build-scanner-agent.yml'
 
 jobs:
@@ -15,17 +13,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          python-version: '3.12'
-      - name: Install dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+          go-version: '1.23'
       - name: Build EXE
-        run: pyinstaller --clean PSK_Scanner_Agent.spec
+        shell: pwsh
+        run: $env:GOOS='windows'; $env:GOARCH='amd64'; go build -ldflags='-s -w' -o PSK_Scanner_Agent.exe scanner_agent_windows.go
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: PSK_Scanner_Agent_Windows
-          path: dist/PSK_Scanner_Agent.exe
+          path: PSK_Scanner_Agent.exe
           if-no-files-found: error
