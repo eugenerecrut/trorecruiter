@@ -1,0 +1,1 @@
+Temporary deletion helper was added. Include <script src="delete-candidate.js"></script> after the Supabase client script in the main HTML page.
