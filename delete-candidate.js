@@ -20,6 +20,8 @@
         throw new Error('Сесія користувача не знайдена. Увійдіть до CRM повторно.');
       }
 
+      // Documents/personal-file cleanup will be handled separately later.
+      // For now this button performs the temporary candidate deletion only.
       const { error } = await supabaseClient
         .from('candidates')
         .delete()
@@ -29,18 +31,33 @@
 
       alert(`Справу «${name}» видалено.`);
 
-      if (typeof updateDashboard === 'function') {
-        await updateDashboard();
-      }
-      if (typeof showCandidates === 'function') {
-        showCandidates();
-      }
+      if (typeof updateDashboard === 'function') await updateDashboard();
+      if (typeof showCandidates === 'function') showCandidates();
     } catch (error) {
       console.error('Помилка видалення кандидата:', error);
       alert(`Не вдалося видалити справу:\n${error?.message || error}`);
     }
   }
 
-  // Always expose the handler globally because the Candidates table uses onclick.
   window.deleteCandidateCase = deleteCandidateCase;
+
+  // The candidates table currently builds an inline onclick containing JSON text.
+  // That can break the HTML attribute when the candidate name contains quotes.
+  // Capture the click before the inline handler and extract the UUID from the
+  // generated attribute, then call the safe handler ourselves.
+  document.addEventListener('click', function (event) {
+    const button = event.target.closest('button');
+    if (!button || !button.textContent.includes('Видалити справу')) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const onclick = button.getAttribute('onclick') || '';
+    const match = onclick.match(/deleteCandidateCase\(['\"]([^'\"]+)['\"]/);
+    const candidateId = match ? match[1] : '';
+    const row = button.closest('tr');
+    const candidateName = row?.querySelector('td')?.textContent?.trim() || 'кандидата';
+
+    deleteCandidateCase(candidateId, candidateName);
+  }, true);
 })();
