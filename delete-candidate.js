@@ -48,3 +48,15 @@
     deleteCandidateCase(candidateId, candidateName);
   }, true);
 })();
+
+/* PSK_CANDIDATE_CARD_V2_LOADER */
+(function () {
+  if (window.__pskCandidateCardV2Loader) return;
+  window.__pskCandidateCardV2Loader = true;
+  const s = document.createElement('script');
+  s.src = 'candidate-card-v2.js?v=20260928-card7';
+  s.async = false;
+  s.onload = () => console.log('PSK candidate card V2 loaded');
+  s.onerror = () => console.error('Не вдалося завантажити candidate-card-v2.js');
+  document.head.appendChild(s);
+})();
