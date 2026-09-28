@@ -415,84 +415,80 @@ function parseRecommendation(rawText) {
   const t = normalizeDocumentText(rawText);
   const flat = oneLine(t);
 
-  const name = (
-    guessField(t, [
-      /(?:кандидата\s+(?:для[^\n]*?)?на\s+військової\s+служби[^\n]*?)\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
-      /(?:ПІБ|П\.\s*І\.\s*Б\.|прізвище\s*,?\s*ім['’]?я\s*,?\s*по\s*батькові)\s*[:\-–]\s*([^\n]{5,100})/iu,
-      /(?:громадянина?|громадянин|кандидат(?:а)?)\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u
-    ])
-  );
+  // Виборка під фактичний формат рекомендаційного листа:
+  // "... кандидата ... ПАВЛЕНКА Ростислава Сергійовича, 23.01.2002 р.н.,
+  // який мешкає за адресою: ... (098...) та планується на посаду
+  // ОПЕРАТОРА ..., ШПК "солдат", ВОС-605543А, тарифний розряд - 5."
 
-  const birthLine = guessField(flat, [
-    /([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+),\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.н\./iu,
-    /(?:дата\s*народження|народився|народилася)\s*[:\-]?\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})/iu
-  ]);
+  let fullName = '';
+  const namePatterns = [
+    /кандидата\s+для\s+проходження\s+військової\s+служби\s+за\s+контрактом\s+призовника\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
+    /призовника\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
+    /кандидат(?:а)?\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
+    /(?:ПІБ|П\.\s*І\.\s*Б\.)\s*[:\-–]\s*([А-ЯІЇЄҐ][^\n]{5,100})/iu
+  ];
+  for (const pattern of namePatterns) {
+    const m = flat.match(pattern);
+    if (m?.[1]) {
+      fullName = normalizeLine(m[1]).trim().replace(/[,.]$/, '');
+      break;
+    }
+  }
 
-  const birth = birthLine && /\d{4}/.test(birthLine) ? (
-    birthLine.match(/\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}/)?.[0] || ''
-  ) : '';
+  const dateMatch =
+    flat.match(/(?:ПІБ|прізвище|призовника\s+[А-ЯІЇЄҐ][^,]+),\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.н\./iu) ||
+    flat.match(/(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.н\./iu) ||
+    flat.match(/(?:дата\s*народження|народився|народилася)\s*[:\-]?\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})/iu);
+  const birthDate = dateMatch?.[1] ? guessDate(dateMatch[1]) : '';
 
-  const phone = guessField(t, [
-    /\((0\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})\)/u,
-    /(?:тел(?:ефон)?|моб(?:ільний)?|контакт(?:ний)?)\s*[:\-]?\s*(\+?\d[\d ()-]{7,})/iu
-  ]).replace(/[^+\d]/g, '');
+  const phoneMatch =
+    flat.match(/\((0\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})\)/u) ||
+    flat.match(/(?:тел(?:ефон)?|моб(?:ільний)?|контакт(?:ний)?)\s*[:\-]?\s*(\+?\d[\d ()-]{7,})/iu);
+  const phone = phoneMatch?.[1] ? phoneMatch[1].replace(/[^+\d]/g, '') : '';
 
-  const address = guessField(t, [
-    /(?:мешкає\s+за\s+адресою)\s*:\s*([^\n]+?)(?=\s*\(0\d{2})/iu
-  ]);
+  const addressMatch = flat.match(/мешкає\s+за\s+адресою\s*:\s*(.+?)\s*\(0\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2}\)/iu);
+  const address = addressMatch?.[1] ? normalizeLine(addressMatch[1]) : '';
 
-  const desiredPosition = guessField(t, [
-    /планується\s+на\s+посаду\s+(.+?),\s*ШПК/iu,
-    /(?:бажана\s*посада|посада\s*кандидата|пропонована\s*посада)\s*[:\-]\s*([^\n;]{2,150})/iu
-  ]);
+  const positionMatch =
+    flat.match(/та\s+планується\s+на\s+посаду\s+(.+?)\s*,\s*ШПК\s*[“"«]/iu) ||
+    flat.match(/планується\s+на\s+посаду\s+(.+?)\s*,\s*ШПК/iu);
+  const desiredPosition = positionMatch?.[1] ? normalizeLine(positionMatch[1]) : '';
 
-  const militaryUnit = guessField(t, [
-    /(?:військова\s*частина|в\/ч)\s*([А-Я]\d{2,6})/iu
-  ]);
+  const shpkMatch = flat.match(/ШПК\s*[“"«]?\s*([^”"»\n,]+?)(?:[”"»])?\s*,?\s*ВОС/iu);
+  const shpk = shpkMatch?.[1] ? normalizeLine(shpkMatch[1]) : '';
 
-  const desiredUnit = guessField(t, [
-    /(?:направити|направлення)\s+.+?\s+до\s+([0-9]+\s+центру[^\n]+?військової\s+частини\s+[А-Я]\d{2,6})/iu,
-    /до\s+([0-9]+\s+центру[^\n]+?військової\s+частини\s+[А-Я]\d{2,6})/iu
-  ]);
+  const vosMatch = flat.match(/ВОС\s*[-–:]\s*([0-9]{3,8}[А-ЯІЇЄҐA-Z]?)/iu);
+  const militarySpecialty = vosMatch?.[1] ? normalizeLine(vosMatch[1]) : '';
 
-  const shpk = guessField(t, [
-    /ШПК\s*[“"«]?\s*([^”"»",;\.]+)[”"»]?/iu
-  ]);
+  const tariffMatch = flat.match(/тарифний\s+розряд\s*[-–:]\s*(\d+)/iu);
+  const tariffGrade = tariffMatch?.[1] || '';
 
-  const militarySpecialty = guessField(t, [
-    /ВОС\s*[-–:]?\s*([0-9]{3,8}[А-ЯІЇЄҐA-Z]?)/iu
-  ]);
+  const serviceMatch = flat.match(/військової\s+служби\s+(за\s+контрактом)/iu);
+  const serviceType = serviceMatch?.[1] ? normalizeLine(serviceMatch[1]) : '';
 
-  const tariffGrade = guessField(t, [
-    /тарифний\s+розряд\s*[-–:]?\s*(\d+)/iu
-  ]);
+  const unitMatches = [...flat.matchAll(/військової\s+частини\s+([А-ЯІЇЄҐA-Z]\d{2,6})/giu)];
+  const militaryUnit = unitMatches.length ? unitMatches[0][1] : '';
 
-  const serviceType = guessField(t, [
-    /військової\s+служби\s+(за\s+контрактом)/iu
-  ]) || guessField(t, [
-    /військову\s+службу\s+(за\s+контрактом)/iu
-  ]);
+  const recommendationBlock = flat.match(/У\s+(\d+\s+центр[^.]+?військової\s+частини\s+[А-ЯІЇЄҐA-Z]\d{2,6})\s+попередньо/iu);
+  const recommenderUnit = recommendationBlock?.[1] ? normalizeLine(recommendationBlock[1]) : '';
 
-  const recommenderUnit = guessField(t, [
-    /У\s+([0-9]+\s+центр[^\n]+?військової\s+частини\s+[А-Я]\d{2,6})\s+попередньо/iu,
-    /У\s+([0-9]+\s+центр[^\n]+?)(?:\s+попередньо|\s+попередньо\s+вивчено)/iu
-  ]);
+  const desiredUnitMatch = flat.match(/направити\s+призовника\s+.+?\s+до\s+(\d+\s+центру[^.]+?військової\s+частини\s+[А-ЯІЇЄҐA-Z]\d{2,6})\s+для/iu);
+  const desiredUnit = desiredUnitMatch?.[1] ? normalizeLine(desiredUnitMatch[1]) : '';
 
-  const signatory = guessField(t, [
-    /підполковник\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][А-ЯІЇЄҐ'’\-]+)/iu,
-    /полковник\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][А-ЯІЇЄҐ'’\-]+)/iu
-  ]);
+  const signatoryMatch = flat.match(/підполковник\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/iu) ||
+    flat.match(/полковник\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/iu);
+  const signatory = signatoryMatch?.[1] ? normalizeLine(signatoryMatch[1]) : '';
 
   return {
-    full_name: name,
-    birth_date: guessDate(birth),
+    full_name: fullName,
+    birth_date: birthDate,
     phone,
     address,
-    military_unit,
-    desired_unit: '',
-    desired_position,
+    military_unit: militaryUnit,
+    desired_unit: desiredUnit,
+    desired_position: desiredPosition,
     shpk,
-    military_specialty,
+    military_specialty: militarySpecialty,
     tariff_grade: tariffGrade,
     service_type: serviceType,
     recommender_unit: recommenderUnit,
