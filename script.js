@@ -1048,7 +1048,7 @@ async function openCandidateDocument(path) {
   }
 }
 
-async function openCandidateCard(candidateId) {
+async function renderCandidateCard(candidateId) {
   const content = document.querySelector('.content');
   if (!content || !candidateId) return;
 
@@ -1307,7 +1307,7 @@ async function openCandidateCard(candidateId) {
     }
 
     status.textContent = 'Готово. Дані кандидата оновлено.';
-    setTimeout(() => openCandidateCard(candidateId), 500);
+    setTimeout(() => renderCandidateCard(candidateId), 500);
   });
 }
 
@@ -1385,7 +1385,7 @@ window.showCandidates = showCandidates;
 window.showNewCandidateForm = showNewCandidateForm;
 window.openCandidateCard = async function(candidateId) {
   try {
-    return await openCandidateCard(candidateId);
+    return await renderCandidateCard(candidateId);
   } catch (e) {
     console.error('Помилка відкриття картки кандидата:', e);
     const content = document.querySelector('.content');
