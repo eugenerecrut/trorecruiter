@@ -1,0 +1,43 @@
+name: Connect candidate deletion helper
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  connect-delete-helper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Connect deletion helper
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          tag = '<script src="delete-candidate.js"></script>'
+          if tag not in s:
+              marker = '</body>'
+              if marker not in s:
+                  raise SystemExit('Cannot find </body> in index.html')
+              s = s.replace(marker, f'{tag}\n{marker}', 1)
+              p.write_text(s, encoding='utf-8')
+          else:
+              print('Deletion helper already connected.')
+
+      - name: Commit change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "No changes needed."
+          else
+            git commit -m "Connect temporary candidate deletion helper"
+            git push
+          fi
