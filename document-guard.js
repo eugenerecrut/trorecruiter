@@ -1,0 +1,1 @@
+window.classifyStoredDocumentWithFallback=async function(path,name,text){const value=await window.classifyStoredDocument(path,name,text);if(value&&value.extracted&&!value.extracted.rnokpp&&window.extractRnokppFallback){const n=window.extractRnokppFallback(text);if(n)value.extracted.rnokpp=n}return value};
