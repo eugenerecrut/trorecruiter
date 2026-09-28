@@ -477,6 +477,12 @@ function parseRecommendation(rawText) {
     flat.match(/полковник\s+([А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/iu);
   const signatory = signatoryMatch?.[1] ? normalizeLine(signatoryMatch[1]) : '';
 
+  // У зразку після підписанта окремо вказаний Сергій Козлов з реєстраційним номером.
+  // Не плутаємо його з підписантом рекомендаційного листа.
+  const recruiterMatch =
+    flat.match(/підполковник\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+([А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Z'’\-]+),\s*\d+[-–]\d+\s*\(ЗСУ\s*\d+\)/iu);
+  const recruiterName = recruiterMatch?.[1] ? normalizeLine(recruiterMatch[1]) : '';
+
   return {
     full_name: fullName,
     birth_date: birthDate,
@@ -491,6 +497,7 @@ function parseRecommendation(rawText) {
     service_type: serviceType,
     recommender_unit: recommenderUnit,
     signatory,
+    recruiter_name: recruiterName,
     rnokpp: '',
     military_rank: '',
     tcc: '',
@@ -520,7 +527,8 @@ function renderExtraction(parsed) {
     ['Тарифний розряд', parsed.tariff_grade],
     ['Вид служби', parsed.service_type],
     ['Рекомендуючий підрозділ', parsed.recommender_unit],
-    ['Підписант', parsed.signatory]
+    ['Підписант', parsed.signatory],
+    ['Рекрутер за РЛ', parsed.recruiter_name]
   ];
 
   grid.innerHTML = fields.map(([label, value]) => `
@@ -539,7 +547,7 @@ function fillCandidateForm(parsed) {
   const supported = [
     'full_name','birth_date','phone','address','military_unit','desired_unit',
     'desired_position','shpk','military_specialty','tariff_grade','service_type',
-    'recommender_unit','signatory','rnokpp','military_rank','tcc','vlk_status',
+    'recommender_unit','signatory','recruiter_name','rnokpp','military_rank','tcc','vlk_status',
     'civilian_profession','recruiter_name','notes'
   ];
 
@@ -712,7 +720,8 @@ async function saveCandidateFromRecommendation(event) {
     ['Тарифний розряд', fd.get('tariff_grade')],
     ['Вид служби', fd.get('service_type')],
     ['Рекомендуючий підрозділ', fd.get('recommender_unit')],
-    ['Підписант', fd.get('signatory')]
+    ['Підписант', fd.get('signatory')],
+    ['Рекрутер за РЛ', fd.get('recruiter_name')]
   ]
     .filter(([, value]) => String(value || '').trim())
     .map(([label, value]) => label + ': ' + String(value).trim())
