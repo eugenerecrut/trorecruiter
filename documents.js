@@ -15,6 +15,30 @@ function openAddDocumentModal(id,reqId=''){activeDocumentsCandidateId=id;makeDoc
 async function classifyStoredDocument(path,fileName,extractedText=''){const{data,error}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(path,600);if(error||!data?.signedUrl)throw new Error(error?.message||'Не вдалося створити тимчасове посилання');const body={file_name:fileName};if(extractedText&&extractedText.trim())body.text=extractedText;else body.file_url=data.signedUrl;const{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body});if(aiError)throw new Error(aiError.message||'Помилка AI');if(!ai?.extracted)throw new Error('AI не повернув структуровані дані');return ai}
 function normName(s){return String(s||'').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi,'')}
 function findCandidateByName(name,candidates){const n=normName(name);if(!n)return null;return candidates.find(c=>{const cn=normName(c.full_name);return cn===n||cn.includes(n)||n.includes(cn)})||null}
+async function applyAiExtraction(candidateId,extracted){
+const {data:c,error}=await supabaseClient.from('candidates').select('*').eq('id',candidateId).single();
+if(error||!c)return['Не вдалося відкрити картку кандидата'];
+const {data:pf}=await supabaseClient.from('personal_files').select('*').eq('candidate_id',candidateId).maybeSingle();
+const cu={},pu={},conf=[];
+const put=(key,val)=>{if(val===null||val===undefined||val==='')return;if(c[key]===null||c[key]===undefined||String(c[key]).trim()==='')cu[key]=val;else if(String(c[key]).trim().toLowerCase()!==String(val).trim().toLowerCase())conf.push(key+' відрізняється від даних картки')};
+const pput=(key,val)=>{if(val===null||val===undefined||val==='')return;if(!pf?.[key]||String(pf[key]).trim()==='')pu[key]=val;else if(String(pf[key]).trim().toLowerCase()!==String(val).trim().toLowerCase())conf.push('особова справа: '+key+' відрізняється')};
+put('full_name',extracted.name_nominative||extracted.full_name);
+put('name_nominative',extracted.name_nominative||extracted.full_name);
+put('name_genitive',extracted.name_genitive);
+put('name_gender',extracted.name_gender);
+if(extracted.name_cases)put('name_cases',extracted.name_cases);
+if(extracted.birth_date&&!c.birth_date)cu.birth_date=extracted.birth_date;else if(extracted.birth_date&&c.birth_date&&String(c.birth_date)!==String(extracted.birth_date))conf.push('дата народження відрізняється');
+put('birth_place',extracted.birth_place);put('rnokpp',extracted.rnokpp);put('passport_data',extracted.passport_data);put('phone',extracted.phone);put('email',extracted.email);put('address',extracted.address);put('sex',extracted.sex);put('marital_status',extracted.marital_status);put('military_rank',extracted.military_rank);put('civilian_profession',extracted.civilian_profession);put('desired_position',extracted.desired_position);put('direction',extracted.desired_unit);put('tcc',extracted.tcc);
+if(extracted.has_children!==null&&extracted.has_children!==undefined){if(c.has_children===null||c.has_children===undefined)cu.has_children=extracted.has_children;else if(c.has_children!==extracted.has_children)conf.push('наявність дітей відрізняється')}
+if(extracted.worked_before!==null&&extracted.worked_before!==undefined){if(c.worked_before===null||c.worked_before===undefined)cu.worked_before=extracted.worked_before;else if(c.worked_before!==extracted.worked_before)conf.push('дані про роботу відрізняються')}
+if(extracted.served_before!==null&&extracted.served_before!==undefined){if(c.served_before===null||c.served_before===undefined)cu.served_before=extracted.served_before;else if(c.served_before!==extracted.served_before)conf.push('дані про військову службу відрізняються')}
+if(extracted.military_unit||extracted.military_specialty){cu.profile_data={...(c.profile_data||{}),military_unit:extracted.military_unit||c.profile_data?.military_unit||null,military_specialty:extracted.military_specialty||c.profile_data?.military_specialty||null,last_ai_update:new Date().toISOString()}}
+pput('address',extracted.address);pput('birth_place',extracted.birth_place);pput('passport_data',extracted.passport_data);pput('education',extracted.education);pput('family_status',extracted.marital_status);pput('children_info',extracted.children_info);pput('work_history',extracted.worked_before===true?'Працював(-ла)':extracted.worked_before===false?'Не працював(-ла)':null);pput('military_service_history',extracted.military_service_history);
+if(Object.keys(cu).length){cu.updated_at=new Date().toISOString();const{error:e}=await supabaseClient.from('candidates').update(cu).eq('id',candidateId);if(e)conf.push('картку не оновлено: '+e.message)}
+if(Object.keys(pu).length){pu.candidate_id=candidateId;pu.updated_at=new Date().toISOString();const{error:e}=await supabaseClient.from('personal_files').upsert(pu,{onConflict:'candidate_id'});if(e)conf.push('особову справу не оновлено: '+e.message)}
+return conf;
+}
+
 async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId){
 const name=String(file.name||'').toLowerCase();
 const mime=String(file.type||'').toLowerCase();
@@ -50,7 +74,7 @@ const extracted=ai?.extracted||{};
 const aiType=ai?.document_type||tempType;
 const matchedReq=forced||reqs.find(r=>r.document_type===aiType);
 const matchedCandidate=findCandidateByName(ai?.candidate_name,candidates);
-const warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];
+const warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];\nlet syncWarnings=[];try{syncWarnings=await applyAiExtraction(forcedCandidateId,extracted)}catch(e){syncWarnings=['Перенесення даних у картку не виконано: '+e.message]}\nwarnings.push(...syncWarnings);
 if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
 const insert={candidate_id:forcedCandidateId,requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings};
 const {error}=await supabaseClient.from('documents').insert(insert);
