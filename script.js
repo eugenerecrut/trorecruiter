@@ -875,3 +875,121 @@ async function startCRM() {
 }
 
 startCRM();
+
+/* PSK_NAME_CASES_INTEGRATION_V1 */
+(() => {
+  const originalFlattenAIExtraction = window.flattenAIExtraction;
+  const originalFillCandidateForm = window.fillCandidateForm;
+  const originalRenderExtraction = window.renderExtraction;
+  const originalSaveCandidate = window.saveCandidateFromRecommendation;
+
+  function getNameCases(parsed) {
+    const c = parsed?.name_cases || {};
+    return {
+      gender: parsed?.name_gender || c.gender || '',
+      nominative: c.nominative || parsed?.full_name || '',
+      genitive: c.genitive || '',
+      dative: c.dative || '',
+      accusative: c.accusative || '',
+      instrumental: c.instrumental || '',
+      locative: c.locative || '',
+      vocative: c.vocative || ''
+    };
+  }
+
+  function ensureNameCasesUI() {
+    const form = document.getElementById('candidateForm');
+    if (!form || document.getElementById('nameCasesPanel')) return;
+
+    const panel = document.createElement('div');
+    panel.id = 'nameCasesPanel';
+    panel.style.cssText = 'grid-column:1/-1;margin-top:4px;padding:18px;border:1px solid #dce8b7;border-radius:12px;background:#f7faed';
+    panel.innerHTML = `
+      <div style="font-size:11px;font-weight:900;color:#6f8b28;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">ПІБ та відмінювання</div>
+      <div style="font-size:11px;color:#68757d;margin-bottom:14px">Форми ПІБ автоматично визначаються AI. Перед збереженням рекрутер може їх перевірити та виправити.</div>
+      <div id="nameCasesGrid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px"></div>
+      <input type="hidden" name="__name_cases_payload" id="nameCasesPayload">
+    `;
+
+    const notes = form.elements.notes;
+    if (notes?.parentElement) notes.parentElement.before(panel);
+    else form.appendChild(panel);
+  }
+
+  function renderNameCases(parsed) {
+    ensureNameCasesUI();
+    const grid = document.getElementById('nameCasesGrid');
+    const payload = document.getElementById('nameCasesPayload');
+    if (!grid || !payload) return;
+
+    const cases = getNameCases(parsed);
+    const labels = [
+      ['Називний', 'nominative'],
+      ['Родовий', 'genitive'],
+      ['Давальний', 'dative'],
+      ['Знахідний', 'accusative'],
+      ['Орудний', 'instrumental'],
+      ['Місцевий', 'locative'],
+      ['Кличний', 'vocative']
+    ];
+
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;padding:8px 0;color:#34414a;font-weight:800">Стать: ${escapeHtml(cases.gender || 'не визначено')}</div>
+      ${labels.map(([label, key]) => `
+        <div>
+          <label>${escapeHtml(label)}</label>
+          <input data-name-case="${key}" value="${escapeHtml(cases[key])}" style="width:100%;padding:10px 11px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a">
+        </div>
+      `).join('')}
+    `;
+
+    function syncPayload() {
+      const out = { gender: cases.gender || '' };
+      labels.forEach(([, key]) => {
+        const input = grid.querySelector(`[data-name-case="${key}"]`);
+        out[key] = input ? input.value.trim() : '';
+      });
+      payload.value = JSON.stringify(out);
+    }
+
+    grid.querySelectorAll('[data-name-case]').forEach(input => input.addEventListener('input', syncPayload));
+    syncPayload();
+  }
+
+  window.flattenAIExtraction = function(extracted) {
+    const base = originalFlattenAIExtraction(extracted) || {};
+    const nameCases = extracted?.name_cases || {};
+    base.name_gender = nameCases.gender || '';
+    base.name_cases = nameCases;
+    return base;
+  };
+
+  window.renderExtraction = function(parsed) {
+    originalRenderExtraction(parsed);
+    renderNameCases(parsed);
+  };
+
+  window.fillCandidateForm = function(parsed) {
+    originalFillCandidateForm(parsed);
+    renderNameCases(parsed);
+  };
+
+  window.saveCandidateFromRecommendation = async function(event) {
+    const form = event.target;
+    ensureNameCasesUI();
+    const payloadInput = document.getElementById('nameCasesPayload');
+    const notesInput = form?.elements?.notes;
+    const payload = payloadInput?.value || '';
+    const originalNotes = notesInput?.value || '';
+
+    if (notesInput && payload) {
+      notesInput.value = `${originalNotes}${originalNotes ? '\n\n' : ''}[[PSK_NAME_CASES]]${payload}[[/PSK_NAME_CASES]]`;
+    }
+
+    try {
+      return await originalSaveCandidate(event);
+    } finally {
+      if (notesInput) notesInput.value = originalNotes;
+    }
+  };
+})();
