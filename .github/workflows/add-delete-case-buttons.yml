@@ -1,0 +1,60 @@
+name: Add delete case controls
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, '[skip delete-case]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch script.js
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('script.js')
+          s=p.read_text(encoding='utf-8')
+          marker='/* PSK_DELETE_CASE_V1 */'
+          if marker in s:
+              print('already patched')
+              raise SystemExit(0)
+          old='''            <th style="padding:14px;border-bottom:1px solid #e0e6e8">Статус</th>\n          </tr>'''
+          new='''            <th style="padding:14px;border-bottom:1px solid #e0e6e8">Статус</th>\n            <th style="padding:14px;border-bottom:1px solid #e0e6e8">Дії</th>\n          </tr>'''
+          if old not in s: raise SystemExit('table header pattern not found')
+          s=s.replace(old,new,1)
+          old2='''        <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>\n      </tr>`).join('') : `\n      <tr><td colspan="5" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;'''
+          new2='''        <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>\n        <td style="padding:14px;white-space:nowrap">\n          <button type="button" onclick="deleteCandidateCase('${c.id}', ${JSON.stringify(c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити справу</button>\n        </td>\n      </tr>`).join('') : `\n      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;'''
+          if old2 not in s: raise SystemExit('table row pattern not found')
+          s=s.replace(old2,new2,1)
+          patch=r'''
+          
+          /* PSK_DELETE_CASE_V1 */
+          async function deleteCandidateCase(candidateId, candidateName) {
+            if (!candidateId) return;
+            const ok = confirm(`Видалити особову справу кандидата «${candidateName}»?\n\nБуде видалено кандидата та пов'язані документи/особову справу. Цю дію неможливо скасувати.`);
+            if (!ok) return;
+            try {
+              const { error } = await supabaseClient.from('candidates').delete().eq('id', candidateId);
+              if (error) throw error;
+              alert(`Особову справу «${candidateName}» видалено.`);
+              await updateDashboard();
+              showCandidates();
+            } catch (e) {
+              console.error('Помилка видалення особової справи:', e);
+              alert(`Не вдалося видалити справу: ${e.message || e}`);
+            }
+          }
+          '''
+          s=s.rstrip()+"\n\n"+patch.strip()+"\n"
+          p.write_text(s,encoding='utf-8')
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "PSK_RECRUTER Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add script.js
+          git commit -m "Add candidate personal case delete button [skip delete-case]" || exit 0
+          git push
