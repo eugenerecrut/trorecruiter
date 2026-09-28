@@ -187,6 +187,7 @@ function showNewCandidateForm() {
         <div style="font-weight:800;font-size:13px;margin-bottom:7px">Розпізнаний текст</div>
         <textarea id="ocrText" rows="8" style="width:100%;padding:12px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a"></textarea>
         <div style="font-size:11px;color:#89959c;margin-top:6px">Текст можна виправити вручну. Він використовується тільки як допоміжний матеріал для виборки.</div>
+        <div id="aiWarnings" class="hidden" style="margin-top:12px;padding:11px 13px;border-radius:8px;background:#fff7e6;border:1px solid #efd9aa;color:#7b5b22;font-size:11px;line-height:1.45"></div>
       </div>
 
       <div id="candidateStage" class="hidden" style="margin-top:24px;border-top:1px solid #e5eaec;padding-top:22px">
@@ -557,7 +558,7 @@ function fillCandidateForm(parsed) {
     'full_name','birth_date','phone','address','military_unit','desired_unit',
     'desired_position','shpk','military_specialty','tariff_grade','service_type',
     'recommender_unit','signatory','recruiter_name','rnokpp','military_rank','tcc','vlk_status',
-    'civilian_profession','recruiter_name','notes'
+    'civilian_profession','notes'
   ];
 
   supported.forEach(name => {
@@ -567,6 +568,55 @@ function fillCandidateForm(parsed) {
 
   const text = document.getElementById('ocrText');
   if (text) text.value = parsed.raw_text || pendingRecommendationText || '';
+}
+
+function flattenAIExtraction(extracted) {
+  if (!extracted || typeof extracted !== 'object') return null;
+
+  const personal = extracted.personal || {};
+  const service = extracted.service || {};
+  const meta = extracted.meta || {};
+
+  return {
+    full_name: personal.full_name || '',
+    birth_date: personal.birth_date || '',
+    phone: personal.phone || '',
+    address: personal.address || '',
+    rnokpp: personal.rnokpp || '',
+    military_rank: personal.military_rank || '',
+    tcc: personal.tcc || '',
+    civilian_profession: personal.civilian_profession || '',
+    military_unit: service.military_unit || '',
+    desired_unit: service.desired_unit || '',
+    desired_position: service.desired_position || '',
+    shpk: service.shpk || '',
+    military_specialty: service.military_specialty || '',
+    tariff_grade: service.tariff_grade || '',
+    service_type: service.service_type || '',
+    recommender_unit: service.recommender_unit || '',
+    recruiter_name: service.recruiter_name || '',
+    signatory: service.signatory || '',
+    notes: '',
+    raw_text: pendingRecommendationText,
+    ai_missing_fields: Array.isArray(meta.missing_fields) ? meta.missing_fields : [],
+    ai_warnings: Array.isArray(meta.warnings) ? meta.warnings : []
+  };
+}
+
+async function aiExtractRecommendation(text) {
+  const { data, error } = await supabaseClient.functions.invoke('ai-extract-recommendation', {
+    body: { text }
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Не вдалося викликати AI-виборку.');
+  }
+
+  if (!data?.extracted) {
+    throw new Error('AI не повернув структуровану виборку.');
+  }
+
+  return flattenAIExtraction(data.extracted);
 }
 
 async function handleRecommendationFile(file) {
@@ -608,14 +658,40 @@ async function handleRecommendationFile(file) {
     if (ocrBox) ocrBox.classList.remove('hidden');
     if (stage) stage.classList.remove('hidden');
 
-    const parsed = parseRecommendation(pendingRecommendationText);
-    renderExtraction(parsed);
-    fillCandidateForm(parsed);
+    let parsed = null;
 
     if (!pendingRecommendationText) {
       status.textContent = 'Текст не вдалося розпізнати. Заповніть дані вручну.';
     } else {
-      status.textContent = 'Документ розпізнано. Перевірте виборку та поля нижче.';
+      try {
+        status.textContent = 'OCR готовий. Передаємо текст до AI для точної структурованої виборки...';
+        parsed = await aiExtractRecommendation(pendingRecommendationText);
+        status.textContent = 'AI-виборка готова. Перевірте дані перед створенням справи.';
+      } catch (aiError) {
+        console.warn('AI extraction unavailable, using local parser:', aiError);
+        parsed = parseRecommendation(pendingRecommendationText);
+        status.textContent = 'AI-виборка наразі недоступна. Використано локальну виборку OCR. Перевірте дані.';
+      }
+    }
+
+    if (parsed) {
+      renderExtraction(parsed);
+      fillCandidateForm(parsed);
+
+      const warningBox = document.getElementById('aiWarnings');
+      if (warningBox) {
+        const missing = parsed.ai_missing_fields || [];
+        const warnings = parsed.ai_warnings || [];
+
+        if (missing.length || warnings.length) {
+          warningBox.classList.remove('hidden');
+          warningBox.innerHTML = `
+            <div style="font-weight:800;color:#7b5b22;margin-bottom:5px">Перевірка AI</div>
+            ${missing.length ? `<div>Відсутні у документі: ${escapeHtml(missing.join(', '))}</div>` : ''}
+            ${warnings.length ? `<div style="margin-top:4px">Увага: ${escapeHtml(warnings.join(' • '))}</div>` : ''}
+          `;
+        }
+      }
     }
   } catch (error) {
     console.error('OCR error:', error);
