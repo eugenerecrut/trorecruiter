@@ -415,18 +415,15 @@ function parseRecommendation(rawText) {
   const t = normalizeDocumentText(rawText);
   const flat = oneLine(t);
 
-  // Виборка під фактичний формат рекомендаційного листа:
-  // "... кандидата ... ПАВЛЕНКА Ростислава Сергійовича, 23.01.2002 р.н.,
-  // який мешкає за адресою: ... (098...) та планується на посаду
-  // ОПЕРАТОРА ..., ШПК "солдат", ВОС-605543А, тарифний розряд - 5."
-
+  // Виборка під фактичний формат рекомендаційного листа.
   let fullName = '';
   const namePatterns = [
-    /кандидата\s+для\s+проходження\s+військової\s+служби\s+за\s+контрактом\s+призовника\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
-    /призовника\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
-    /кандидат(?:а)?\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/u,
-    /(?:ПІБ|П\.\s*І\.\s*Б\.)\s*[:\-–]\s*([А-ЯІЇЄҐ][^\n]{5,100})/iu
+    /призовника\s+([А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Zа-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/u,
+    /призовника\s+([А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Zа-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/u,
+    /кандидат(?:а)?\s+([А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Zа-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/u,
+    /(?:ПІБ|П\.\s*І\.\s*Б\.)\s*[:\-–]\s*([А-ЯІЇЄҐA-Z][^\n]{5,100})/iu
   ];
+
   for (const pattern of namePatterns) {
     const m = flat.match(pattern);
     if (m?.[1]) {
@@ -436,7 +433,6 @@ function parseRecommendation(rawText) {
   }
 
   const dateMatch =
-    flat.match(/(?:ПІБ|прізвище|призовника\s+[А-ЯІЇЄҐ][^,]+),\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.н\./iu) ||
     flat.match(/(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.н\./iu) ||
     flat.match(/(?:дата\s*народження|народився|народилася)\s*[:\-]?\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})/iu);
   const birthDate = dateMatch?.[1] ? guessDate(dateMatch[1]) : '';
@@ -450,7 +446,6 @@ function parseRecommendation(rawText) {
   const address = addressMatch?.[1] ? normalizeLine(addressMatch[1]) : '';
 
   const positionMatch =
-    flat.match(/та\s+планується\s+на\s+посаду\s+(.+?)\s*,\s*ШПК\s*[“"«]/iu) ||
     flat.match(/планується\s+на\s+посаду\s+(.+?)\s*,\s*ШПК/iu);
   const desiredPosition = positionMatch?.[1] ? normalizeLine(positionMatch[1]) : '';
 
@@ -466,17 +461,20 @@ function parseRecommendation(rawText) {
   const serviceMatch = flat.match(/військової\s+служби\s+(за\s+контрактом)/iu);
   const serviceType = serviceMatch?.[1] ? normalizeLine(serviceMatch[1]) : '';
 
-  const unitMatches = [...flat.matchAll(/військової\s+частини\s+([А-ЯІЇЄҐA-Z]\d{2,6})/giu)];
-  const militaryUnit = unitMatches.length ? unitMatches[0][1] : '';
+  const unitMatch = flat.match(/планується\s+на\s+посаду\s+.+?військової\s+частини\s+([А-ЯІЇЄҐA-Z]\d{2,6})/iu);
+  const militaryUnit = unitMatch?.[1] || '';
 
-  const recommendationBlock = flat.match(/У\s+(\d+\s+центр[^.]+?військової\s+частини\s+[А-ЯІЇЄҐA-Z]\d{2,6})\s+попередньо/iu);
+  const recommendationBlock =
+    flat.match(/\bУ\s+(\d+\s+центрі[^.]*?військової\s+частини\s+[А-ЯІЇЄҐA-Z]\d{2,6})\s+попередньо\s+вивчено/iu);
   const recommenderUnit = recommendationBlock?.[1] ? normalizeLine(recommendationBlock[1]) : '';
 
-  const desiredUnitMatch = flat.match(/направити\s+призовника\s+.+?\s+до\s+(\d+\s+центру[^.]+?військової\s+частини\s+[А-ЯІЇЄҐA-Z]\d{2,6})\s+для/iu);
+  const desiredUnitMatch =
+    flat.match(/направити\s+призовника\s+.+?\s+до\s+(\d+\s+центру\s+.+?військової\s+частини\s+[А-ЯІЇЄҐA-Z]\d{2,6})\s*,?\s*для/iu);
   const desiredUnit = desiredUnitMatch?.[1] ? normalizeLine(desiredUnitMatch[1]) : '';
 
-  const signatoryMatch = flat.match(/підполковник\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/iu) ||
-    flat.match(/полковник\s+([А-ЯІЇЄҐ][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐ][а-яіїєґ'’\-]+)/iu);
+  const signatoryMatch =
+    flat.match(/підполковник\s+([А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/iu) ||
+    flat.match(/полковник\s+([А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/iu);
   const signatory = signatoryMatch?.[1] ? normalizeLine(signatoryMatch[1]) : '';
 
   return {
