@@ -129,6 +129,7 @@ function showCandidates() {
         <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
         <td style="padding:14px;white-space:nowrap;display:flex;gap:7px">
           <button type="button" onclick="openCandidateCard('${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">↗ Відкрити</button>
+          <button type="button" onclick="showDocuments('${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">▣ Документи</button>
           <button type="button" onclick="deleteCandidateCase('${c.id}', ${JSON.stringify(c.name_nominative || c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити</button>
         </td>
       </tr>`).join('') : `
