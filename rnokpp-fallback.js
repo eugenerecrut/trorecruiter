@@ -1,0 +1,1 @@
+window.extractRnokppFallback=function(t){const s=String(t||'').replace(/\u00a0/g,' ');const a=[/(?:РНОКПП|ІПН)[^0-9]{0,80}(\d{10})/iu,/(?:реєстраційний\s*номер\s*облікової\s*картки\s*платника\s*податків)[^0-9]{0,100}(\d{10})/iu];for(const r of a){const m=s.match(r);if(m?.[1])return m[1]}return null};
