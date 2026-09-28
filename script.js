@@ -60,7 +60,7 @@ function showCandidates() {
   const content = document.querySelector('.content');
   if (!content) return;
 
-  content.innerHTML = \`
+  content.innerHTML = `
     <div class="dashboard-top">
       <div>
         <div class="page-title">Кандидати</div>
@@ -102,7 +102,7 @@ function showCandidates() {
         </thead>
         <tbody id="candidateRows"></tbody>
       </table>
-    </div>\`;
+    </div>`;
 
   async function render() {
     const candidates = await getCandidates();
@@ -120,19 +120,19 @@ function showCandidates() {
     });
 
     const rows = document.getElementById('candidateRows');
-    rows.innerHTML = filtered.length ? filtered.map(c => \`
+    rows.innerHTML = filtered.length ? filtered.map(c => `
       <tr style="border-top:1px solid #edf0f1">
-        <td style="padding:14px"><b>\${escapeHtml(c.name_nominative || c.full_name || '')}</b></td>
-        <td style="padding:14px">\${escapeHtml(c.phone || '—')}</td>
-        <td style="padding:14px">\${escapeHtml(c.desired_position || '—')}</td>
-        <td style="padding:14px">\${escapeHtml(c.direction || '—')}</td>
-        <td style="padding:14px"><span class="status status-new">\${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
+        <td style="padding:14px"><b>${escapeHtml(c.name_nominative || c.full_name || '')}</b></td>
+        <td style="padding:14px">${escapeHtml(c.phone || '—')}</td>
+        <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
+        <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
+        <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
         <td style="padding:14px;white-space:nowrap;display:flex;gap:7px">
-          <button type="button" onclick="openCandidateCard('\${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">↗ Відкрити</button>
-          <button type="button" onclick="deleteCandidateCase('\${c.id}', \${JSON.stringify(c.name_nominative || c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити</button>
+          <button type="button" onclick="openCandidateCard('${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">↗ Відкрити</button>
+          <button type="button" onclick="deleteCandidateCase('${c.id}', ${JSON.stringify(c.name_nominative || c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити</button>
         </td>
-      </tr>\`).join('') : \`
-      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>\`;
+      </tr>`).join('') : `
+      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
 
   }
 
@@ -1021,18 +1021,18 @@ function maritalOptions(sex, current) {
       ? ['Одружений','Розлучений','Не одружений']
       : ['Одружений','Одружена','Розлучений','Розлучена','Не одружений','Не одружена'];
   const values = current && !common.includes(current) ? [current, ...common] : common;
-  return values.map(v => \`<option value="\${escapeHtml(v)}" \${v === current ? 'selected' : ''}>\${escapeHtml(v)}</option>\`).join('');
+  return values.map(v => `<option value="${escapeHtml(v)}" ${v === current ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('');
 }
 
 function yesNoOptions(value) {
-  return \`
-    <option value="" \${value === '' ? 'selected' : ''}>Не визначено</option>
-    <option value="true" \${value === 'true' ? 'selected' : ''}>Так</option>
-    <option value="false" \${value === 'false' ? 'selected' : ''}>Ні</option>\`;
+  return `
+    <option value="" ${value === '' ? 'selected' : ''}>Не визначено</option>
+    <option value="true" ${value === 'true' ? 'selected' : ''}>Так</option>
+    <option value="false" ${value === 'false' ? 'selected' : ''}>Ні</option>`;
 }
 
 function profileField(label, name, value, extra='') {
-  return \`<div><label>\${escapeHtml(label)}</label><input name="\${escapeHtml(name)}" value="\${escapeHtml(value || '')}" \${extra}></div>\`;
+  return `<div><label>${escapeHtml(label)}</label><input name="${escapeHtml(name)}" value="${escapeHtml(value || '')}" ${extra}></div>`;
 }
 
 async function openCandidateDocument(path) {
@@ -1052,8 +1052,8 @@ async function openCandidateCard(candidateId) {
   const content = document.querySelector('.content');
   if (!content || !candidateId) return;
 
-  content.innerHTML = \`
-    <div style="padding:40px;text-align:center;color:#7d8a93">Завантажуємо картку кандидата...</div>\`;
+  content.innerHTML = `
+    <div style="padding:40px;text-align:center;color:#7d8a93">Завантажуємо картку кандидата...</div>`;
 
   const [candidateRes, fileRes, docsRes] = await Promise.all([
     supabaseClient.from('candidates').select('*').eq('id', candidateId).single(),
@@ -1062,7 +1062,7 @@ async function openCandidateCard(candidateId) {
   ]);
 
   if (candidateRes.error) {
-    content.innerHTML = \`<div class="card"><b>Не вдалося завантажити кандидата.</b><div style="margin-top:8px;color:#a23f38">\${escapeHtml(candidateRes.error.message || '')}</div></div>\`;
+    content.innerHTML = `<div class="card"><b>Не вдалося завантажити кандидата.</b><div style="margin-top:8px;color:#a23f38">${escapeHtml(candidateRes.error.message || '')}</div></div>`;
     return;
   }
 
@@ -1078,7 +1078,7 @@ async function openCandidateCard(candidateId) {
   const worked = candidateBoolValue(c.worked_before);
   const served = candidateBoolValue(c.served_before);
 
-  content.innerHTML = \`
+  content.innerHTML = `
     <div class="dashboard-top">
       <div>
         <div class="page-title">Картка кандидата</div>
@@ -1093,35 +1093,35 @@ async function openCandidateCard(candidateId) {
       <div class="card" style="margin-bottom:16px">
         <div class="panel-head" style="margin:-20px -20px 20px">
           <div><h3 style="margin:0">Основні дані</h3><small>Дані, які CRM зібрала та обробила з документів.</small></div>
-          <span class="status status-new">ID: \${escapeHtml(candidateId.slice(0,8))}</span>
+          <span class="status status-new">ID: ${escapeHtml(candidateId.slice(0,8))}</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
-          \${profileField('ПІБ у називному відмінку','name_nominative',nameNom,'data-nominative="1"')}
-          \${profileField('ПІБ у родовому відмінку','name_genitive',nameGen)}
-          \${profileField('Дата народження','birth_date',c.birth_date,'type="date"')}
-          \${profileField('Місце народження','birth_place',c.birth_place || pf.birth_place)}
-          \${profileField('РНОКПП','rnokpp',c.rnokpp)}
-          \${profileField('Паспортні дані','passport_data',c.passport_data || pf.passport_data)}
-          \${profileField('Телефон','phone',c.phone)}
-          \${profileField('Email','email',c.email)}
-          \${profileField('Адреса','address',pf.address)}
+          ${profileField('ПІБ у називному відмінку','name_nominative',nameNom,'data-nominative="1"')}
+          ${profileField('ПІБ у родовому відмінку','name_genitive',nameGen)}
+          ${profileField('Дата народження','birth_date',c.birth_date,'type="date"')}
+          ${profileField('Місце народження','birth_place',c.birth_place || pf.birth_place)}
+          ${profileField('РНОКПП','rnokpp',c.rnokpp)}
+          ${profileField('Паспортні дані','passport_data',c.passport_data || pf.passport_data)}
+          ${profileField('Телефон','phone',c.phone)}
+          ${profileField('Email','email',c.email)}
+          ${profileField('Адреса','address',pf.address)}
           <div>
             <label>Стать</label>
             <select name="sex" id="candidateSex">
               <option value="">Не визначено</option>
-              <option value="male" \${sex === 'male' ? 'selected' : ''}>Чоловіча</option>
-              <option value="female" \${sex === 'female' ? 'selected' : ''}>Жіноча</option>
+              <option value="male" ${sex === 'male' ? 'selected' : ''}>Чоловіча</option>
+              <option value="female" ${sex === 'female' ? 'selected' : ''}>Жіноча</option>
             </select>
           </div>
           <div>
             <label>Сімейний стан</label>
-            <select name="marital_status" id="maritalStatus">\${maritalOptions(sex, marital)}</select>
+            <select name="marital_status" id="maritalStatus">${maritalOptions(sex, marital)}</select>
           </div>
           <div>
             <label>Діти</label>
-            <select name="has_children">\${yesNoOptions(hasChildren).replace('Так','Є діти').replace('Ні','Не має дітей')}</select>
+            <select name="has_children">${yesNoOptions(hasChildren).replace('Так','Є діти').replace('Ні','Не має дітей')}</select>
           </div>
-          \${profileField('Інформація про дітей','children_info',pf.children_info)}
+          ${profileField('Інформація про дітей','children_info',pf.children_info)}
         </div>
       </div>
 
@@ -1132,23 +1132,23 @@ async function openCandidateCard(candidateId) {
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
           <div>
             <label>Працював / Працювала</label>
-            <select name="worked_before">\${yesNoOptions(worked).replace('Так','Працював / Працювала').replace('Ні','Не працював / Не працювала')}</select>
+            <select name="worked_before">${yesNoOptions(worked).replace('Так','Працював / Працювала').replace('Ні','Не працював / Не працювала')}</select>
           </div>
           <div>
             <label>Служив / Служила</label>
-            <select name="served_before">\${yesNoOptions(served).replace('Так','Служив / Служила').replace('Ні','Не служив / Не служила')}</select>
+            <select name="served_before">${yesNoOptions(served).replace('Так','Служив / Служила').replace('Ні','Не служив / Не служила')}</select>
           </div>
           <div style="grid-column:1/-1">
             <label>Освіта</label>
-            <textarea name="education" rows="4">\${escapeHtml(pf.education || '')}</textarea>
+            <textarea name="education" rows="4">${escapeHtml(pf.education || '')}</textarea>
           </div>
           <div style="grid-column:1/-1">
             <label>Трудова діяльність</label>
-            <textarea name="work_history" rows="5">\${escapeHtml(pf.work_history || pf.civilian_experience || '')}</textarea>
+            <textarea name="work_history" rows="5">${escapeHtml(pf.work_history || pf.civilian_experience || '')}</textarea>
           </div>
           <div style="grid-column:1/-1">
             <label>Військова служба</label>
-            <textarea name="military_service_history" rows="5">\${escapeHtml(pf.military_service_history || pf.military_experience || '')}</textarea>
+            <textarea name="military_service_history" rows="5">${escapeHtml(pf.military_service_history || pf.military_experience || '')}</textarea>
           </div>
         </div>
       </div>
@@ -1158,22 +1158,22 @@ async function openCandidateCard(candidateId) {
           <div><h3 style="margin:0">Військові дані та рекрутинг</h3><small>Поточні службові та рекрутингові відомості.</small></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
-          \${profileField('Військове звання','military_rank',c.military_rank)}
-          \${profileField('ВОС','military_specialty',c.military_specialty)}
-          \${profileField('Військова частина','military_unit',(c.profile_data && c.profile_data.military_unit) || '')}
-          \${profileField('Бажаний підрозділ / напрям','desired_unit',c.direction)}
-          \${profileField('Бажана посада','desired_position',c.desired_position)}
-          \${profileField('ТЦК','tcc',c.tcc)}
-          \${profileField('Статус ВЛК','vlk_status',c.vlk_status)}
+          ${profileField('Військове звання','military_rank',c.military_rank)}
+          ${profileField('ВОС','military_specialty',c.military_specialty)}
+          ${profileField('Військова частина','military_unit',(c.profile_data && c.profile_data.military_unit) || '')}
+          ${profileField('Бажаний підрозділ / напрям','desired_unit',c.direction)}
+          ${profileField('Бажана посада','desired_position',c.desired_position)}
+          ${profileField('ТЦК','tcc',c.tcc)}
+          ${profileField('Статус ВЛК','vlk_status',c.vlk_status)}
           <div>
             <label>Статус кандидата</label>
             <select name="recruitment_status">
-              \${['Новий','Первинний контакт','Співбесіда','Перевірка документів','ВЛК','Рішення','Призначений','Відмова','Втрачено контакт','Відкладено'].map(v=>\`<option \${c.recruitment_status===v?'selected':''}>\${escapeHtml(v)}</option>\`).join('')}
+              ${['Новий','Первинний контакт','Співбесіда','Перевірка документів','ВЛК','Рішення','Призначений','Відмова','Втрачено контакт','Відкладено'].map(v=>`<option ${c.recruitment_status===v?'selected':''}>${escapeHtml(v)}</option>`).join('')}
             </select>
           </div>
           <div style="grid-column:1/-1">
             <label>Примітки рекрутера</label>
-            <textarea name="notes" rows="5">\${escapeHtml(c.notes || '')}</textarea>
+            <textarea name="notes" rows="5">${escapeHtml(c.notes || '')}</textarea>
           </div>
         </div>
       </div>
@@ -1181,17 +1181,17 @@ async function openCandidateCard(candidateId) {
       <div class="card" style="margin-bottom:16px">
         <div class="panel-head" style="margin:-20px -20px 20px">
           <div><h3 style="margin:0">Документи</h3><small>Завантажені документи та їхній поточний статус.</small></div>
-          <span style="color:#7d8a93;font-size:11px">\${docs.length} документ(ів)</span>
+          <span style="color:#7d8a93;font-size:11px">${docs.length} документ(ів)</span>
         </div>
         <div style="display:grid;gap:9px">
-          \${docs.length ? docs.map(d => \`
+          ${docs.length ? docs.map(d => `
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #e6eaec;border-radius:9px;background:#fbfcfc">
               <div>
-                <div style="font-weight:800;color:#34414a">\${escapeHtml(d.document_name || d.document_type || d.file_name || 'Документ')}</div>
-                <div style="font-size:10px;color:#89959c;margin-top:3px">\${escapeHtml(d.file_name || '')} · \${d.required ? 'Обов’язковий' : 'Додатковий'} · \${escapeHtml(d.status || 'Завантажено')}</div>
+                <div style="font-weight:800;color:#34414a">${escapeHtml(d.document_name || d.document_type || d.file_name || 'Документ')}</div>
+                <div style="font-size:10px;color:#89959c;margin-top:3px">${escapeHtml(d.file_name || '')} · ${d.required ? 'Обов’язковий' : 'Додатковий'} · ${escapeHtml(d.status || 'Завантажено')}</div>
               </div>
-              <button type="button" onclick="openCandidateDocument(this.dataset.path)" data-path="\${escapeHtml(d.storage_path || '')}" style="border:1px solid #cfd8dc;background:#fff;border-radius:7px;padding:7px 10px;font-weight:800">Відкрити</button>
-            </div>\`).join('') : '<div style="padding:18px;color:#89959c;text-align:center">Документи ще не завантажені.</div>'}
+              <button type="button" onclick="openCandidateDocument(this.dataset.path)" data-path="${escapeHtml(d.storage_path || '')}" style="border:1px solid #cfd8dc;background:#fff;border-radius:7px;padding:7px 10px;font-weight:800">Відкрити</button>
+            </div>`).join('') : '<div style="padding:18px;color:#89959c;text-align:center">Документи ще не завантажені.</div>'}
         </div>
       </div>
 
@@ -1200,15 +1200,15 @@ async function openCandidateCard(candidateId) {
           <div><h3 style="margin:0">Бланки CRM</h3><small>Підготовлені точки для майбутніх шаблонів документів.</small></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px">
-          \${[
+          ${[
             ['Анкета','anketa'],
             ['Згода на обробку персональних даних','consent_processing'],
             ['Згода на збір та обробку даних','consent_collection_processing'],
             ['Заява на контракт','contract_application'],
             ['Розписка кандидата','candidate_receipt']
-          ].map(([label,key]) => \`
-            <button type="button" data-template-key="\${key}" onclick="alert('Бланк «\${label}» буде підключено після завантаження затвердженого шаблону.')" style="padding:13px;border:1px solid #d8e0e3;background:#f7f9f9;border-radius:8px;text-align:left;font-weight:800;color:#45525a">📝 \${label}</button>
-          \`).join('')}
+          ].map(([label,key]) => `
+            <button type="button" data-template-key="${key}" onclick="alert('Бланк «${label}» буде підключено після завантаження затвердженого шаблону.')" style="padding:13px;border:1px solid #d8e0e3;background:#f7f9f9;border-radius:8px;text-align:left;font-weight:800;color:#45525a">📝 ${label}</button>
+          `).join('')}
         </div>
       </div>
 
@@ -1217,7 +1217,7 @@ async function openCandidateCard(candidateId) {
         <button type="button" onclick="showCandidates()" style="border:1px solid #d8e0e3;background:#fff;color:#45525a">Скасувати</button>
       </div>
       <div id="candidateCardSaveStatus" style="margin-top:12px;color:#68757d;font-size:12px;min-height:18px"></div>
-    </form>\`;
+    </form>`;
 
   const sexEl = document.getElementById('candidateSex');
   const maritalEl = document.getElementById('maritalStatus');
