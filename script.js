@@ -177,6 +177,7 @@ function showNewCandidateForm() {
       <div id="extractionBox" class="hidden" style="margin-top:18px">
         <div style="background:#f7faed;border:1px solid #dce8b7;border-radius:12px;padding:18px">
           <div style="font-weight:900;font-size:14px;color:#35421f">Виборка з рекомендаційного листа</div>
+          <div style="margin-top:5px;font-size:10px;font-weight:800;color:#708337;letter-spacing:.7px;text-transform:uppercase">Службова інформація для CRM</div>
           <div style="color:#68757d;font-size:11px;margin:4px 0 15px">Система показує лише те, що вдалося знайти в документі. Незаповнені поля не вигадуються.</div>
           <div id="extractionGrid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px"></div>
         </div>
@@ -225,7 +226,16 @@ function showNewCandidateForm() {
           <div><label>Статус ВЛК</label><input name="vlk_status" placeholder="не проходив / придатний / уточнення"></div>
 
           <div><label>Цивільна професія</label><input name="civilian_profession"></div>
-          <div><label>Рекрутер</label><input name="recruiter_name" placeholder="Заповниться пізніше"></div>
+          <div style="grid-column:1/-1;border-top:1px solid #e5eaec;padding-top:18px;margin-top:4px">
+            <div style="font-size:11px;font-weight:900;color:#6f8b28;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Службова інформація CRM</div>
+          </div>
+
+          <div><label>Рекомендуючий підрозділ</label><input name="recommender_unit"></div>
+          <div><label>Рекрутер за рекомендаційним листом</label><input name="recruiter_name"></div>
+          <div><label>Підписант РЛ</label><input name="signatory"></div>
+          <div><label>Вид служби</label><input name="service_type"></div>
+          <div><label>ШПК</label><input name="shpk"></div>
+          <div><label>Тарифний розряд</label><input name="tariff_grade"></div>
 
           <div style="grid-column:1/-1">
             <label>Примітки рекрутера</label>
@@ -503,7 +513,6 @@ function parseRecommendation(rawText) {
     tcc: '',
     vlk_status: '',
     civilian_profession: '',
-    recruiter_name: '',
     notes: '',
     raw_text: t
   };
@@ -712,20 +721,23 @@ async function saveCandidateFromRecommendation(event) {
     return;
   }
 
-  const additional = [
+  const serviceInfo = [
     ['Військова частина', fd.get('military_unit')],
     ['Підрозділ', fd.get('desired_unit')],
-    ['ШПК', fd.get('shpk')],
     ['ВОС', fd.get('military_specialty')],
+    ['ШПК', fd.get('shpk')],
     ['Тарифний розряд', fd.get('tariff_grade')],
     ['Вид служби', fd.get('service_type')],
     ['Рекомендуючий підрозділ', fd.get('recommender_unit')],
-    ['Підписант', fd.get('signatory')],
-    ['Рекрутер за РЛ', fd.get('recruiter_name')]
+    ['Рекрутер за РЛ', fd.get('recruiter_name')],
+    ['Підписант РЛ', fd.get('signatory')],
+    ['Джерело', 'Рекомендаційний лист']
   ]
     .filter(([, value]) => String(value || '').trim())
     .map(([label, value]) => label + ': ' + String(value).trim())
-    .join('\n');
+    .join('\\n');
+
+  const additional = serviceInfo ? 'СЛУЖБОВА ІНФОРМАЦІЯ CRM\\n' + serviceInfo : '';
 
   const { error: fileError } = await supabaseClient
     .from('personal_files')
