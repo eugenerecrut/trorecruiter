@@ -1,0 +1,1 @@
+Trigger GitHub Pages deployment for the current main branch. No application code change.
