@@ -1,20 +1,24 @@
-// PSK_RECRUTER CRM — document AI vision + safe field reconciliation bridge
+// PSK_RECRUTER CRM — document AI + safe field reconciliation bridge v3
 (function(){
-  const BUCKET='candidate-documents';
   const AI_FN='ai-classify-document';
   const originalUpload=window.uploadSelectedDocuments;
+  const norm=v=>String(v??'').trim().toLocaleLowerCase('uk-UA').replace(/\s+/g,' ');
 
-  async function visionClassify(path,fileName,ocrText=''){
-    const {data,error}=await supabaseClient.storage.from(BUCKET).createSignedUrl(path,600);
-    if(error||!data?.signedUrl) throw new Error(error?.message||'Не вдалося відкрити документ для AI');
-    const body={file_name:fileName||'document',file_url:data.signedUrl};
+  async function classifyDocument(path,fileName,ocrText=''){
+    // For PDFs the OCR text is the reliable transport path; avoid sending a signed PDF URL
+    // to the model when OCR is already available. For images, the original file may be used.
+    const body={file_name:fileName||'document'};
     if(ocrText&&String(ocrText).trim()) body.text=String(ocrText).trim();
-    const {data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_FN,{body});
-    if(aiError) throw new Error(aiError.message||'Помилка AI');
-    if(!ai?.extracted) throw new Error('AI не повернув структуровані дані');
+    else if(path){
+      const {data,error}=await supabaseClient.storage.from('candidate-documents').createSignedUrl(path,600);
+      if(error||!data?.signedUrl) throw new Error(error?.message||'Не вдалося відкрити документ для AI');
+      body.file_url=data.signedUrl;
+    }
+    const {data:ai,error}=await supabaseClient.functions.invoke(AI_FN,{body});
+    if(error) throw new Error(error.message||'Помилка AI');
+    if(!ai?.extracted) throw new Error(ai?.error||'AI не повернув структуровані дані');
     return ai;
   }
-  const norm=v=>String(v??'').trim().toLocaleLowerCase('uk-UA').replace(/\s+/g,' ');
 
   async function reconcile(candidateId,extracted){
     if(!candidateId||!extracted)return{filled:[],same:[],conflicts:[]};
@@ -38,25 +42,30 @@
       const started=Date.now();
       const result=await originalUpload.apply(this,arguments);
       try{
+        // Wait briefly because the original upload handler may finish its DB insert asynchronously.
+        await new Promise(r=>setTimeout(r,800));
         const since=new Date(started-15000).toISOString();
         const{data:docs,error}=await supabaseClient.from('documents').select('*').gte('created_at',since).order('created_at',{ascending:true});
-        if(error||!docs?.length)return result;
+        if(error||!docs?.length){console.warn('AI bridge: документи не знайдено',error);return result}
         const candidateIds=[...new Set(docs.map(d=>d.candidate_id).filter(Boolean))];
         const allFilled=[],allSame=[],allConf=[];
         for(const candidateId of candidateIds){
           const candidateDocs=docs.filter(d=>d.candidate_id===candidateId&&d.storage_path);
           for(const d of candidateDocs){
             try{
-              const ai=await visionClassify(d.storage_path,d.file_name||'document',d.extracted_text||'');
+              const ai=await classifyDocument(d.storage_path,d.file_name||'document',d.extracted_text||'');
               const r=await reconcile(candidateId,ai.extracted||{});
               allFilled.push(...r.filled);allSame.push(...r.same);allConf.push(...r.conflicts);
-              await supabaseClient.from('documents').update({ai_document_type:ai.document_type||d.ai_document_type||null,ai_confidence:Number(ai.confidence||0),ai_result:ai,processing_status:'AI оброблено',verification_status:r.conflicts.length?'Потребує перевірки':'Не перевірено'}).eq('id',d.id);
+              const updatePayload={ai_document_type:ai.document_type||null,ai_confidence:Number(ai.confidence||0),ai_candidate_name:ai.candidate_name||null,ai_extracted:ai.extracted||{},ai_warnings:ai.warnings||[],processing_status:'AI оброблено',verification_status:r.conflicts.length?'Потребує перевірки':'Не перевірено'};
+              const{error:ue}=await supabaseClient.from('documents').update(updatePayload).eq('id',d.id);
+              if(ue)allConf.push('Не вдалося зберегти результат AI: '+ue.message);
             }catch(e){allConf.push((d.file_name||'Документ')+': '+e.message)}
           }
         }
         const el=document.getElementById('docUploadStatus');
-        if(el){const out=[];if(allFilled.length)out.push('Заповнено: '+[...new Set(allFilled)].join(', '));if(allSame.length)out.push('Ідентичні дані не змінювалися: '+[...new Set(allSame)].length+' полів');if(allConf.length)out.push('⚠️ ВІДМІННОСТІ: '+[...new Set(allConf)].join(' | '));el.innerHTML=out.join('<br>')||'AI: дані без змін';}
-      }catch(e){console.error('AI reconciliation error',e)}
+        if(el){const out=[];if(allFilled.length)out.push('✅ Заповнено: '+[...new Set(allFilled)].join(', '));if(allSame.length)out.push('ℹ️ Ідентичні дані не змінювалися: '+[...new Set(allSame)].length+' полів');if(allConf.length)out.push('⚠️ ВІДМІННОСТІ: '+[...new Set(allConf)].join(' | '));el.innerHTML=out.join('<br>')||'AI: дані без змін';}
+        if(typeof showDocuments==='function'&&activeDocumentsCandidateId)await showDocuments(activeDocumentsCandidateId);
+      }catch(e){console.error('AI reconciliation error',e);const el=document.getElementById('docUploadStatus');if(el)el.textContent='⚠️ AI: '+e.message}
       return result;
     };
   }
