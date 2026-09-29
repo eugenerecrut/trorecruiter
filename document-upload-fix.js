@@ -1,12 +1,53 @@
-// PSK_RECRUTER CRM — document AI + safe field reconciliation bridge v3
+// PSK_RECRUTER CRM — document AI + safe field reconciliation bridge v4
 (function(){
   const AI_FN='ai-classify-document';
   const originalUpload=window.uploadSelectedDocuments;
   const norm=v=>String(v??'').trim().toLocaleLowerCase('uk-UA').replace(/\s+/g,' ');
 
+  function flattenAI(ai){
+    // ai-classify-document returns {extracted:{personal,service,name_cases,meta}}.
+    // The CRM reconciliation layer works with flat candidate fields.
+    const e=ai?.extracted||{};
+    const p=e.personal||{};
+    const s=e.service||{};
+    const n=e.name_cases||{};
+    return {
+      full_name:p.full_name??null,
+      name_nominative:n.nominative??p.full_name??null,
+      name_genitive:n.genitive??null,
+      name_gender:n.gender??null,
+      birth_date:p.birth_date??null,
+      birth_place:null,
+      rnokpp:p.rnokpp??null,
+      passport_data:null,
+      phone:p.phone??null,
+      email:null,
+      sex:n.gender??null,
+      marital_status:null,
+      has_children:null,
+      children_info:null,
+      education:null,
+      civilian_profession:p.civilian_profession??null,
+      military_rank:p.military_rank??null,
+      military_service_history:null,
+      military_unit:s.military_unit??null,
+      desired_unit:s.desired_unit??null,
+      desired_position:s.desired_position??null,
+      military_specialty:s.military_specialty??null,
+      shpk:s.shpk??null,
+      tariff_grade:s.tariff_grade??null,
+      service_type:s.service_type??null,
+      recommender_unit:s.recommender_unit??null,
+      recruiter_name:s.recruiter_name??null,
+      signatory:s.signatory??null,
+      tcc:p.tcc??null,
+      direction:s.desired_unit??null,
+      education_raw:null,
+      meta:e.meta||null
+    };
+  }
+
   async function classifyDocument(path,fileName,ocrText=''){
-    // For PDFs the OCR text is the reliable transport path; avoid sending a signed PDF URL
-    // to the model when OCR is already available. For images, the original file may be used.
     const body={file_name:fileName||'document'};
     if(ocrText&&String(ocrText).trim()) body.text=String(ocrText).trim();
     else if(path){
@@ -17,7 +58,7 @@
     const {data:ai,error}=await supabaseClient.functions.invoke(AI_FN,{body});
     if(error) throw new Error(error.message||'Помилка AI');
     if(!ai?.extracted) throw new Error(ai?.error||'AI не повернув структуровані дані');
-    return ai;
+    return {raw:ai,extracted:flattenAI(ai)};
   }
 
   async function reconcile(candidateId,extracted){
@@ -42,7 +83,6 @@
       const started=Date.now();
       const result=await originalUpload.apply(this,arguments);
       try{
-        // Wait briefly because the original upload handler may finish its DB insert asynchronously.
         await new Promise(r=>setTimeout(r,800));
         const since=new Date(started-15000).toISOString();
         const{data:docs,error}=await supabaseClient.from('documents').select('*').gte('created_at',since).order('created_at',{ascending:true});
@@ -56,7 +96,8 @@
               const ai=await classifyDocument(d.storage_path,d.file_name||'document',d.extracted_text||'');
               const r=await reconcile(candidateId,ai.extracted||{});
               allFilled.push(...r.filled);allSame.push(...r.same);allConf.push(...r.conflicts);
-              const updatePayload={ai_document_type:ai.document_type||null,ai_confidence:Number(ai.confidence||0),ai_candidate_name:ai.candidate_name||null,ai_extracted:ai.extracted||{},ai_warnings:ai.warnings||[],processing_status:'AI оброблено',verification_status:r.conflicts.length?'Потребує перевірки':'Не перевірено'};
+              const raw=ai.raw||{};
+              const updatePayload={ai_document_type:raw.document_type||null,ai_confidence:Number(raw.confidence||0),ai_candidate_name:raw.candidate_name||ai.extracted.full_name||null,ai_extracted:raw.extracted||raw,ai_warnings:raw.warnings||raw.extracted?.meta?.warnings||[],processing_status:'AI оброблено',verification_status:r.conflicts.length?'Потребує перевірки':'Не перевірено'};
               const{error:ue}=await supabaseClient.from('documents').update(updatePayload).eq('id',d.id);
               if(ue)allConf.push('Не вдалося зберегти результат AI: '+ue.message);
             }catch(e){allConf.push((d.file_name||'Документ')+': '+e.message)}
