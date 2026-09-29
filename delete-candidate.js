@@ -47,6 +47,22 @@
     const candidateName = row?.querySelector('td')?.textContent?.trim() || 'кандидата';
     deleteCandidateCase(candidateId, candidateName);
   }, true);
+
+  // Клік по ПІБ відкриває повну картку кандидата.
+  document.addEventListener('click', function (event) {
+    const target = event.target.closest('#candidateRows td:first-child, #candidateRows td:first-child *');
+    if (!target) return;
+    const row = target.closest('tr');
+    if (!row) return;
+    const openButton = row.querySelector('button[onclick*="openCandidateCard"]');
+    if (!openButton) return;
+    const onclick = openButton.getAttribute('onclick') || '';
+    const match = onclick.match(/openCandidateCard\(['\"]([^'\"]+)['\"]/);
+    if (!match?.[1]) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.openCandidateCard(match[1]);
+  });
 })();
 
 /* PSK_CANDIDATE_CARD_V2_LOADER */
@@ -54,7 +70,7 @@
   if (window.__pskCandidateCardV2Loader) return;
   window.__pskCandidateCardV2Loader = true;
   const s = document.createElement('script');
-  s.src = 'candidate-card-v2.js?v=20260928-card7';
+  s.src = 'candidate-card-v2.js?v=20260928-card8';
   s.async = false;
   s.onload = () => console.log('PSK candidate card V2 loaded');
   s.onerror = () => console.error('Не вдалося завантажити candidate-card-v2.js');
