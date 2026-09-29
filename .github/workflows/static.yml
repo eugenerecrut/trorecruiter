@@ -1,4 +1,4 @@
-# Simple workflow for deploying static content to GitHub Pages
+# Simple workflow for deploying static content to Pages
 name: Deploy static content to Pages
 
 on:
@@ -28,10 +28,28 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
+      - name: Inject local OCR bridge
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          tag = '<script src="ocr-local-only.js"></script>'
+          if tag not in s:
+              marker = '<script src="delete-candidate.js?v=3"></script>'
+              if marker in s:
+                  s = s.replace(marker, marker + '\n' + tag)
+              else:
+                  s = s.replace('</body>', tag + '\n</body>')
+              p.write_text(s, encoding='utf-8')
+          PY
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
