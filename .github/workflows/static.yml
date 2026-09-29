@@ -2,27 +2,21 @@
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
 
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
   deploy:
     environment:
       name: github-pages
@@ -31,12 +25,41 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Disable AI document classification
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('documents.js')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("const AI_DOC_FUNCTION='ai-classify-document';", "const AI_DOC_FUNCTION=null;")
+          s = s.replace("forced?.document_type||'Обробка AI'", "forced?.document_type||'Документ'")
+          s = s.replace('AI визначить автоматично', 'Тип буде визначено за OCR')
+          s = s.replace("<th>AI</th>", "<th>Розпізнавання</th>")
+          s = s.replace('AI розпізнано · перевірити', 'Розпізнано · перевірити')
+
+          start = s.find("async function classifyStoredDocument(")
+          end = s.find("\nfunction normName", start)
+          if start == -1 or end == -1:
+              raise SystemExit('classifyStoredDocument markers not found')
+
+          replacement = r'''async function classifyStoredDocument(path,fileName,extractedText=''){
+            const text=String(extractedText||'').replace(/\s+/g,' ').trim();
+            const hay=(String(fileName||'')+' '+text).toLowerCase();
+            const numbers=text.match(/\b\d{10}\b/g)||[];
+            const rnokpp=numbers.find(v=>{const d=v.split('').map(Number),w=[1,2,3,4,5,6,7,8,9];const c=w.reduce((a,x,i)=>a+d[i]*x,0)%11;return c<10&&c===d[9]})||numbers[0]||null;
+            const taxCard=hay.includes('картка платника податків')||hay.includes('реєстраційний номер облікової картки платника податків')||hay.includes('реєстраційний номер облікової картки')||hay.includes('податковий номер')||/\bрнокпп\b/i.test(hay)||/\bіпн\b/i.test(hay);
+            return {document_type:taxCard?'Картка платника податків':null,confidence:taxCard?1:0,extracted:{rnokpp},warnings:taxCard?(rnokpp?[]:['РНОКПП не знайдено в OCR']):['Тип документа не визначено правилами OCR']};
+          }'''
+          p.write_text(s[:start] + replacement + s[end:], encoding='utf-8')
+          PY
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
           path: '.'
       - name: Deploy to GitHub Pages
         id: deployment
