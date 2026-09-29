@@ -63,6 +63,58 @@
     event.stopPropagation();
     window.openCandidateCard(match[1]);
   });
+
+  // Підгрупи меню «Кандидати»: Активні / Передані / Відмова.
+  function installCandidateSubgroups() {
+    const items = [...document.querySelectorAll('.menu-item')];
+    const candidateItem = items.find(el => (el.textContent || '').includes('Кандидати'));
+    if (!candidateItem || candidateItem.dataset.subgroupsInstalled) return;
+    candidateItem.dataset.subgroupsInstalled = '1';
+    candidateItem.style.cursor = 'pointer';
+
+    const sub = document.createElement('div');
+    sub.id = 'candidateSubgroups';
+    sub.style.cssText = 'display:none;margin:-1px 0 7px 25px;border-left:1px solid #33434f;padding-left:8px;';
+    sub.innerHTML = `
+      <button type="button" data-candidate-filter="active">Активні</button>
+      <button type="button" data-candidate-filter="transferred">Передані</button>
+      <button type="button" data-candidate-filter="refusal">Відмова</button>`;
+
+    [...sub.querySelectorAll('button')].forEach(btn => {
+      btn.style.cssText = 'display:block;width:100%;border:0;background:transparent;color:#9eabb3;text-align:left;padding:8px 8px;border-radius:7px;font-size:13px;cursor:pointer;';
+      btn.addEventListener('mouseenter', () => btn.style.background = '#1c2a34');
+      btn.addEventListener('mouseleave', () => btn.style.background = 'transparent');
+      btn.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof showCandidates === 'function') showCandidates();
+        setTimeout(() => filterCandidateRows(btn.dataset.candidateFilter), 80);
+      });
+    });
+
+    candidateItem.insertAdjacentElement('afterend', sub);
+    candidateItem.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      sub.style.display = sub.style.display === 'none' ? 'block' : 'none';
+    });
+  }
+
+  function filterCandidateRows(filter) {
+    const rows = document.querySelectorAll('#candidateRows tr');
+    rows.forEach(row => {
+      const text = (row.textContent || '').toLowerCase();
+      const isTransferred = /передан|передано|передана|transfer/.test(text);
+      const isRefusal = /відмов|відмова|відмовив|відмовилась|refus|reject/.test(text);
+      let visible = true;
+      if (filter === 'transferred') visible = isTransferred;
+      if (filter === 'refusal') visible = isRefusal;
+      if (filter === 'active') visible = !isTransferred && !isRefusal;
+      row.style.display = visible ? '' : 'none';
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installCandidateSubgroups);
+  else installCandidateSubgroups();
+  setTimeout(installCandidateSubgroups, 500);
 })();
 
 /* PSK_CANDIDATE_CARD_V2_LOADER */
