@@ -1,0 +1,58 @@
+name: Fix recommendation AI call
+
+on:
+  push:
+    paths:
+      - 'trigger-ai-recommendation-fix.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Patch script.js and index.html
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('script.js')
+          s = p.read_text(encoding='utf-8')
+          marker = 'async function aiExtractRecommendation(text) {'
+          start = s.find(marker)
+          if start < 0:
+              raise SystemExit('aiExtractRecommendation function not found')
+          brace = s.find('{', start)
+          depth = 0
+          end = None
+          for i in range(brace, len(s)):
+              if s[i] == '{': depth += 1
+              elif s[i] == '}':
+                  depth -= 1
+                  if depth == 0:
+                      end = i + 1
+                      break
+          if end is None:
+              raise SystemExit('Could not parse aiExtractRecommendation function')
+          replacement = "async function aiExtractRecommendation(text) {\n  if (typeof window.aiExtractRecommendation === 'function' && window.aiExtractRecommendation !== aiExtractRecommendation) {\n    return window.aiExtractRecommendation(text);\n  }\n  throw new Error('AI-модуль рекомендаційного листа не підключено');\n}"
+          s = s[:start] + replacement + s[end:]
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          s = re.sub(r'\n<script src="recommendation-upload-fix\.js[^\n]*"></script>', '', s)
+          s = s.replace('</body>', '<script src="recommendation-upload-fix.js?v=20260930-ai6"></script>\n</body>')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add script.js index.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Route recommendation extraction through AI module'
+          git push
