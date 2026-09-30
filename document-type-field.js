@@ -1,18 +1,16 @@
-/* PSK_DOCUMENT_TYPE_FIELD_V2 */
+/* PSK_DOCUMENT_TYPE_FIELD_V3 */
 (() => {
   const DOCUMENT_TYPE = 'Рекомендаційний лист';
 
   function ensureDocumentTypeField() {
     const form = document.getElementById('candidateForm');
     if (!form || form.elements.document_type) return;
-
     const wrapper = document.createElement('div');
     wrapper.innerHTML = `
       <label>Тип документа</label>
       <input name="document_type" value="${DOCUMENT_TYPE}" readonly
         style="width:100%;padding:10px 11px;border:1px solid #cfd8dc;border-radius:8px;background:#f5f7f8;color:#24313a">
     `;
-
     const notes = form.elements.notes;
     if (notes?.parentElement) notes.parentElement.before(wrapper.firstElementChild);
     if (notes?.parentElement) notes.parentElement.before(wrapper.lastElementChild);
@@ -22,7 +20,6 @@
   function addExtractionField() {
     const grid = document.getElementById('extractionGrid');
     if (!grid || grid.querySelector('[data-document-type-field]')) return;
-
     const block = document.createElement('div');
     block.setAttribute('data-document-type-field', '1');
     block.style.cssText = 'padding:10px 0;border-bottom:1px solid #e6edcf';
@@ -41,7 +38,7 @@
     return parsed;
   }
 
-  async function ensureRecommendationDocumentRegistered(candidateId, userId) {
+  async function ensureRecommendationDocumentRegistered(candidateId, userId, selectedFile) {
     if (!candidateId) return { ok: false, reason: 'Не визначено кандидата' };
 
     const { data: existing, error: existingError } = await supabaseClient
@@ -50,7 +47,6 @@
       .eq('candidate_id', candidateId)
       .eq('document_type', DOCUMENT_TYPE)
       .limit(1);
-
     if (existingError) return { ok: false, reason: existingError.message };
     if (existing?.length) return { ok: true, created: false };
 
@@ -65,12 +61,28 @@
     const { data: objects, error: listError } = await supabaseClient.storage
       .from('candidate-documents')
       .list(`${candidateId}/recommendation`, { limit: 20, sortBy: { column: 'created_at', order: 'desc' } });
-
     if (listError) return { ok: false, reason: listError.message };
-    const file = (objects || []).find(x => x.name && !x.name.endsWith('/'));
-    if (!file) return { ok: false, reason: 'Файл рекомендаційного листа у Storage не знайдено' };
 
-    const storagePath = `${candidateId}/recommendation/${file.name}`;
+    let file = (objects || []).find(x => x.name && !x.name.endsWith('/'));
+    let storagePath = file ? `${candidateId}/recommendation/${file.name}` : null;
+
+    // Repair the exact failure found in the clean test: the candidate was created,
+    // but the selected recommendation file never reached Storage.
+    if (!file && selectedFile) {
+      const safeName = `${Date.now()}_${String(selectedFile.name || 'recommendation').replace(/[^a-zA-Z0-9а-яА-ЯіїєґІЇЄҐ._-]/g, '_')}`;
+      storagePath = `${candidateId}/recommendation/${safeName}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from('candidate-documents')
+        .upload(storagePath, selectedFile, {
+          upsert: false,
+          contentType: selectedFile.type || 'application/pdf'
+        });
+      if (uploadError) return { ok: false, reason: `Storage upload: ${uploadError.message}` };
+      file = { name: safeName, metadata: { size: selectedFile.size, mimetype: selectedFile.type || 'application/pdf' } };
+    }
+
+    if (!file || !storagePath) return { ok: false, reason: 'Файл рекомендаційного листа у Storage не знайдено і вибраний файл недоступний' };
+
     const { error: insertError } = await supabaseClient.from('documents').insert({
       candidate_id: candidateId,
       requirement_id: req?.id || null,
@@ -78,16 +90,16 @@
       document_name: DOCUMENT_TYPE,
       storage_path: storagePath,
       file_name: file.name,
-      file_size: Number(file.metadata?.size || 0) || null,
-      mime_type: file.metadata?.mimetype || null,
+      file_size: Number(file.metadata?.size || selectedFile?.size || 0) || null,
+      mime_type: file.metadata?.mimetype || selectedFile?.type || 'application/pdf',
       uploaded_by: userId || null,
       status: 'Завантажено',
       verification_status: 'Не перевірено',
       processing_status: 'AI оброблено'
     });
 
-    if (insertError) return { ok: false, reason: insertError.message };
-    return { ok: true, created: true };
+    if (insertError) return { ok: false, reason: `documents.insert: ${insertError.message}` };
+    return { ok: true, created: true, storagePath };
   }
 
   const originalParse = window.parseRecommendation;
@@ -120,6 +132,7 @@
     window.saveCandidateFromRecommendation = async function(event) {
       ensureDocumentTypeField();
       const form = event?.target;
+      const selectedFile = document.getElementById('recommendationFile')?.files?.[0] || null;
       const notes = form?.elements?.notes;
       const originalNotes = notes?.value || '';
       if (notes && !originalNotes.includes('Тип документа: Рекомендаційний лист')) {
@@ -127,9 +140,6 @@
       }
       try {
         const result = await originalSave(event);
-
-        // The normal save path already writes to documents. This is a repair guard
-        // for older/new-candidate flows where the file reached Storage but the DB row did not.
         const fullName = String(form?.elements?.full_name?.value || '').trim();
         if (fullName) {
           const { data: candidates } = await supabaseClient
@@ -141,9 +151,9 @@
           const candidate = candidates?.[0];
           if (candidate) {
             const user = typeof getCurrentUser === 'function' ? await getCurrentUser() : null;
-            const repair = await ensureRecommendationDocumentRegistered(candidate.id, user?.id || candidate.recruiter_id || null);
-            if (repair.created) console.info('Документ рекомендаційного листа зареєстровано в documents.');
-            if (!repair.ok) console.warn('Перевірка реєстрації рекомендаційного листа:', repair.reason);
+            const repair = await ensureRecommendationDocumentRegistered(candidate.id, user?.id || candidate.recruiter_id || null, selectedFile);
+            if (repair.created) console.info('Документ рекомендаційного листа зареєстровано в documents:', repair.storagePath);
+            if (!repair.ok) console.warn('Реєстрація рекомендаційного листа:', repair.reason);
           }
         }
         return result;
@@ -153,7 +163,5 @@
     };
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    ensureDocumentTypeField();
-  });
+  document.addEventListener('DOMContentLoaded', ensureDocumentTypeField);
 })();
