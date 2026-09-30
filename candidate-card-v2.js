@@ -41,6 +41,27 @@
     return `<section class="cc-section"><div class="cc-section-head"><div><h3>${esc(title)}</h3><small>${esc(subtitle || '')}</small></div></div><div class="cc-grid">${body}</div></section>`;
   }
 
+  const RELATIONSHIP_OPTIONS = ['Батько','Мати','Чоловік','Дружина','Син','Донька','Брат','Сестра','Інше'];
+
+  function relativeRow(item = {}, index = 0) {
+    const options = [['','Оберіть'], ...RELATIONSHIP_OPTIONS.map(x => [x, x])];
+    return `<div class="cc-relative-row" data-relative-row="${index}">
+      <div class="cc-relative-head"><strong>Близький родич</strong><button type="button" class="cc-relative-remove" data-remove-relative>Видалити</button></div>
+      <div class="cc-grid">
+        ${select('Ступінь споріднення','relationship',item.relationship || '',options)}
+        ${input('ПІБ','full_name',item.full_name || '')}
+        ${input('Дата народження','birth_date',item.birth_date || '','date')}
+        ${input('Місце народження','birth_place',item.birth_place || '')}
+        ${input('Громадянство','citizenship',item.citizenship || '')}
+        ${input('Місце проживання','address',item.address || '','text','cc-wide')}
+        ${input('Телефон','phone',item.phone || '')}
+        ${input('Місце роботи','workplace',item.workplace || '')}
+        ${input('Посада','position',item.position || '')}
+        ${textarea('Примітки','notes',item.notes || '','cc-wide')}
+      </div>
+    </div>`;
+  }
+
   function nameNominative(value) {
     const parts = String(value || '').trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
     if (!parts.length) return '';
@@ -76,6 +97,7 @@
     let profile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
     if (typeof c.profile_data === 'string') { try { profile = JSON.parse(c.profile_data); } catch (_) {} }
     const docs = dr.data || [];
+    const relatives = Array.isArray(profile.relatives) ? profile.relatives : [];
     const sex = c.sex || profile.sex || '';
     const maritalStatus = c.marital_status || pf.family_status || profile.marital_status || '';
 
@@ -87,7 +109,7 @@
     content.innerHTML = `
       <style>
         .cc-wrap{max-width:1280px}.cc-section{background:#fff;border:1px solid #e0e6e8;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 8px 28px rgba(19,31,40,.04)}
-        .cc-section-head{display:flex;justify-content:space-between;align-items:center;margin:-20px -20px 18px;padding:15px 20px;border-bottom:1px solid #e7ecee;background:#fbfcfc;border-radius:12px 12px 0 0}.cc-section-head h3{margin:0;font-size:15px}.cc-section-head small{display:block;color:#7d8a93;margin-top:4px;font-size:11px}.cc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.cc-field label{display:block;color:#44515a;font-weight:700;font-size:12px;margin-bottom:6px}.cc-field input,.cc-field select,.cc-field textarea{width:100%;color:#24313a;background:#fff;border:1px solid #cfd8dc;border-radius:8px;padding:10px 11px;outline:none}.cc-field input:focus,.cc-field select:focus,.cc-field textarea:focus{border-color:#9ebd45;box-shadow:0 0 0 3px rgba(183,217,87,.16)}.cc-wide{grid-column:1/-1}.cc-actions{display:flex;gap:9px;flex-wrap:wrap;margin:4px 0 22px}.cc-actions button{border-radius:8px;padding:11px 16px;font-weight:800;border:1px solid #d8e0e3;background:#fff;color:#45525a}.cc-actions .primary{background:#18232d;color:#fff;border-color:#18232d}.cc-status{font-size:12px;color:#68757d;min-height:18px}.cc-docs{display:grid;gap:9px}.cc-doc{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #e6eaec;border-radius:9px;background:#fbfcfc}.cc-doc b{display:block;font-size:12px}.cc-doc small{display:block;color:#89959c;margin-top:4px;font-size:10px}.cc-doc button{border:1px solid #cfd8dc;background:#fff;border-radius:7px;padding:7px 10px;font-weight:800}.cc-templates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.cc-template{padding:12px;border:1px solid #d8e0e3;background:#f7f9f9;border-radius:8px;text-align:left;font-weight:800;color:#45525a}.cc-hint{padding:11px 13px;background:#f7faed;border:1px solid #dce8b7;border-radius:8px;color:#68757d;font-size:11px;margin-bottom:14px}.cc-empty{text-align:center;color:#89959c;padding:18px}.cc-badge{padding:5px 9px;border-radius:12px;background:#e8f2cc;color:#5d741f;font-size:10px;font-weight:800}
+        .cc-section-head{display:flex;justify-content:space-between;align-items:center;margin:-20px -20px 18px;padding:15px 20px;border-bottom:1px solid #e7ecee;background:#fbfcfc;border-radius:12px 12px 0 0}.cc-section-head h3{margin:0;font-size:15px}.cc-section-head small{display:block;color:#7d8a93;margin-top:4px;font-size:11px}.cc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.cc-field label{display:block;color:#44515a;font-weight:700;font-size:12px;margin-bottom:6px}.cc-field input,.cc-field select,.cc-field textarea{width:100%;color:#24313a;background:#fff;border:1px solid #cfd8dc;border-radius:8px;padding:10px 11px;outline:none}.cc-field input:focus,.cc-field select:focus,.cc-field textarea:focus{border-color:#9ebd45;box-shadow:0 0 0 3px rgba(183,217,87,.16)}.cc-wide{grid-column:1/-1}.cc-actions{display:flex;gap:9px;flex-wrap:wrap;margin:4px 0 22px}.cc-actions button{border-radius:8px;padding:11px 16px;font-weight:800;border:1px solid #d8e0e3;background:#fff;color:#45525a}.cc-actions .primary{background:#18232d;color:#fff;border-color:#18232d}.cc-status{font-size:12px;color:#68757d;min-height:18px}.cc-docs{display:grid;gap:9px}.cc-doc{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #e6eaec;border-radius:9px;background:#fbfcfc}.cc-doc b{display:block;font-size:12px}.cc-doc small{display:block;color:#89959c;margin-top:4px;font-size:10px}.cc-doc button{border:1px solid #cfd8dc;background:#fff;border-radius:7px;padding:7px 10px;font-weight:800}.cc-templates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.cc-template{padding:12px;border:1px solid #d8e0e3;background:#f7f9f9;border-radius:8px;text-align:left;font-weight:800;color:#45525a}.cc-hint{padding:11px 13px;background:#f7faed;border:1px solid #dce8b7;border-radius:8px;color:#68757d;font-size:11px;margin-bottom:14px}.cc-empty{text-align:center;color:#89959c;padding:18px}.cc-badge{padding:5px 9px;border-radius:12px;background:#e8f2cc;color:#5d741f;font-size:10px;font-weight:800}.cc-relative-row{border:1px solid #dfe6e9;border-radius:10px;padding:14px;margin-bottom:12px;background:#fbfcfc}.cc-relative-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:#44515a}.cc-relative-remove{border:1px solid #e1caca!important;background:#fff!important;color:#96504e!important;padding:6px 9px!important;font-size:11px}.cc-relative-add{margin-top:4px;border:1px solid #cfd8dc!important;background:#f7f9f9!important;color:#45525a!important}
         @media(max-width:800px){.cc-grid,.cc-templates{grid-template-columns:1fr}.cc-wide{grid-column:auto}}
       </style>
       <div class="dashboard-top cc-wrap"><div><div class="page-title">Картка кандидата</div><p class="page-subtitle">Усі дані кандидата в одному місці. Усі поля редагуються рекрутером.</p></div><div class="quick-actions"><span class="cc-badge">ID: ${esc(String(candidateId).slice(0,8))}</span><button onclick="showCandidates()">← До кандидатів</button></div></div>
@@ -145,13 +167,30 @@
           select('Вид контракту','contract_type',profile.contract_type || '',[['','Не визначено'],['мотиваційний','Мотиваційний контракт'],['звичайний','Звичайний контракт'],['інший','Інший']])+input('Дата підписання','contract_date',profile.contract_date,'date')+input('Строк, місяців','contract_term_months',profile.contract_term_months,'number')+select('Статус оформлення','contract_status',profile.contract_status || '',[['','Не визначено'],['підготовка','Підготовка'],['подано','Подано'],['погодження','На погодженні'],['підписано','Підписано'],['відмова','Відмова']])+textarea('Примітки щодо контракту','contract_notes',profile.contract_notes,'cc-wide')
         )}
         ${section('12. Статус кандидата','Поточний етап руху кандидата',select('Статус','recruitment_status',c.recruitment_status || 'Новий',statusOptions.map(x=>[x,x]),'cc-wide')+textarea('Примітки рекрутера','notes',c.notes,'cc-wide'))}
-        <section class="cc-section"><div class="cc-section-head"><div><h3>13. Документи кандидата</h3><small>Завантажені документи та їхній поточний статус.</small></div><span class="cc-badge">${docs.length} документ(ів)</span></div><div class="cc-docs">${documentRows}</div></section>
-        <section class="cc-section"><div class="cc-section-head"><div><h3>14. Бланки CRM</h3><small>Підготовлені бланки, які будемо підключати до автозаповнення.</small></div></div><div class="cc-templates">${[['Анкета','anketa'],['Згода на обробку персональних даних','consent_processing'],['Згода на збір та обробку даних','consent_collection_processing'],['Заява на контракт','contract_application'],['Розписка кандидата','candidate_receipt']].map(([t,k])=>`<button type="button" class="cc-template" data-template-key="${esc(k)}">📝 ${esc(t)}</button>`).join('')}</div></section>
+        <section class="cc-section"><div class="cc-section-head"><div><h3>13. Близькі родичі</h3><small>Батько, мати, чоловік/дружина, діти, брати, сестри та інші близькі родичі.</small></div><span class="cc-badge">${relatives.length} запис(ів)</span></div>
+          <div id="ccRelatives">${(relatives.length ? relatives : [{},{}]).map((r,i)=>relativeRow(r,i)).join('')}</div>
+          <button type="button" id="ccAddRelative" class="cc-relative-add">＋ Додати родича</button>
+        </section>
+        <section class="cc-section"><div class="cc-section-head"><div><h3>14. Документи кандидата</h3><small>Завантажені документи та їхній поточний статус.</small></div><span class="cc-badge">${docs.length} документ(ів)</span></div><div class="cc-docs">${documentRows}</div></section>
+        <section class="cc-section"><div class="cc-section-head"><div><h3>15. Бланки CRM</h3><small>Підготовлені бланки, які будемо підключати до автозаповнення.</small></div></div><div class="cc-templates">${[['Анкета','anketa'],['Згода на обробку персональних даних','consent_processing'],['Згода на збір та обробку даних','consent_collection_processing'],['Заява на контракт','contract_application'],['Розписка кандидата','candidate_receipt']].map(([t,k])=>`<button type="button" class="cc-template" data-template-key="${esc(k)}">📝 ${esc(t)}</button>`).join('')}</div></section>
         <div class="cc-actions"><button type="submit" class="primary">Зберегти зміни</button><button type="button" onclick="showCandidates()">Скасувати</button><span id="ccStatus" class="cc-status"></span></div>
       </form>`;
 
     content.querySelectorAll('[data-open-doc]').forEach(b => b.addEventListener('click', () => openDoc(b.dataset.openDoc)));
     content.querySelectorAll('[data-template-key]').forEach(b => b.addEventListener('click', () => alert('Бланк «' + b.textContent.replace(/^📝\s*/, '') + '» підключимо після завантаження затвердженого шаблону.')));
+
+    const relBox = content.querySelector('#ccRelatives');
+    const addRelativeButton = content.querySelector('#ccAddRelative');
+    let relativeIndex = relBox ? relBox.querySelectorAll('[data-relative-row]').length : 0;
+    addRelativeButton?.addEventListener('click', () => {
+      relBox.insertAdjacentHTML('beforeend', relativeRow({}, relativeIndex++));
+    });
+    relBox?.addEventListener('click', event => {
+      const remove = event.target.closest('[data-remove-relative]');
+      if (!remove) return;
+      const row = remove.closest('[data-relative-row]');
+      row?.remove();
+    });
 
     const sexEl = content.querySelector('[name="sex"]');
     const maritalEl = content.querySelector('[name="marital_status"]');
@@ -179,6 +218,17 @@
         'vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_notes','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
       profileKeys.forEach(k => { if (fd.has(k)) oldProfile[k] = fd.get(k); });
+
+      const savedRelatives = [...form.querySelectorAll('[data-relative-row]')].map(row => {
+        const get = key => row.querySelector(`[name="${key}"]`)?.value?.trim() || '';
+        return {
+          relationship: get('relationship'), full_name: get('full_name'), birth_date: get('birth_date'),
+          birth_place: get('birth_place'), citizenship: get('citizenship'), address: get('address'),
+          phone: get('phone'), workplace: get('workplace'), position: get('position'), notes: get('notes')
+        };
+      }).filter(r => Object.values(r).some(Boolean));
+      oldProfile.relatives = savedRelatives;
+
       const militaryUnit = String(fd.get('military_unit') || '').trim();
       const candidatePatch = {
         full_name: nom,
