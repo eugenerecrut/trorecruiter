@@ -611,19 +611,10 @@ function flattenAIExtraction(extracted) {
 }
 
 async function aiExtractRecommendation(text) {
-  const { data, error } = await supabaseClient.functions.invoke('ai-extract-recommendation', {
-    body: { text }
-  });
-
-  if (error) {
-    throw new Error(error.message || 'Не вдалося викликати AI-виборку.');
+  if (typeof window.aiExtractRecommendation === 'function' && window.aiExtractRecommendation !== aiExtractRecommendation) {
+    return window.aiExtractRecommendation(text);
   }
-
-  if (!data?.extracted) {
-    throw new Error('AI не повернув структуровану виборку.');
-  }
-
-  return flattenAIExtraction(data.extracted);
+  throw new Error('AI-модуль рекомендаційного листа не підключено');
 }
 
 async function handleRecommendationFile(file) {
