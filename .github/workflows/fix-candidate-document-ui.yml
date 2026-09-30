@@ -1,0 +1,64 @@
+name: Fix candidate document UI
+
+on:
+  push:
+    paths:
+      - 'deploy-document-filter.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Patch documents.js
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('documents.js')
+          s = p.read_text(encoding='utf-8')
+
+          old = "async function getDocumentRequirements(){const{data,error}=await supabaseClient.from('document_requirements').select('*').eq('active',true).order('sort_order',{ascending:true});if(error){console.error(error);return[]}return data||[]}"
+          new = """async function getDocumentRequirements(candidateId=null){
+          if(candidateId){
+            const{data,error}=await supabaseClient.from('candidate_document_requirements').select('requirement_id,child_index,status,document_requirements(*)').eq('candidate_id',candidateId).order('requirement_id',{ascending:true}).order('child_index',{ascending:true});
+            if(error){console.error(error);return[]}
+            const seen=new Set(),result=[];
+            for(const row of (data||[])){
+              const r=row.document_requirements;
+              if(!r||r.active===false||seen.has(r.id))continue;
+              seen.add(r.id);result.push(r);
+            }
+            return result;
+          }
+          const{data,error}=await supabaseClient.from('document_requirements').select('*').eq('active',true).order('sort_order',{ascending:true});
+          if(error){console.error(error);return[]}
+          return data||[]
+          }"""
+          if old not in s:
+              raise SystemExit('Expected getDocumentRequirements() block not found')
+          s = s.replace(old, new, 1)
+
+          old2 = "const[docs,reqs,cands]=await Promise.all([getCandidateDocuments(id),getDocumentRequirements(),getCandidates()]);"
+          new2 = "const[docs,reqs,cands]=await Promise.all([getCandidateDocuments(id),getDocumentRequirements(id),getCandidates()]);"
+          if old2 not in s:
+              raise SystemExit('Expected showDocuments query block not found')
+          s = s.replace(old2, new2, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add documents.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix candidate-specific document list'
+          git push
