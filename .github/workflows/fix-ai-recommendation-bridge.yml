@@ -1,0 +1,58 @@
+name: Fix AI recommendation bridge
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-ai-recommendation-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch bridge and index
+        run: |
+          cat > ai-recommendation-bridge.js <<'EOF'
+          // PSK_RECRUTER — AI recommendation bridge
+          // Preserve the AI implementation installed by recommendation-upload-fix.js
+          // and replace the legacy lexical function used by script.js.
+          (function () {
+            const ai = window.aiExtractRecommendation;
+            if (typeof ai !== 'function') return;
+            window.pskAIExtractRecommendation = ai;
+            window.aiExtractRecommendation = async function (text) {
+              return window.pskAIExtractRecommendation(text);
+            };
+            console.info('PSK recommendation AI bridge loaded');
+          })();
+          EOF
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old = '<script src="recommendation-upload-fix.js?v=20260930-ai4"></script>\n<script src="recommendation-upload-fix.js"></script>'
+          new = '<script src="recommendation-upload-fix.js?v=20260930-ai5"></script>\n<script src="ai-recommendation-bridge.js?v=20260930-ai1"></script>'
+          if old in s:
+              s = s.replace(old, new, 1)
+          else:
+              # Idempotent fallback: remove duplicate legacy include and add bridge once.
+              s = s.replace('<script src="recommendation-upload-fix.js"></script>', '', 1)
+              if 'ai-recommendation-bridge.js' not in s:
+                  s = s.replace('</body>', '<script src="ai-recommendation-bridge.js?v=20260930-ai1"></script>\n</body>', 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html ai-recommendation-bridge.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix recommendation AI invocation bridge'
+          git push
