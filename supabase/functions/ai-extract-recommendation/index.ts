@@ -88,8 +88,10 @@ export default {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
     if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
 
-    const apiKey = Deno.env.get('OPENAI_API_KEY')
-    if (!apiKey) return jsonResponse({ error: 'OPENAI_API_KEY не налаштовано в Supabase Secrets.' }, 500)
+    // Gemini API key stored in Supabase Edge Function Secrets.
+    // The second name keeps compatibility with the secret already created in the dashboard.
+    const apiKey = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('Gemini API Key')
+    if (!apiKey) return jsonResponse({ error: 'GEMINI_API_KEY не налаштовано в Supabase Secrets.' }, 500)
 
     let body: { text?: string }
     try {
@@ -110,60 +112,62 @@ export default {
       text,
     ].join('\n')
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: Deno.env.get('PSK_AI_MODEL') || 'gpt-5-mini',
-        store: false,
-        input: [
-          {
-            role: 'system',
-            content: [{ type: 'input_text', text: systemPrompt }],
-          },
-          {
-            role: 'user',
-            content: [{ type: 'input_text', text: input }],
-          },
-        ],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'recommendation_extraction',
-            strict: true,
-            schema,
-          },
+    const model = Deno.env.get('GEMINI_MODEL') || 'gemini-3.5-flash-lite'
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': apiKey,
+          'Content-Type': 'application/json',
         },
-      }),
-    })
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemPrompt }],
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: input }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+          },
+        }),
+      },
+    )
 
-    if (!openaiResponse.ok) {
-      const details = await openaiResponse.text()
-      console.error('OpenAI error:', details)
-      return jsonResponse({ error: 'AI-сервіс повернув помилку.', details }, 502)
+    if (!geminiResponse.ok) {
+      const details = await geminiResponse.text()
+      console.error('Gemini error:', details)
+      return jsonResponse({ error: 'AI-сервіс Gemini повернув помилку.', details }, 502)
     }
 
-    const result = await openaiResponse.json()
-    const outputText = String(result?.output_text || '').trim()
+    const result = await geminiResponse.json()
+    const outputText = String(
+      result?.candidates?.[0]?.content?.parts
+        ?.map((part: { text?: string }) => part?.text || '')
+        .join('') || '',
+    ).trim()
 
     if (!outputText) {
-      return jsonResponse({ error: 'AI не повернув структуровану виборку.' }, 502)
+      console.error('Gemini empty output:', JSON.stringify(result))
+      return jsonResponse({ error: 'Gemini не повернув структуровану виборку.' }, 502)
     }
 
     let extracted: unknown
     try {
       extracted = JSON.parse(outputText)
     } catch {
-      console.error('Invalid structured output:', outputText)
-      return jsonResponse({ error: 'AI повернув некоректний структурований результат.' }, 502)
+      console.error('Invalid Gemini structured output:', outputText)
+      return jsonResponse({ error: 'Gemini повернув некоректний структурований результат.' }, 502)
     }
 
     return jsonResponse({
       extracted,
-      model: result?.model || Deno.env.get('PSK_AI_MODEL') || 'gpt-5-mini',
+      model,
       user_email: userEmail,
     })
   }),
