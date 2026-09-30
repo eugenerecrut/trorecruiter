@@ -1,5 +1,7 @@
-// PSK_RECRUTER CRM — recommendation upload compatibility fix v1
+// PSK_RECRUTER CRM — recommendation upload compatibility fix v2
 // Canonical fix for Storage InvalidKey caused by non-ASCII filenames.
+// Recommendation letters do NOT require AI: OCR is sufficient and the document
+// is marked verified immediately after successful registration for a new candidate.
 (function () {
   function safeAsciiName(name) {
     const original = String(name || 'recommendation.pdf');
@@ -63,8 +65,8 @@
         mime_type: file.type || 'application/pdf',
         uploaded_by: user?.id || null,
         status: 'Завантажено',
-        processing_status: 'Очікує AI',
-        verification_status: 'Не перевірено'
+        processing_status: 'Не потребує AI',
+        verification_status: 'Підтверджено'
       });
 
     if (docError) {
@@ -73,8 +75,8 @@
       return { ok: false, reason: `Реєстр документів: ${docError.message}` };
     }
 
-    return { ok: true, storagePath };
+    return { ok: true, storagePath, verified: true };
   };
 
-  console.info('PSK recommendation upload fix v1 loaded');
+  console.info('PSK recommendation upload fix v2 loaded');
 })();
