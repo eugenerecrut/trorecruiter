@@ -1,10 +1,12 @@
 // PSK_RECRUTER — AI recommendation bridge
-// The main script contains a legacy lexical aiExtractRecommendation(text) function.
-// This later-loaded function intentionally replaces that legacy binding and delegates
-// to recommendation-upload-fix.js, which sends OCR + the original file to Supabase AI.
-async function aiExtractRecommendation(text) {
-  if (typeof window.aiExtractRecommendation === 'function' && window.aiExtractRecommendation !== aiExtractRecommendation) {
-    return window.aiExtractRecommendation(text);
-  }
-  throw new Error('AI recommendation bridge is not initialized');
-}
+// Preserve the AI implementation installed by recommendation-upload-fix.js
+// and replace the legacy lexical function used by script.js.
+(function () {
+  const ai = window.aiExtractRecommendation;
+  if (typeof ai !== 'function') return;
+  window.pskAIExtractRecommendation = ai;
+  window.aiExtractRecommendation = async function (text) {
+    return window.pskAIExtractRecommendation(text);
+  };
+  console.info('PSK recommendation AI bridge loaded');
+})();
