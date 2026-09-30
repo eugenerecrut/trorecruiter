@@ -1,6 +1,14 @@
-// PSK_RECRUTER CRM — recommendation upload + AI extraction compatibility fix v6
+// PSK_RECRUTER CRM — recommendation upload + AI extraction compatibility fix v7
 // AI extraction is performed by the protected Supabase Edge Function.
 (function () {
+  function getSupabaseClient() {
+    if (window.supabaseClient) return window.supabaseClient;
+    try {
+      if (typeof supabaseClient !== 'undefined') return supabaseClient;
+    } catch (_) {}
+    return null;
+  }
+
   function safeAsciiName(name) {
     const original = String(name || 'recommendation.pdf');
     const extMatch = original.match(/(\.[A-Za-z0-9]{1,8})$/);
@@ -50,19 +58,18 @@
   }
 
   async function invokeAI(body) {
-    if (!window.supabaseClient) throw new Error('Supabase-клієнт CRM не ініціалізовано.');
+    const client = getSupabaseClient();
+    if (!client) throw new Error('Supabase-клієнт CRM не ініціалізовано.');
 
-    const { data: sessionData } = await window.supabaseClient.auth.getSession();
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) throw new Error(`Сесія CRM: ${sessionError.message}`);
     const accessToken = sessionData?.session?.access_token;
     if (!accessToken) throw new Error('Немає активної сесії CRM. Увійдіть повторно.');
 
-    // Normal path: supabase-js automatically sends the current user JWT.
-    if (window.supabaseClient.functions?.invoke) {
-      const result = await window.supabaseClient.functions.invoke('ai-extract-recommendation', { body });
+    if (client.functions?.invoke) {
+      const result = await client.functions.invoke('ai-extract-recommendation', { body });
       if (!result.error && result.data?.extracted) return result.data;
 
-      // If invoke returned an HTTP/function error, make one direct authenticated request
-      // so the UI gets the actual server response instead of silently falling back.
       let detail = result?.error?.message || 'AI-виборка не виконана.';
       try {
         const ctx = result.error?.context;
@@ -111,19 +118,21 @@
   };
 
   window.uploadRecommendation = async function (candidateId, user) {
+    const client = getSupabaseClient();
     const file = getRecommendationFile();
+    if (!client) return { ok: false, reason: 'Supabase-клієнт CRM не ініціалізовано' };
     if (!candidateId) return { ok: false, reason: 'Не визначено кандидата' };
     if (!file) return { ok: false, reason: 'Файл рекомендаційного листа не вибрано' };
     const fileName = `${Date.now()}_${safeAsciiName(file.name)}`;
     const storagePath = `${candidateId}/recommendation/${fileName}`;
-    const { error: uploadError } = await window.supabaseClient.storage.from('candidate-documents').upload(storagePath, file, { upsert: false, contentType: file.type || 'application/pdf' });
+    const { error: uploadError } = await client.storage.from('candidate-documents').upload(storagePath, file, { upsert: false, contentType: file.type || 'application/pdf' });
     if (uploadError) return { ok: false, reason: `Storage: ${uploadError.message}` };
-    const { data: req, error: reqError } = await window.supabaseClient.from('document_requirements').select('id').eq('document_type', 'Копія рекомендаційного листа').eq('active', true).limit(1).maybeSingle();
-    if (reqError) { await window.supabaseClient.storage.from('candidate-documents').remove([storagePath]); return { ok: false, reason: `Вимога документа: ${reqError.message}` }; }
-    const { error: docError } = await window.supabaseClient.from('documents').insert({ candidate_id: candidateId, requirement_id: req?.id || null, document_type: 'Рекомендаційний лист', document_name: 'Рекомендаційний лист', storage_path: storagePath, file_name: file.name, file_size: file.size, mime_type: file.type || 'application/pdf', uploaded_by: user?.id || null, status: 'Завантажено', processing_status: 'AI-структуровано', verification_status: 'Підтверджено' });
-    if (docError) { await window.supabaseClient.storage.from('candidate-documents').remove([storagePath]); return { ok: false, reason: `Реєстр документів: ${docError.message}` }; }
+    const { data: req, error: reqError } = await client.from('document_requirements').select('id').eq('document_type', 'Копія рекомендаційного листа').eq('active', true).limit(1).maybeSingle();
+    if (reqError) { await client.storage.from('candidate-documents').remove([storagePath]); return { ok: false, reason: `Вимога документа: ${reqError.message}` }; }
+    const { error: docError } = await client.from('documents').insert({ candidate_id: candidateId, requirement_id: req?.id || null, document_type: 'Рекомендаційний лист', document_name: 'Рекомендаційний лист', storage_path: storagePath, file_name: file.name, file_size: file.size, mime_type: file.type || 'application/pdf', uploaded_by: user?.id || null, status: 'Завантажено', processing_status: 'AI-структуровано', verification_status: 'Підтверджено' });
+    if (docError) { await client.storage.from('candidate-documents').remove([storagePath]); return { ok: false, reason: `Реєстр документів: ${docError.message}` }; }
     return { ok: true, storagePath, verified: true };
   };
 
-  console.info('PSK recommendation upload + AI extraction fix v6 loaded');
+  console.info('PSK recommendation upload + AI extraction fix v7 loaded');
 })();
