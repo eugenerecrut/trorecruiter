@@ -1,11 +1,13 @@
-// Local OCR-only bridge for recommendation documents.
-// Loaded after script.js. Disables the AI extraction branch without changing
-// the existing OCR, parser, preview, or save flow.
+// PSK_RECRUTER CRM — recommendation extraction bridge
+// OCR remains local. Structured extraction uses the dedicated AI function.
+// Local parser is kept only as an explicit fallback and no longer overrides AI.
 (function () {
-  window.aiExtractRecommendation = async function (text) {
+  window.aiExtractRecommendationLocalFallback = async function (text) {
     if (typeof window.parseRecommendation !== 'function') {
       throw new Error('Локальний parser рекомендаційного листа недоступний');
     }
     return window.parseRecommendation(text);
   };
+
+  console.info('PSK recommendation bridge: AI extraction enabled; local parser kept as fallback');
 })();
