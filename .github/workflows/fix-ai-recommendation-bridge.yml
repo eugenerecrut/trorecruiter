@@ -19,8 +19,6 @@ jobs:
         run: |
           cat > ai-recommendation-bridge.js <<'EOF'
           // PSK_RECRUTER — AI recommendation bridge
-          // Preserve the AI implementation installed by recommendation-upload-fix.js
-          // and replace the legacy lexical function used by script.js.
           (function () {
             const ai = window.aiExtractRecommendation;
             if (typeof ai !== 'function') return;
@@ -41,7 +39,6 @@ jobs:
           if old in s:
               s = s.replace(old, new, 1)
           else:
-              # Idempotent fallback: remove duplicate legacy include and add bridge once.
               s = s.replace('<script src="recommendation-upload-fix.js"></script>', '', 1)
               if 'ai-recommendation-bridge.js' not in s:
                   s = s.replace('</body>', '<script src="ai-recommendation-bridge.js?v=20260930-ai1"></script>\n</body>', 1)
