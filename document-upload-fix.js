@@ -40,8 +40,6 @@
   }
   window.reconcileAiWithCandidate=reconcile;
 
-  // Ручний тип документа = можна зберегти без AI/OCR.
-  // Автоматичне визначення типу = AI потрібен, бо система має визначити тип документа.
   window.classifyStoredDocument=async function(path,fileName,ocrText=''){
     if(window.__PSK_DOC_AI_ENABLED===false){
       return {document_type:window.__PSK_DOC_FORCED_TYPE||'Документ',confidence:1,candidate_name:null,warnings:['AI/OCR вимкнено для цього типу документа. Файл збережено без AI-розпізнавання.'],extracted:{}};
@@ -87,7 +85,6 @@
         return result;
       }
 
-      // AI уже викликався в documents.js. Другий AI-запит не робимо — використовуємо збережений результат.
       try{
         await new Promise(r=>setTimeout(r,500));
         const since=new Date(started-15000).toISOString();
@@ -110,5 +107,37 @@
       finally{window.__PSK_DOC_AI_ENABLED=true;window.__PSK_DOC_FORCED_TYPE='';}
       return result;
     };
+  }
+
+  // Fallback for the document list. Some candidates have their requirement mappings,
+  // but the nested relation can be unavailable to the browser session. In that case
+  // show the active master list instead of leaving the table completely empty.
+  function installDocumentListFallback(){
+    if(window.__PSK_DOC_LIST_FALLBACK_INSTALLED)return true;
+    const originalShow=window.showDocuments;
+    if(typeof originalShow!=='function')return false;
+    window.showDocuments=async function(id){
+      await originalShow(id);
+      const rows=document.getElementById('documentRows');
+      if(!rows||rows.children.length)return;
+      const {data:reqs,error:reqError}=await supabaseClient.from('document_requirements').select('*').eq('active',true).order('sort_order',{ascending:true});
+      if(reqError){console.error('Document list fallback:',reqError);return}
+      const {data:docs}=await supabaseClient.from('documents').select('*').eq('candidate_id',id).order('created_at',{ascending:true});
+      rows.innerHTML=(reqs||[]).map(r=>{
+        const m=(docs||[]).filter(d=>d.requirement_id===r.id||d.document_type===r.document_type),latest=m[m.length-1];
+        const status=!m.length?(r.is_required?'Не завантажено':'Не додано'):(m.some(d=>d.verification_status==='Підтверджено')?'Підтверджено':m.some(d=>d.processing_status==='AI оброблено'?'AI розпізнано · перевірити':'Завантажено · перевірити'));
+        return `<tr><td><b>${docEscape(r.document_type)}</b>${r.condition_note?`<div class="muted" style="font-size:10px;margin-top:3px">${docEscape(r.condition_note)}</div>`:''}</td><td>${r.is_required?'<b>Обов’язковий</b>':'За наявності'}</td><td><span class="status status-work">${status}</span></td><td>${latest?`<span style="font-size:11px">${docEscape(latest.file_name||'PDF')} · ${formatDocSize(latest.file_size)}</span>`:'—'}</td><td>${latest?.ai_document_type?`<span style="font-size:10px"><b>${docEscape(latest.ai_document_type)}</b><br>${Math.round(Number(latest.ai_confidence||0)*100)}%</span>`:'—'}</td><td><button style="border:1px solid #d8e0e3;background:#fff;border-radius:7px;padding:7px 9px;font-weight:700" onclick="openAddDocumentModal('${id}','${r.id}')">＋ Додати</button>${latest?` <button style="border:1px solid #d8e0e3;background:#fff;border-radius:7px;padding:7px 9px;font-weight:700" onclick="openDocument('${latest.id}')">Відкрити</button>`:''}</td></tr>`;
+      }).join('');
+      const required=(reqs||[]).filter(r=>r.is_required),complete=required.filter(r=>(docs||[]).some(d=>(d.requirement_id===r.id||d.document_type===r.document_type)&&d.verification_status==='Підтверджено')).length,pct=required.length?Math.round(complete/required.length*100):0;
+      const progress=document.getElementById('docProgressText');
+      const bar=document.querySelector('#docProgress > div');
+      if(progress)progress.textContent=`Підтверджено ${complete} із ${required.length} обов’язкових документів · ${pct}%`;
+      if(bar)bar.style.width=pct+'%';
+    };
+    window.__PSK_DOC_LIST_FALLBACK_INSTALLED=true;
+    return true;
+  }
+  if(!installDocumentListFallback()){
+    let tries=0;const timer=setInterval(()=>{tries++;if(installDocumentListFallback()||tries>100)clearInterval(timer)},100);
   }
 })();
