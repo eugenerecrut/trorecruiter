@@ -1,4 +1,4 @@
-// PSK_RECRUTER CRM — recommendation upload compatibility fix v4
+// PSK_RECRUTER CRM — recommendation upload compatibility fix v5
 // Storage-safe upload + AI extraction from the original recommendation file.
 (function () {
   function safeAsciiName(name) {
@@ -8,6 +8,14 @@
     const base = original.slice(0, original.length - (extMatch ? ext.length : 0));
     const ascii = base.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 120) || 'recommendation';
     return `${ascii}${ext}`;
+  }
+
+  function getRecommendationFile() {
+    const exact = document.getElementById('recommendationFile')?.files?.[0];
+    if (exact) return exact;
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    const selected = inputs.flatMap(i => Array.from(i.files || []));
+    return selected.find(f => /рекомендац|recommendation/i.test(f.name)) || selected.find(f => /\.pdf$/i.test(f.name)) || selected[0] || null;
   }
 
   function fileToBase64(file) {
@@ -23,38 +31,18 @@
     });
   }
 
-  // Convert the nested AI schema to the flat shape expected by the CRM form.
   function flattenAIExtraction(extracted) {
     const p = extracted?.personal || {};
     const s = extracted?.service || {};
     const n = extracted?.name_cases || {};
     return {
-      full_name: p.full_name || n.nominative || '',
-      birth_date: p.birth_date || '',
-      phone: p.phone || '',
-      address: p.address || '',
-      rnokpp: p.rnokpp || '',
-      military_rank: p.military_rank || '',
-      tcc: p.tcc || '',
-      civilian_profession: p.civilian_profession || '',
-      gender: n.gender || '',
-      name_nominative: n.nominative || p.full_name || '',
-      name_genitive: n.genitive || '',
-      name_dative: n.dative || '',
-      name_accusative: n.accusative || '',
-      name_instrumental: n.instrumental || '',
-      name_locative: n.locative || '',
-      name_vocative: n.vocative || '',
-      military_unit: s.military_unit || '',
-      desired_unit: s.desired_unit || '',
-      desired_position: s.desired_position || '',
-      shpk: s.shpk || '',
-      military_specialty: s.military_specialty || '',
-      tariff_grade: s.tariff_grade || '',
-      service_type: s.service_type || '',
-      recommender_unit: s.recommender_unit || '',
-      recruiter_name: s.recruiter_name || '',
-      signatory: s.signatory || '',
+      full_name: p.full_name || n.nominative || '', birth_date: p.birth_date || '', phone: p.phone || '', address: p.address || '',
+      rnokpp: p.rnokpp || '', military_rank: p.military_rank || '', tcc: p.tcc || '', civilian_profession: p.civilian_profession || '',
+      gender: n.gender || '', name_nominative: n.nominative || p.full_name || '', name_genitive: n.genitive || '', name_dative: n.dative || '',
+      name_accusative: n.accusative || '', name_instrumental: n.instrumental || '', name_locative: n.locative || '', name_vocative: n.vocative || '',
+      military_unit: s.military_unit || '', desired_unit: s.desired_unit || '', desired_position: s.desired_position || '', shpk: s.shpk || '',
+      military_specialty: s.military_specialty || '', tariff_grade: s.tariff_grade || '', service_type: s.service_type || '',
+      recommender_unit: s.recommender_unit || '', recruiter_name: s.recruiter_name || '', signatory: s.signatory || '',
       source: extracted?.meta?.source || 'Рекомендаційний лист',
       missing_fields: Array.isArray(extracted?.meta?.missing_fields) ? extracted.meta.missing_fields : [],
       warnings: Array.isArray(extracted?.meta?.warnings) ? extracted.meta.warnings : []
@@ -62,16 +50,14 @@
   }
 
   window.aiExtractRecommendation = async function (text) {
-    const file = document.getElementById('recommendationFile')?.files?.[0] || null;
+    const file = getRecommendationFile();
     const body = { text: String(text || '') };
-
     if (file) {
       if (file.size > 11000000) throw new Error('Файл завеликий для AI-виборки. Використайте PDF до 11 МБ.');
       body.file_base64 = await fileToBase64(file);
       body.mime_type = file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
       body.filename = file.name || 'recommendation.pdf';
     }
-
     const { data, error } = await supabaseClient.functions.invoke('ai-extract-recommendation', { body });
     if (error) throw new Error(error.message || 'Не вдалося викликати AI-виборку.');
     if (!data?.extracted) throw new Error(data?.error || 'AI не повернув структурованих даних.');
@@ -79,60 +65,18 @@
   };
 
   window.uploadRecommendation = async function (candidateId, user) {
-    const file = document.getElementById('recommendationFile')?.files?.[0] || null;
+    const file = getRecommendationFile();
     if (!candidateId) return { ok: false, reason: 'Не визначено кандидата' };
     if (!file) return { ok: false, reason: 'Файл рекомендаційного листа не вибрано' };
-
     const fileName = `${Date.now()}_${safeAsciiName(file.name)}`;
     const storagePath = `${candidateId}/recommendation/${fileName}`;
-
-    const { error: uploadError } = await supabaseClient.storage.from('candidate-documents').upload(storagePath, file, {
-      upsert: false,
-      contentType: file.type || 'application/pdf'
-    });
-
-    if (uploadError) {
-      console.error('Recommendation Storage upload:', uploadError);
-      return { ok: false, reason: `Storage: ${uploadError.message}` };
-    }
-
-    const { data: req, error: reqError } = await supabaseClient
-      .from('document_requirements')
-      .select('id')
-      .eq('document_type', 'Копія рекомендаційного листа')
-      .eq('active', true)
-      .limit(1)
-      .maybeSingle();
-
-    if (reqError) {
-      console.error('Recommendation requirement lookup:', reqError);
-      await supabaseClient.storage.from('candidate-documents').remove([storagePath]);
-      return { ok: false, reason: `Вимога документа: ${reqError.message}` };
-    }
-
-    const { error: docError } = await supabaseClient.from('documents').insert({
-      candidate_id: candidateId,
-      requirement_id: req?.id || null,
-      document_type: 'Рекомендаційний лист',
-      document_name: 'Рекомендаційний лист',
-      storage_path: storagePath,
-      file_name: file.name,
-      file_size: file.size,
-      mime_type: file.type || 'application/pdf',
-      uploaded_by: user?.id || null,
-      status: 'Завантажено',
-      processing_status: 'AI-структуровано',
-      verification_status: 'Підтверджено'
-    });
-
-    if (docError) {
-      console.error('Recommendation documents insert:', docError);
-      await supabaseClient.storage.from('candidate-documents').remove([storagePath]);
-      return { ok: false, reason: `Реєстр документів: ${docError.message}` };
-    }
-
+    const { error: uploadError } = await supabaseClient.storage.from('candidate-documents').upload(storagePath, file, { upsert: false, contentType: file.type || 'application/pdf' });
+    if (uploadError) return { ok: false, reason: `Storage: ${uploadError.message}` };
+    const { data: req, error: reqError } = await supabaseClient.from('document_requirements').select('id').eq('document_type', 'Копія рекомендаційного листа').eq('active', true).limit(1).maybeSingle();
+    if (reqError) { await supabaseClient.storage.from('candidate-documents').remove([storagePath]); return { ok: false, reason: `Вимога документа: ${reqError.message}` }; }
+    const { error: docError } = await supabaseClient.from('documents').insert({ candidate_id: candidateId, requirement_id: req?.id || null, document_type: 'Рекомендаційний лист', document_name: 'Рекомендаційний лист', storage_path: storagePath, file_name: file.name, file_size: file.size, mime_type: file.type || 'application/pdf', uploaded_by: user?.id || null, status: 'Завантажено', processing_status: 'AI-структуровано', verification_status: 'Підтверджено' });
+    if (docError) { await supabaseClient.storage.from('candidate-documents').remove([storagePath]); return { ok: false, reason: `Реєстр документів: ${docError.message}` }; }
     return { ok: true, storagePath, verified: true };
   };
-
-  console.info('PSK recommendation upload + AI extraction fix v4 loaded');
+  console.info('PSK recommendation upload + AI extraction fix v5 loaded');
 })();
