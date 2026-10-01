@@ -25,35 +25,29 @@ jobs:
           p = Path('documents.js')
           s = p.read_text(encoding='utf-8')
 
-          old = "const AI_DOC_FUNCTION='ai-classify-document';"
-          new = "const AI_DOC_FUNCTION='process-id-document';"
-          if old not in s:
-              raise SystemExit('Expected AI_DOC_FUNCTION declaration not found')
-          s = s.replace(old, new, 1)
+          s = s.replace("const AI_DOC_FUNCTION='ai-classify-document';", "const AI_DOC_FUNCTION='process-id-document';", 1)
 
-          pattern = r"async function classifyStoredDocument\(path,fileName,extractedText=''\)\{.*?\}\nfunction normName"
-          replacement = """async function classifyStoredDocument(path,fileName,extractedText=''){
-          const{data:doc,error:de}=await supabaseClient.from('documents').select('id').eq('storage_path',path).maybeSingle();
-          if(de||!doc?.id)throw new Error(de?.message||'Не знайдено запис документа для AI');
-          const{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:doc.id}});
-          if(aiError)throw new Error(aiError.message||'Помилка AI');
-          if(!ai?.ok&&!ai?.extracted)throw new Error(ai?.error||'AI не повернув структуровані дані');
-          return ai
-          }
-          function normName"""
+          pattern = r"let ai=null;try\{ai=await classifyStoredDocument\(path,file\.name,documentText\)\}catch\(e\)\{.*?return\{file:file\.name,type:aiType,confidence:Number\(ai\?\.confidence\|\|0\),candidate:ai\?\.candidate_name\|\|'',warnings\};\}"
+          replacement = """const baseDocument={candidate_id:forcedCandidateId,requirement_id:forced?.id||null,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI обробка',ai_warnings:[]};
+          const{data:document,error:documentError}=await supabaseClient.from('documents').insert(baseDocument).select('id').single();
+          if(documentError||!document?.id){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація документа: '+(documentError?.message||'не створено запис'))}
+          let ai=null;
+          try{ai=await classifyStoredDocument(path,file.name,documentText)}catch(e){await supabaseClient.from('documents').update({processing_status:'AI помилка',notes:e.message}).eq('id',document.id);throw e}
+          const extracted=ai?.extracted||{},aiType=ai?.document_type||tempType,matchedReq=forced||reqs.find(r=>r.document_type===aiType),matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];let syncWarnings=[];try{syncWarnings=await applyAiExtraction(forcedCandidateId,extracted)}catch(e){syncWarnings=['Перенесення даних у картку не виконано: '+e.message]}warnings.push(...syncWarnings);if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
+          const{error:updateError}=await supabaseClient.from('documents').update({requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,notes:ai?.model?`AI OK model=${ai.model}`:'AI OK'}).eq('id',document.id);if(updateError)throw new Error('Оновлення документа: '+updateError.message);return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};"""
           s2,n = re.subn(pattern, replacement, s, count=1, flags=re.S)
           if n != 1:
-              raise SystemExit(f'Expected classifyStoredDocument block not found; matches={n}')
-          s = s2
-
-          p.write_text(s, encoding='utf-8')
+              raise SystemExit(f'Expected processOneDocument AI block not found; matches={n}')
+          s=s2
+          p.write_text(s,encoding='utf-8')
           PY
 
-      - name: Verify route
+      - name: Verify route and lifecycle
         run: |
           grep -n "AI_DOC_FUNCTION" documents.js
           grep -n "process-id-document" documents.js
-          grep -n "document_id:doc.id" documents.js
+          grep -n "processing_status:'AI обробка'" documents.js
+          grep -n "updateError" documents.js
 
       - name: Commit patch
         run: |
@@ -61,5 +55,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add documents.js
           git diff --cached --quiet && exit 0
-          git commit -m 'Route document AI through process-id-document'
+          git commit -m 'Fix document lifecycle before AI processing'
           git push
