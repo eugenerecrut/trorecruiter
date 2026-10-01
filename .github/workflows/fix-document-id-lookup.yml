@@ -1,0 +1,41 @@
+name: Fix document ID lookup
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'documents.js'
+      - '.github/workflows/fix-document-id-lookup.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: !startsWith(github.event.head_commit.message, 'fix: document lookup by id')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch documents.js
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('documents.js')
+          s=p.read_text(encoding='utf-8')
+          old="""async function classifyStoredDocument(path,fileName,extractedText=''){\nconst{data:doc,error:de}=await supabaseClient.from('documents').select('id').eq('storage_path',path).maybeSingle();\nif(de||!doc?.id)throw new Error(de?.message||'Не знайдено запис документа для AI');\nconst{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:doc.id}});"""
+          new="""async function classifyStoredDocument(documentId,path,fileName,extractedText=''){\nif(!documentId)throw new Error('Не передано ID документа для AI');\nconst doc={id:documentId};\nconst{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:doc.id}});"""
+          if old not in s:
+              raise SystemExit('Expected classifyStoredDocument block not found')
+          s=s.replace(old,new,1)
+          old2="ai=await classifyStoredDocument(path,file.name,documentText)"
+          new2="ai=await classifyStoredDocument(document.id,path,file.name,documentText)"
+          if old2 not in s:
+              raise SystemExit('Expected classifyStoredDocument call not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add documents.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: document lookup by id'
+          git push
