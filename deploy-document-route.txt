@@ -1,1 +1,1 @@
-Apply document lifecycle fix before AI processing.
+Retry document lifecycle patch with rebase.
