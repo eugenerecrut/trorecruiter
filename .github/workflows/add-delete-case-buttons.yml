@@ -29,32 +29,33 @@ jobs:
           new2='''        <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>\n        <td style="padding:14px;white-space:nowrap">\n          <button type="button" onclick="deleteCandidateCase('${c.id}', ${JSON.stringify(c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити справу</button>\n        </td>\n      </tr>`).join('') : `\n      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;'''
           if old2 not in s: raise SystemExit('table row pattern not found')
           s=s.replace(old2,new2,1)
-          patch=r'''
-          
-          /* PSK_DELETE_CASE_V1 */
-          async function deleteCandidateCase(candidateId, candidateName) {
-            if (!candidateId) return;
-            const ok = confirm(`Видалити особову справу кандидата «${candidateName}»?\n\nБуде видалено кандидата та пов'язані документи/особову справу. Цю дію неможливо скасувати.`);
-            if (!ok) return;
-            try {
-              const { error } = await supabaseClient.from('candidates').delete().eq('id', candidateId);
-              if (error) throw error;
-              alert(`Особову справу «${candidateName}» видалено.`);
-              await updateDashboard();
-              showCandidates();
-            } catch (e) {
-              console.error('Помилка видалення особової справи:', e);
-              alert(`Не вдалося видалити справу: ${e.message || e}`);
-            }
-          }
-          '''
+          patch=r'''\n          \n          /* PSK_DELETE_CASE_V1 */\n          async function deleteCandidateCase(candidateId, candidateName) {\n            if (!candidateId) return;\n            const ok = confirm(`Видалити особову справу кандидата «${candidateName}»?\\n\\nБуде видалено кандидата та пов'язані документи/особову справу. Цю дію неможливо скасувати.`);\n            if (!ok) return;\n            try {\n              const { error } = await supabaseClient.from('candidates').delete().eq('id', candidateId);\n              if (error) throw error;\n              alert(`Особову справу «${candidateName}» видалено.`);\n              await updateDashboard();\n              showCandidates();\n            } catch (e) {\n              console.error('Помилка видалення особової справи:', e);\n              alert(`Не вдалося видалити справу: ${e.message || e}`);\n            }\n          }\n          '''
           s=s.rstrip()+"\n\n"+patch.strip()+"\n"
+          p.write_text(s,encoding='utf-8')
+      - name: Patch documents.js AI route
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('documents.js')
+          s=p.read_text(encoding='utf-8')
+          marker='/* PSK_PROCESS_ID_DOCUMENT_V1 */'
+          if marker in s:
+              print('documents.js already patched')
+              raise SystemExit(0)
+          old="""let ai=null;try{ai=await classifyStoredDocument(path,file.name,documentText)}catch(e){await supabaseClient.from('documents').insert({candidate_id:forcedCandidateId,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI помилка',notes:e.message});throw e}"""
+          new="""let documentId=null;let ai=null;try{const base={candidate_id:forcedCandidateId,requirement_id:forced?.id||null,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI обробка'};const {data:doc,error:de}=await supabaseClient.from('documents').insert(base).select('id').single();if(de||!doc?.id)throw new Error('Реєстрація документа: '+(de?.message||'не отримано ID'));documentId=doc.id;const {data:proc,error:pe}=await supabaseClient.functions.invoke('process-id-document',{body:{document_id:documentId}});if(pe)throw new Error(pe.message||'Помилка process-id-document');if(proc?.error)throw new Error(proc.error);const {data:updated,error:ue}=await supabaseClient.from('documents').select('*').eq('id',documentId).single();if(ue||!updated?.ai_extracted)throw new Error(updated?.notes||ue?.message||'AI не повернув структуровані дані');ai={extracted:updated.ai_extracted,document_type:updated.ai_document_type||tempType,confidence:updated.ai_confidence||0,candidate_name:updated.ai_candidate_name||null,warnings:updated.ai_warnings||[]}}catch(e){if(documentId)await supabaseClient.from('documents').update({processing_status:'AI помилка',notes:e.message}).eq('id',documentId);else await supabaseClient.from('documents').insert({candidate_id:forcedCandidateId,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI помилка',notes:e.message});throw e}"""
+          if old not in s: raise SystemExit('old document AI block not found')
+          s=s.replace(old,new,1)
+          old2="""const insert={candidate_id:forcedCandidateId,requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings};const{error}=await supabaseClient.from('documents').insert(insert);if(error){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація: '+error.message)}return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};}"""
+          new2="""const patch={requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,verification_status:'Не перевірено'};const{error}=await supabaseClient.from('documents').update(patch).eq('id',documentId);if(error){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Оновлення документа: '+error.message)}return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};}/* PSK_PROCESS_ID_DOCUMENT_V1 */"""
+          if old2 not in s: raise SystemExit('old document final insert block not found')
+          s=s.replace(old2,new2,1)
           p.write_text(s,encoding='utf-8')
       - name: Commit
         shell: bash
         run: |
           git config user.name "PSK_RECRUTER Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add script.js
-          git commit -m "Add candidate personal case delete button [skip delete-case]" || exit 0
+          git add script.js documents.js
+          git commit -m "Apply document AI route fix [skip delete-case]" || exit 0
           git push
