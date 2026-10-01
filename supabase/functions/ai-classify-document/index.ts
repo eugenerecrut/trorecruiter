@@ -1,12 +1,52 @@
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
-function rnokpp(text:string){const t=String(text||'').replace(/\u00a0/g,' ');const rs=[/(?:РНОКПП|ІПН|податков(?:ий|ого)\s*(?:номер|№))[^0-9]{0,100}(\d{10})/iu,/(?:реєстраційний\s*номер\s*облікової\s*картки\s*платника\s*податків)[^0-9]{0,120}(\d{10})/iu];for(const r of rs){const m=t.match(r);if(m?.[1])return m[1]}return null}
+
 const fields=['full_name','birth_date','birth_year','birth_place','sex','rnokpp','passport_data','phone','email','address','education','civilian_profession','marital_status','has_children','children_info','worked_before','served_before','military_rank','military_service_history','military_unit','desired_unit','desired_position','military_specialty','shpk','tariff_grade','service_type','recommender_unit','signatory','recruiter_name','decision','motivation','document_number','document_date','name_gender','name_nominative','name_genitive','name_cases'];
-const prompt=`Ти модуль аналізу документів CRM. Аналізуй НАДАНИЙ ДОКУМЕНТ ВІЗУАЛЬНО та OCR-текст, якщо він є. Не покладайся лише на OCR: перевіряй написане безпосередньо на зображенні або сторінках PDF. Нічого не вигадуй. Якщо поле не видно або його неможливо надійно прочитати — null і пояснення у warnings. Поверни JSON object з ключами document_type, candidate_name, confidence, extracted, warnings, meta. extracted має містити поля: ${fields.join(', ')}. Визнач document_type українською за змістом. rnokpp — тільки 10 цифр і тільки якщо вони реально є в документі. passport_data — серія/номер документа, якщо видно. name_nominative — ПІБ кандидата у називному відмінку. name_genitive — ПІБ кандидата у родовому. Не плутай кандидата зі службовими особами, підписантами, ректором, командиром чи працівником, який видав документ. Якщо документ містить кілька осіб, кандидатом вважай особу, якій належить документ. Для дат використовуй формат YYYY-MM-DD, якщо повна дата відома. Для полів без даних — null.`;
-Deno.serve(async(req)=>{if(req.method==='OPTIONS')return new Response('ok',{headers:cors});if(req.method!=='POST')return new Response(JSON.stringify({error:'Method not allowed'}),{status:405,headers:{...cors,'Content-Type':'application/json'}});let body:any;try{body=await req.json()}catch{return new Response(JSON.stringify({error:'Некоректний JSON'}),{status:400,headers:{...cors,'Content-Type':'application/json'}})}const text=String(body?.text||'').trim();const fileUrl=String(body?.file_url||'').trim();const fileName=String(body?.file_name||'document');if(!text&&!fileUrl)return new Response(JSON.stringify({error:'Не передано текст або файл'}),{status:400,headers:{...cors,'Content-Type':'application/json'}});const key=Deno.env.get('OPENAI_API_KEY');const fallback=rnokpp(text);if(!key){if(fallback)return new Response(JSON.stringify({document_type:'Копія паспорта/ID Картки',candidate_name:null,confidence:0,extracted:{rnokpp:fallback},warnings:['AI недоступний; РНОКПП витягнуто з OCR'],meta:{source:'ocr-fallback',missing_fields:fields.filter(x=>x!=='rnokpp'),conflicts:[]}}),{headers:{...cors,'Content-Type':'application/json'}});return new Response(JSON.stringify({error:'OPENAI_API_KEY не налаштовано'}),{status:500,headers:{...cors,'Content-Type':'application/json'}})}
-let content:any[]=[{type:'input_text',text:prompt+'\nНазва файлу: '+fileName}];
-if(text)content.push({type:'input_text',text:'OCR-текст (допоміжний, може містити помилки):\n'+text});
-if(fileUrl){const lower=fileName.toLowerCase();const isImage=/\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(lower);if(isImage)content.push({type:'input_image',image_url:fileUrl,detail:'high'});else content.push({type:'input_file',file_url:fileUrl});}
-let r:Response;try{r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-5-mini',store:false,input:[{role:'user',content}],text:{format:{type:'json_object'}}})})}catch(e){console.error('OpenAI network error',e);if(fallback)return new Response(JSON.stringify({document_type:'Копія паспорта/ID Картки',candidate_name:null,confidence:0,extracted:{rnokpp:fallback},warnings:['AI недоступний; РНОКПП витягнуто з OCR'],meta:{source:'ocr-fallback',missing_fields:fields.filter(x=>x!=='rnokpp'),conflicts:[]}}),{headers:{...cors,'Content-Type':'application/json'}});return new Response(JSON.stringify({error:'Помилка з’єднання з AI'}),{status:502,headers:{...cors,'Content-Type':'application/json'}})}
-if(!r.ok){const raw=await r.text();console.error('OpenAI API error',raw);if(fallback)return new Response(JSON.stringify({document_type:'Копія паспорта/ID Картки',candidate_name:null,confidence:0,extracted:{rnokpp:fallback},warnings:['AI тимчасово недоступний; РНОКПП витягнуто з OCR'],meta:{source:'ocr-fallback',missing_fields:fields.filter(x=>x!=='rnokpp'),conflicts:[]}}),{headers:{...cors,'Content-Type':'application/json'}});return new Response(JSON.stringify({error:'Помилка AI-аналізу документа'}),{status:502,headers:{...cors,'Content-Type':'application/json'}})}
-const out=await r.json();let parsed:any;try{parsed=JSON.parse(String(out?.output_text||''))}catch(e){console.error('OpenAI JSON parse error',out);if(fallback)return new Response(JSON.stringify({document_type:'Копія паспорта/ID Картки',candidate_name:null,confidence:0,extracted:{rnokpp:fallback},warnings:['AI повернув некоректний результат; РНОКПП витягнуто з OCR'],meta:{source:'ocr-fallback',missing_fields:fields.filter(x=>x!=='rnokpp'),conflicts:[]}}),{headers:{...cors,'Content-Type':'application/json'}});return new Response(JSON.stringify({error:'AI повернув некоректний JSON'}),{status:502,headers:{...cors,'Content-Type':'application/json'}})}
-if(parsed?.extracted&&!parsed.extracted.rnokpp&&fallback)parsed.extracted.rnokpp=fallback;return new Response(JSON.stringify(parsed),{headers:{...cors,'Content-Type':'application/json'}})});
+
+const relative={type:'object',additionalProperties:false,properties:{relation:{type:'string'},full_name:{type:'string'},birth_date:{type:'string'},birth_place:{type:'string'},citizenship:{type:'string'},address:{type:'string'},phone:{type:'string'},workplace:{type:'string'},position:{type:'string'},notes:{type:'string'}},required:['relation','full_name','birth_date','birth_place','citizenship','address','phone','workplace','position','notes']};
+
+const schema={type:'object',additionalProperties:false,properties:{document_type:{type:'string'},candidate_name:{type:['string','null']},confidence:{type:'number'},extracted:{type:'object',additionalProperties:false,properties:Object.fromEntries(fields.map(f=>[f,{type:['string','null']}]).concat([['relatives',{type:'array',items:relative}]])),required:[...fields,'relatives']},warnings:{type:'array',items:{type:'string'}},meta:{type:'object',additionalProperties:false,properties:{source:{type:'string'},missing_fields:{type:'array',items:{type:'string'}},conflicts:{type:'array',items:{type:'string'}}},required:['source','missing_fields','conflicts']}},required:['document_type','candidate_name','confidence','extracted','warnings','meta']};
+
+const prompt=`Ти модуль аналізу документів CRM PSK_RECRUTER. Аналізуй наданий документ візуально та OCR-текст, якщо він є. Не вигадуй дані. Визнач тип документа українською та витягни тільки те, що прямо видно або однозначно випливає з документа.
+
+КРИТИЧНО ДЛЯ РОДИЧІВ: якщо це свідоцтво про народження і в ньому зазначені батько та/або мати дитини-кандидата, ОБОВ'ЯЗКОВО створи окремі об'єкти у extracted.relatives з relation='Батько' та relation='Мати'. ПІБ дитини записуй у extracted.full_name, а батьків — тільки в relatives. Якщо це свідоцтво про шлюб — другого з подружжя запиши як Чоловік або Дружина. Якщо свідоцтво про розірвання шлюбу прямо містить другого з подружжя — також створи відповідного родича. Для кожного родича заповнюй лише поля, які є в документі; решта — порожній рядок. Якщо родичів немає, relatives=[].
+
+Для дитини у свідоцтві про народження заповни birth_date та birth_place. Не записуй дані батьків у персональні поля кандидата. Якщо документ містить кілька осіб, кандидатом вважай особу, якій належить документ. Дати форматуйте YYYY-MM-DD, коли це можливо. РНОКПП — лише якщо він прямо є. Для полів без даних — null у extracted і порожні рядки для relatives. warnings та meta.missing_fields використовуй для відсутніх або сумнівних даних.`;
+
+function json(body,status=200){return new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json; charset=utf-8'}})}
+function rnokpp(text:string){const m=String(text||'').replace(/\u00a0/g,' ').match(/(?:РНОКПП|ІПН|податков(?:ий|ого)\s*(?:номер|№))[^0-9]{0,100}(\d{10})/iu);return m?.[1]||null}
+
+Deno.serve(async(req)=>{
+  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
+  if(req.method!=='POST')return json({error:'Method not allowed'},405);
+  let body:any;try{body=await req.json()}catch{return json({error:'Некоректний JSON'},400)}
+  const text=String(body?.text||'').trim();
+  const fileUrl=String(body?.file_url||'').trim();
+  const fileName=String(body?.file_name||'document').trim();
+  if(!text&&!fileUrl)return json({error:'Не передано текст або файл'},400);
+  const key=Deno.env.get('GEMINI_API_KEY')||Deno.env.get('Gemini API Key');
+  if(!key)return json({error:'GEMINI_API_KEY не налаштовано в Supabase Secrets.'},500);
+  const model=Deno.env.get('GEMINI_MODEL')||'gemini-3.5-flash-lite';
+
+  const parts:any[]=[{text:prompt+'\nНазва файлу: '+fileName}];
+  if(text)parts.push({text:'OCR-текст (допоміжний; може містити помилки):\n'+text.slice(0,50000)});
+  if(fileUrl){
+    try{
+      const fr=await fetch(fileUrl);
+      if(!fr.ok)return json({error:`Не вдалося прочитати файл: HTTP ${fr.status}`},502);
+      const ab=await fr.arrayBuffer();
+      if(ab.byteLength>15000000)return json({error:'Файл завеликий для Gemini. Максимум 15 МБ.'},413);
+      const mime=String(fr.headers.get('content-type')||'').split(';')[0]||(/\.pdf$/i.test(fileName)?'application/pdf':/\.png$/i.test(fileName)?'image/png':'image/jpeg');
+      let binary='';const bytes=new Uint8Array(ab);const chunk=0x8000;for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+chunk,bytes.length)));const b64=btoa(binary);
+      parts.push({inlineData:{mimeType:mime,data:b64}});
+    }catch(e){console.error('file fetch error',e);return json({error:'Не вдалося завантажити документ для Gemini.'},502)}
+  }
+
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json',responseSchema:schema}})});
+  if(!r.ok){const raw=await r.text();console.error('Gemini document error',raw);return json({error:'AI-сервіс Gemini повернув помилку.',details:raw},502)}
+  const out=await r.json();const outputText=String(out?.candidates?.[0]?.content?.parts?.map((p:any)=>p?.text||'').join('')||'').trim();
+  if(!outputText)return json({error:'Gemini не повернув структуровану виборку.'},502);
+  let parsed:any;try{parsed=JSON.parse(outputText)}catch(e){console.error('Gemini JSON parse error',outputText);return json({error:'Gemini повернув некоректний JSON.'},502)}
+  if(parsed?.extracted&&!parsed.extracted.rnokpp){const fallback=rnokpp(text);if(fallback)parsed.extracted.rnokpp=fallback}
+  if(!Array.isArray(parsed?.extracted?.relatives))parsed.extracted.relatives=[];
+  return json({...parsed,model});
+});
