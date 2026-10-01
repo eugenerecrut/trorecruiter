@@ -9,7 +9,7 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: !startsWith(github.event.head_commit.message, 'fix: document lookup by id')
+    if: "!startsWith(github.event.head_commit.message, 'fix: document lookup by id')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
