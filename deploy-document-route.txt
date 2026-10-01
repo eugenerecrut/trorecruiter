@@ -1,1 +1,1 @@
-Retry document AI route patch through process-id-document.
+Apply document lifecycle fix before AI processing.
