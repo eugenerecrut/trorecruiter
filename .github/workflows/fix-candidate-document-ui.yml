@@ -3,7 +3,7 @@ name: Fix candidate document UI
 on:
   push:
     paths:
-      - 'deploy-document-filter.txt'
+      - 'deploy-document-route.txt'
   workflow_dispatch:
 
 permissions:
@@ -20,39 +20,40 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           p = Path('documents.js')
           s = p.read_text(encoding='utf-8')
 
-          old = "async function getDocumentRequirements(){const{data,error}=await supabaseClient.from('document_requirements').select('*').eq('active',true).order('sort_order',{ascending:true});if(error){console.error(error);return[]}return data||[]}"
-          new = """async function getDocumentRequirements(candidateId=null){
-          if(candidateId){
-            const{data,error}=await supabaseClient.from('candidate_document_requirements').select('requirement_id,child_index,status,document_requirements(*)').eq('candidate_id',candidateId).order('requirement_id',{ascending:true}).order('child_index',{ascending:true});
-            if(error){console.error(error);return[]}
-            const seen=new Set(),result=[];
-            for(const row of (data||[])){
-              const r=row.document_requirements;
-              if(!r||r.active===false||seen.has(r.id))continue;
-              seen.add(r.id);result.push(r);
-            }
-            return result;
-          }
-          const{data,error}=await supabaseClient.from('document_requirements').select('*').eq('active',true).order('sort_order',{ascending:true});
-          if(error){console.error(error);return[]}
-          return data||[]
-          }"""
+          old = "const AI_DOC_FUNCTION='ai-classify-document';"
+          new = "const AI_DOC_FUNCTION='process-id-document';"
           if old not in s:
-              raise SystemExit('Expected getDocumentRequirements() block not found')
+              raise SystemExit('Expected AI_DOC_FUNCTION declaration not found')
           s = s.replace(old, new, 1)
 
-          old2 = "const[docs,reqs,cands]=await Promise.all([getCandidateDocuments(id),getDocumentRequirements(),getCandidates()]);"
-          new2 = "const[docs,reqs,cands]=await Promise.all([getCandidateDocuments(id),getDocumentRequirements(id),getCandidates()]);"
-          if old2 not in s:
-              raise SystemExit('Expected showDocuments query block not found')
-          s = s.replace(old2, new2, 1)
+          pattern = r"async function classifyStoredDocument\(path,fileName,extractedText=''\)\{.*?\}\nfunction normName"
+          replacement = """async function classifyStoredDocument(path,fileName,extractedText=''){
+          const{data:doc,error:de}=await supabaseClient.from('documents').select('id').eq('storage_path',path).maybeSingle();
+          if(de||!doc?.id)throw new Error(de?.message||'Не знайдено запис документа для AI');
+          const{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:doc.id}});
+          if(aiError)throw new Error(aiError.message||'Помилка AI');
+          if(!ai?.ok&&!ai?.extracted)throw new Error(ai?.error||'AI не повернув структуровані дані');
+          return ai
+          }
+          function normName"""
+          s2,n = re.subn(pattern, replacement, s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit(f'Expected classifyStoredDocument block not found; matches={n}')
+          s = s2
 
           p.write_text(s, encoding='utf-8')
           PY
+
+      - name: Verify route
+        run: |
+          grep -n "AI_DOC_FUNCTION" documents.js
+          grep -n "process-id-document" documents.js
+          grep -n "document_id:doc.id" documents.js
 
       - name: Commit patch
         run: |
@@ -60,5 +61,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add documents.js
           git diff --cached --quiet && exit 0
-          git commit -m 'Fix candidate-specific document list'
+          git commit -m 'Route document AI through process-id-document'
           git push
