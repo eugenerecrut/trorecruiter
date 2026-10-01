@@ -6,14 +6,28 @@ const relative={type:'object',additionalProperties:false,properties:{relation:{t
 
 const schema={type:'object',additionalProperties:false,properties:{document_type:{type:'string'},candidate_name:{type:['string','null']},confidence:{type:'number'},extracted:{type:'object',additionalProperties:false,properties:Object.fromEntries(fields.map(f=>[f,{type:['string','null']}]).concat([['relatives',{type:'array',items:relative}]])),required:[...fields,'relatives']},warnings:{type:'array',items:{type:'string'}},meta:{type:'object',additionalProperties:false,properties:{source:{type:'string'},missing_fields:{type:'array',items:{type:'string'}},conflicts:{type:'array',items:{type:'string'}}},required:['source','missing_fields','conflicts']}},required:['document_type','candidate_name','confidence','extracted','warnings','meta']};
 
-const prompt=`Ти модуль аналізу документів CRM PSK_RECRUTER. Аналізуй наданий документ візуально та OCR-текст, якщо він є. Не вигадуй дані. Визнач тип документа українською та витягни тільки те, що прямо видно або однозначно випливає з документа.
+const prompt=`Ти модуль аналізу документів CRM PSK_RECRUTER. Аналізуй наданий документ ВІЗУАЛЬНО та OCR-текст, якщо він є. Не вигадуй дані. Визнач тип документа українською та витягни тільки те, що прямо видно або однозначно випливає з документа.
 
-КРИТИЧНО ДЛЯ РОДИЧІВ: якщо це свідоцтво про народження і в ньому зазначені батько та/або мати дитини-кандидата, ОБОВ'ЯЗКОВО створи окремі об'єкти у extracted.relatives з relation='Батько' та relation='Мати'. ПІБ дитини записуй у extracted.full_name, а батьків — тільки в relatives. Якщо це свідоцтво про шлюб — другого з подружжя запиши як Чоловік або Дружина. Якщо свідоцтво про розірвання шлюбу прямо містить другого з подружжя — також створи відповідного родича. Для кожного родича заповнюй лише поля, які є в документі; решта — порожній рядок. Якщо родичів немає, relatives=[].
+КРИТИЧНО ДЛЯ СВІДОЦТВА ПРО НАРОДЖЕННЯ:
+1. Спочатку визнач, ХТО є дитиною/власником свідоцтва. Саме ця особа є кандидатом.
+2. ПІБ дитини запиши тільки в extracted.full_name.
+3. Дату народження дитини запиши в extracted.birth_date.
+4. МІСЦЕ НАРОДЖЕННЯ ДИТИНИ ОБОВ'ЯЗКОВО ЗАПИШИ В extracted.birth_place. Шукай формулювання після 'народився/народилася', 'місце народження', а також населений пункт, область/район та інші частини адреси, якщо вони прямо вказані. Не залишай birth_place null, якщо місце народження видно на документі.
+5. Батька та матір НІКОЛИ не записуй у персональні поля кандидата. Їх ПІБ запиши тільки в extracted.relatives з relation='Батько' та relation='Мати'.
+6. Якщо у свідоцтві прямо вказані громадянство батьків — запиши його у відповідному родичі.
+7. Якщо документ містить кілька осіб, кандидатом вважай саме дитину, якій належить свідоцтво, а не батька чи матір.
 
-Для дитини у свідоцтві про народження заповни birth_date та birth_place. Не записуй дані батьків у персональні поля кандидата. Якщо документ містить кілька осіб, кандидатом вважай особу, якій належить документ. Дати форматуйте YYYY-MM-DD, коли це можливо. РНОКПП — лише якщо він прямо є. Для полів без даних — null у extracted і порожні рядки для relatives. warnings та meta.missing_fields використовуй для відсутніх або сумнівних даних.`;
+КРИТИЧНО ДЛЯ РОДИЧІВ: якщо це свідоцтво про народження і в ньому зазначені батько та/або мати дитини-кандидата, ОБОВ'ЯЗКОВО створи окремі об'єкти у extracted.relatives. Якщо це свідоцтво про шлюб — другого з подружжя запиши як Чоловік або Дружина. Якщо свідоцтво про розірвання шлюбу прямо містить другого з подружжя — також створи відповідного родича. Для кожного родича заповнюй лише поля, які є в документі; решта — порожній рядок. Якщо родичів немає, relatives=[].
+
+Дати форматуйте YYYY-MM-DD, коли це можливо. РНОКПП — лише якщо він прямо є. Для полів без даних — null у extracted і порожні рядки для relatives. warnings та meta.missing_fields використовуй для відсутніх або сумнівних даних.`;
 
 function json(body,status=200){return new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json; charset=utf-8'}})}
 function rnokpp(text:string){const m=String(text||'').replace(/\u00a0/g,' ').match(/(?:РНОКПП|ІПН|податков(?:ий|ого)\s*(?:номер|№))[^0-9]{0,100}(\d{10})/iu);return m?.[1]||null}
+function normalizeBirthPlace(v:any){
+  const s=String(v??'').replace(/\s+/g,' ').trim();
+  if(!s||s.toLowerCase()==='null'||s.toLowerCase()==='не визначено')return null;
+  return s;
+}
 
 Deno.serve(async(req)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
@@ -47,6 +61,7 @@ Deno.serve(async(req)=>{
   if(!outputText)return json({error:'Gemini не повернув структуровану виборку.'},502);
   let parsed:any;try{parsed=JSON.parse(outputText)}catch(e){console.error('Gemini JSON parse error',outputText);return json({error:'Gemini повернув некоректний JSON.'},502)}
   if(parsed?.extracted&&!parsed.extracted.rnokpp){const fallback=rnokpp(text);if(fallback)parsed.extracted.rnokpp=fallback}
+  if(parsed?.extracted)parsed.extracted.birth_place=normalizeBirthPlace(parsed.extracted.birth_place);
   if(!Array.isArray(parsed?.extracted?.relatives))parsed.extracted.relatives=[];
   return json({...parsed,model});
 });
