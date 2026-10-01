@@ -15,15 +15,23 @@ jobs:
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
+          old='''<div class="menu-item">▣ &nbsp;Документи</div>'''
+          new='''<div class="menu-item" onclick="showDocuments()">▣ &nbsp;Документи</div>'''
+          if old in s:
+              s=s.replace(old,new,1)
+          old2='''<button onclick="showCandidates()">▣ Документи</button>'''
+          new2='''<button onclick="showDocuments()">▣ Документи</button>'''
+          if old2 in s:
+              s=s.replace(old2,new2,1)
           tag='<script src="document-upload-fix.js"></script>'
           if tag not in s:
               marker='</body>'
               if marker not in s: raise SystemExit('Cannot find </body>')
               s=s.replace(marker,tag+'\n'+marker,1)
-              p.write_text(s,encoding='utf-8')
+          p.write_text(s,encoding='utf-8')
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+users.noreply.github.com"
           git add index.html
-          if git diff --cached --quiet; then echo "No changes"; else git commit -m "connect document upload compatibility fix"; git push; fi
+          if git diff --cached --quiet; then echo "No changes"; else git commit -m "Fix Documents menu actions"; git push; fi
