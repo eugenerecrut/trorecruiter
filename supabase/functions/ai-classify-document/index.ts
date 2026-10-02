@@ -1,68 +1,9 @@
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
-
-const fields=['full_name','birth_date','birth_year','birth_place','sex','rnokpp','passport_data','phone','email','address','education','civilian_profession','marital_status','has_children','children_info','worked_before','served_before','military_rank','military_service_history','military_unit','desired_unit','desired_position','military_specialty','shpk','tariff_grade','service_type','recommender_unit','signatory','recruiter_name','decision','motivation','document_number','document_date','name_gender','name_nominative','name_genitive','name_cases'];
-
-const relative={type:'object',additionalProperties:false,properties:{relation:{type:'string'},full_name:{type:'string'},birth_date:{type:'string'},birth_place:{type:'string'},citizenship:{type:'string'},address:{type:'string'},phone:{type:'string'},workplace:{type:'string'},position:{type:'string'},notes:{type:'string'}},required:['relation','full_name','birth_date','birth_place','citizenship','address','phone','workplace','position','notes']};
-
-const schema={type:'object',additionalProperties:false,properties:{document_type:{type:'string'},candidate_name:{type:['string','null']},confidence:{type:'number'},extracted:{type:'object',additionalProperties:false,properties:Object.fromEntries(fields.map(f=>[f,{type:['string','null']}]).concat([['relatives',{type:'array',items:relative}]])),required:[...fields,'relatives']},warnings:{type:'array',items:{type:'string'}},meta:{type:'object',additionalProperties:false,properties:{source:{type:'string'},missing_fields:{type:'array',items:{type:'string'}},conflicts:{type:'array',items:{type:'string'}}},required:['source','missing_fields','conflicts']}},required:['document_type','candidate_name','confidence','extracted','warnings','meta']};
-
-const prompt=`Ти модуль аналізу документів CRM PSK_RECRUTER. Аналізуй наданий документ ВІЗУАЛЬНО та OCR-текст, якщо він є. Не вигадуй дані. Визнач тип документа українською та витягни тільки те, що прямо видно або однозначно випливає з документа.
-
-КРИТИЧНО ДЛЯ СВІДОЦТВА ПРО НАРОДЖЕННЯ:
-1. Спочатку визнач, ХТО є дитиною/власником свідоцтва. Саме ця особа є кандидатом.
-2. ПІБ дитини запиши тільки в extracted.full_name.
-3. Дату народження дитини запиши в extracted.birth_date.
-4. МІСЦЕ НАРОДЖЕННЯ ДИТИНИ ОБОВ'ЯЗКОВО ЗАПИШИ В extracted.birth_place. Шукай формулювання після 'народився/народилася', 'місце народження', а також населений пункт, область/район та інші частини адреси, якщо вони прямо вказані. Не залишай birth_place null, якщо місце народження видно на документі.
-5. Батька та матір НІКОЛИ не записуй у персональні поля кандидата. Їх ПІБ запиши тільки в extracted.relatives з relation='Батько' та relation='Мати'.
-6. ДАТА НАРОДЖЕННЯ БАТЬКА І МАТЕРІ ТАКОЖ ПОТРІБНА. Якщо дата народження батька або матері прямо зазначена на документі, ОБОВ'ЯЗКОВО запиши її у відповідному relative.birth_date у форматі YYYY-MM-DD. Якщо дата не зазначена, залиш relative.birth_date порожнім і не вигадуй її. Те саме правило застосовуй до місця народження та інших даних родичів.
-7. Якщо у свідоцтві прямо вказані громадянство батьків — запиши його у відповідному родичі.
-8. Якщо документ містить кілька осіб, кандидатом вважай саме дитину, якій належить свідоцтво, а не батька чи матір.
-
-КРИТИЧНО ДЛЯ РОДИЧІВ: якщо це свідоцтво про народження і в ньому зазначені батько та/або мати дитини-кандидата, ОБОВ'ЯЗКОВО створи окремі об'єкти у extracted.relatives. Якщо це свідоцтво про шлюб — другого з подружжя запиши як Чоловік або Дружина. Якщо свідоцтво про розірвання шлюбу прямо містить другого з подружжя — також створи відповідного родича. Для кожного родича заповнюй лише поля, які є в документі; решта — порожній рядок. Якщо родичів немає, relatives=[].
-
-Дати форматуйте YYYY-MM-DD, коли це можливо. РНОКПП — лише якщо він прямо є. Для полів без даних — null у extracted і порожні рядки для relatives. warnings та meta.missing_fields використовуй для відсутніх або сумнівних даних.`;
-
-function json(body,status=200){return new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json; charset=utf-8'}})}
-function rnokpp(text:string){const m=String(text||'').replace(/\u00a0/g,' ').match(/(?:РНОКПП|ІПН|податков(?:ий|ого)\s*(?:номер|№))[^0-9]{0,100}(\d{10})/iu);return m?.[1]||null}
-function normalizeBirthPlace(v:any){
-  const s=String(v??'').replace(/\s+/g,' ').trim();
-  if(!s||s.toLowerCase()==='null'||s.toLowerCase()==='не визначено')return null;
-  return s;
-}
-
-Deno.serve(async(req)=>{
-  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
-  if(req.method!=='POST')return json({error:'Method not allowed'},405);
-  let body:any;try{body=await req.json()}catch{return json({error:'Некоректний JSON'},400)}
-  const text=String(body?.text||'').trim();
-  const fileUrl=String(body?.file_url||'').trim();
-  const fileName=String(body?.file_name||'document').trim();
-  if(!text&&!fileUrl)return json({error:'Не передано текст або файл'},400);
-  const key=Deno.env.get('GEMINI_API_KEY')||Deno.env.get('Gemini API Key');
-  if(!key)return json({error:'GEMINI_API_KEY не налаштовано в Supabase Secrets.'},500);
-  const model=Deno.env.get('GEMINI_MODEL')||'gemini-3.5-flash-lite';
-
-  const parts:any[]=[{text:prompt+'\nНазва файлу: '+fileName}];
-  if(text)parts.push({text:'OCR-текст (допоміжний; може містити помилки):\n'+text.slice(0,50000)});
-  if(fileUrl){
-    try{
-      const fr=await fetch(fileUrl);
-      if(!fr.ok)return json({error:`Не вдалося прочитати файл: HTTP ${fr.status}`},502);
-      const ab=await fr.arrayBuffer();
-      if(ab.byteLength>15000000)return json({error:'Файл завеликий для Gemini. Максимум 15 МБ.'},413);
-      const mime=String(fr.headers.get('content-type')||'').split(';')[0]||(/\.pdf$/i.test(fileName)?'application/pdf':/\.png$/i.test(fileName)?'image/png':'image/jpeg');
-      let binary='';const bytes=new Uint8Array(ab);const chunk=0x8000;for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+chunk,bytes.length)));const b64=btoa(binary);
-      parts.push({inlineData:{mimeType:mime,data:b64}});
-    }catch(e){console.error('file fetch error',e);return json({error:'Не вдалося завантажити документ для Gemini.'},502)}
-  }
-
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'x-goog-api-key':key,'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json',responseSchema:schema}})});
-  if(!r.ok){const raw=await r.text();console.error('Gemini document error',raw);return json({error:'AI-сервіс Gemini повернув помилку.',details:raw},502)}
-  const out=await r.json();const outputText=String(out?.candidates?.[0]?.content?.parts?.map((p:any)=>p?.text||'').join('')||'').trim();
-  if(!outputText)return json({error:'Gemini не повернув структуровану виборку.'},502);
-  let parsed:any;try{parsed=JSON.parse(outputText)}catch(e){console.error('Gemini JSON parse error',outputText);return json({error:'Gemini повернув некоректний JSON.'},502)}
-  if(parsed?.extracted&&!parsed.extracted.rnokpp){const fallback=rnokpp(text);if(fallback)parsed.extracted.rnokpp=fallback}
-  if(parsed?.extracted)parsed.extracted.birth_place=normalizeBirthPlace(parsed.extracted.birth_place);
-  if(!Array.isArray(parsed?.extracted?.relatives))parsed.extracted.relatives=[];
-  return json({...parsed,model});
-});
+const prompt=`Ти модуль аналізу документів CRM PSK_RECRUTER. Проаналізуй документ за OCR та, якщо OCR відсутній, візуально за файлом. Не вигадуй дані. Визнач тип документа українською та поверни ТІЛЬКИ валідний JSON без markdown.
+Для української ID-картки: full_name — ПІБ власника; birth_date — YYYY-MM-DD; birth_place — місце народження; document_number — саме поле «Документ №» (не УНЗР); passport_data — продублюй номер документа; document_date — дата видачі; rnokpp — РНОКПП, якщо видно. Для свідоцтва про народження кандидатом є дитина; батько/мати тільки в relatives. Для свідоцтва про народження extracted.document_number — серія та номер самого свідоцтва, повністю як надруковано на бланку, а не номер актового запису; extracted.document_date — дата видачі свідоцтва; поле passport_data для свідоцтва залишай null. Якщо реквізити нерозбірливі — поверни null і не вгадуй.
+Формат: {"document_type":"...","candidate_name":null,"confidence":0,"extracted":{"full_name":null,"birth_date":null,"birth_year":null,"birth_place":null,"sex":null,"rnokpp":null,"passport_data":null,"phone":null,"email":null,"address":null,"education":null,"civilian_profession":null,"marital_status":null,"has_children":null,"children_info":null,"worked_before":null,"served_before":null,"military_rank":null,"military_service_history":null,"military_unit":null,"desired_unit":null,"desired_position":null,"military_specialty":null,"shpk":null,"tariff_grade":null,"service_type":null,"recommender_unit":null,"signatory":null,"recruiter_name":null,"decision":null,"motivation":null,"document_number":null,"document_date":null,"name_gender":null,"name_nominative":null,"name_genitive":null,"name_cases":null,"relatives":[]},"warnings":[],"meta":{"source":"","missing_fields":[],"conflicts":[]}}`;
+function json(body:any,status=200){return new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json; charset=utf-8'}})}
+function rnokpp(text:string){const m=String(text||'').match(/(?:РНОКПП|ІПН|податков(?:ий|ого)\s*номер)[^0-9]{0,100}(\d{10})/iu);return m?.[1]||null}
+async function gemini(key:string,model:string,parts:any[]){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);try{return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json',temperature:0.1}}),signal:controller.signal})}finally{clearTimeout(timer)}}
+function getKey(){return Deno.env.get('GEMINI_API_KEY')||Deno.env.get('Gemini API Key')||Deno.env.get('GOOGLE_API_KEY')||''}
+Deno.serve(async(req)=>{if(req.method==='OPTIONS')return new Response('ok',{headers:cors});if(req.method!=='POST')return json({error:'Method not allowed'},405);try{console.log('AI_START');const body=await req.json().catch(()=>null);if(!body)return json({error:'Некоректний JSON запиту'},400);const text=String(body.text||'').trim();const fileUrl=String(body.file_url||'').trim();const fileName=String(body.file_name||'document').trim();console.log('INPUT',JSON.stringify({hasText:!!text,hasFileUrl:!!fileUrl,fileName}));if(!text&&!fileUrl)return json({error:'Не передано текст або файл'},400);const key=getKey();if(!key)return json({error:'GEMINI_API_KEY не налаштовано в Secrets'},500);const parts:any[]=[{text:prompt+'\nНазва файлу: '+fileName}];if(text)parts.push({text:'OCR-текст:\n'+text.slice(0,50000)});if(fileUrl&&!text){console.log('FETCH_FILE');let fr;try{fr=await fetch(fileUrl)}catch(e){return json({error:'Не вдалося завантажити файл за signed URL',details:String(e?.message||e)},502)}const ct=fr.headers.get('content-type')||'';if(!fr.ok)return json({error:`Не вдалося прочитати файл: HTTP ${fr.status}`},502);const ab=await fr.arrayBuffer();if(ab.byteLength>15000000)return json({error:`Файл завеликий для Gemini: ${ab.byteLength} bytes`},413);const bytes=new Uint8Array(ab);let bin='';for(let i=0;i<bytes.length;i+=32768)bin+=String.fromCharCode(...bytes.subarray(i,Math.min(i+32768,bytes.length)));parts.push({inlineData:{mimeType:ct.split(';')[0]||'application/pdf',data:btoa(bin)}})}const models:string[]=[];const configured=Deno.env.get('GEMINI_MODEL');if(configured)models.push(configured);for(const m of ['gemini-3.8-flash'])if(!models.includes(m))models.push(m);let last={status:0,text:''};let totalAttempts=0;for(const model of models){let r:Response|undefined;for(let attempt=1;attempt<=3;attempt++){totalAttempts++;try{r=await gemini(key,model,parts);if(r.ok||![429,500,502,503,504].includes(r.status)||attempt===3)break;last={status:r.status,text:(await r.clone().text()).slice(0,3000)}}catch(e){last={status:0,text:String(e?.message||e)};if(attempt===3)break}await new Promise(resolve=>setTimeout(resolve,attempt*700))}if(!r)continue;const bodyText=await r.text();if(r.ok){let out;try{out=JSON.parse(bodyText)}catch{return json({error:'Gemini HTTP 200, але відповідь не JSON',model,raw:bodyText.slice(0,2000)},502)}const output=String(out?.candidates?.[0]?.content?.parts?.map((p:any)=>p?.text||'').join('')||'').trim();if(!output)return json({error:'Gemini HTTP 200, але порожня відповідь',model},502);let parsed;try{parsed=JSON.parse(output.replace(/^```json\s*/i,'').replace(/\s*```$/,''))}catch{return json({error:'Gemini повернув некоректний JSON',model,raw:output.slice(0,3000)},502)}parsed.extracted=parsed.extracted||{};if(!parsed.extracted.rnokpp){const x=rnokpp(text);if(x)parsed.extracted.rnokpp=x}if(!parsed.extracted.passport_data&&parsed.extracted.document_number&&!String(parsed.document_type||'').toLocaleLowerCase('uk-UA').includes('свідоцтво про народження'))parsed.extracted.passport_data=parsed.extracted.document_number;if(!Array.isArray(parsed.extracted.relatives))parsed.extracted.relatives=[];return json({...parsed,model})}last={status:r.status,text:bodyText.slice(0,3000)}}return json({error:`Gemini не прийняв запит після ${totalAttempts} спроб`,gemini_status:last.status,details:last.text||'empty response'},502)}catch(e){console.error('AI_FATAL',e);return json({error:String(e?.message||e)},500)}});
