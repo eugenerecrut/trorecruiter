@@ -88,9 +88,9 @@
   }
   window.reconcileAiWithCandidate=reconcile;
 
-  window.classifyStoredDocument=async function(path,fileName,ocrText=''){
+  window.classifyStoredDocument=async function(...args){
     if(window.__PSK_DOC_AI_ENABLED===false)return{document_type:window.__PSK_DOC_FORCED_TYPE||'Документ',confidence:1,candidate_name:null,warnings:['AI/OCR вимкнено для цього типу документа. Файл збережено без AI-розпізнавання.'],extracted:{}};
-    if(typeof originalClassify==='function')return originalClassify(path,fileName,ocrText);
+    if(typeof originalClassify==='function')return originalClassify.apply(this,args);
     throw new Error('Функція AI-класифікації недоступна');
   };
 
@@ -107,6 +107,7 @@
   function restoreLocalOcr(){if(typeof originalExtractPdfText==='function')window.extractPdfText=originalExtractPdfText;if(typeof originalRunOcr==='function')window.runOcr=originalRunOcr;}
 
   if(typeof originalUpload==='function')window.uploadSelectedDocuments=async function(){
+    if(document.querySelector('#docFilePlan'))return originalUpload.apply(this,arguments);
     const started=Date.now();await loadAiMode();applyLocalOcrMode();let result;
     try{result=await originalUpload.apply(this,arguments)}finally{restoreLocalOcr()}
     if(window.__PSK_DOC_AI_ENABLED===false){const el=document.getElementById('docUploadStatus');if(el)el.innerHTML='<b>Готово.</b> Документ збережено без AI/OCR.';window.__PSK_DOC_AI_ENABLED=true;window.__PSK_DOC_FORCED_TYPE='';return result;}
@@ -131,7 +132,7 @@
   function installDocumentListFallback(){
     if(window.__PSK_DOC_LIST_FALLBACK_INSTALLED)return true;const originalShow=window.showDocuments;if(typeof originalShow!=='function')return false;
     window.showDocuments=async function(id){
-      await originalShow(id);const rows=document.getElementById('documentRows');if(!rows||rows.children.length)return;
+      await originalShow(id);const rows=document.getElementById('documentRows');if(!rows||rows.dataset.requirementsManaged||rows.children.length)return;
       const {data:reqs,error:reqError}=await supabaseClient.from('document_requirements').select('*').eq('active',true).order('sort_order',{ascending:true});if(reqError){console.error('Document list fallback:',reqError);return}
       const {data:docs}=await supabaseClient.from('documents').select('*').eq('candidate_id',id).order('created_at',{ascending:true});
       rows.innerHTML=(reqs||[]).map(r=>{const m=(docs||[]).filter(d=>d.requirement_id===r.id||d.document_type===r.document_type),latest=m[m.length-1];const status=!m.length?(r.is_required?'Не завантажено':'Не додано'):(m.some(d=>d.verification_status==='Підтверджено')?'Підтверджено':m.some(d=>d.processing_status==='AI оброблено')?'AI розпізнано · перевірити':'Завантажено · перевірити');return `<tr><td><b>${docEscape(r.document_type)}</b>${r.condition_note?`<div class="muted" style="font-size:10px;margin-top:3px">${docEscape(r.condition_note)}</div>`:''}</td><td>${r.is_required?'<b>Обов’язковий</b>':'За наявності'}</td><td><span class="status status-work">${status}</span></td><td>${latest?`<span style="font-size:11px">${docEscape(latest.file_name||'PDF')} · ${formatDocSize(latest.file_size)}</span>`:'—'}</td><td>${latest?.ai_document_type?`<span style="font-size:10px"><b>${docEscape(latest.ai_document_type)}</b><br>${Math.round(Number(latest.ai_confidence||0)*100)}%</span>`:'—'}</td><td><button style="border:1px solid #d8e0e3;background:#fff;border-radius:7px;padding:7px 9px;font-weight:700" onclick="openAddDocumentModal('${id}','${r.id}')">＋ Додати</button>${latest?` <button style="border:1px solid #d8e0e3;background:#fff;border-radius:7px;padding:7px 9px;font-weight:700" onclick="openDocument('${latest.id}')">Відкрити</button>`:''}</td></tr>`}).join('');

@@ -67,7 +67,7 @@ function showCandidates() {
         <div class="page-subtitle">База кандидатів PSK_RECRUTER</div>
       </div>
       <div class="quick-actions">
-        <button onclick="showNewCandidateForm()">+ Нова особова справа</button>
+        <button onclick="crmNavigate('new')">+ Додати кандидата</button>
       </div>
     </div>
 
@@ -97,7 +97,7 @@ function showCandidates() {
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Бажана посада</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Напрям</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Статус</th>
-            <th style="padding:14px;border-bottom:1px solid #e0e6e8">Дії</th>
+            <th data-delete-column="1" style="padding:14px;border-bottom:1px solid #e0e6e8">Дії</th>
           </tr>
         </thead>
         <tbody id="candidateRows"></tbody>
@@ -106,8 +106,9 @@ function showCandidates() {
 
   async function render() {
     const candidates = await getCandidates();
-    const q = document.getElementById('candidateSearch').value.trim().toLowerCase();
-    const status = document.getElementById('candidateStatus').value;
+    if(!content.querySelector('#candidateSearch'))return;
+    const q = content.querySelector('#candidateSearch').value.trim().toLowerCase();
+    const status = content.querySelector('#candidateStatus').value;
 
     const filtered = candidates.filter(c => {
       const text = [
@@ -119,18 +120,19 @@ function showCandidates() {
         (!status || c.recruitment_status === status);
     });
 
-    const rows = document.getElementById('candidateRows');
+    const rows = content.querySelector('#candidateRows');
+    if(!rows)return;
     rows.innerHTML = filtered.length ? filtered.map(c => `
-      <tr style="border-top:1px solid #edf0f1">
+      <tr data-candidate-id="${escapeHtml(c.id)}" style="border-top:1px solid #edf0f1">
         <td style="padding:14px"><b>${escapeHtml(c.name_nominative || c.full_name || '')}</b></td>
         <td style="padding:14px">${escapeHtml(c.phone || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
         <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
         <td style="padding:14px;white-space:nowrap;display:flex;gap:7px">
-          <button type="button" onclick="openCandidateCard('${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">↗ Відкрити</button>
-          <button type="button" onclick="showDocuments('${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">▣ Документи</button>
-          <button type="button" onclick="deleteCandidateCase('${c.id}', ${JSON.stringify(c.name_nominative || c.full_name || 'кандидата')})" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити</button>
+          <button type="button" onclick="crmNavigate('card','${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">↗ Відкрити</button>
+          <button type="button" onclick="crmNavigate('documents','${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">▣ Документи</button>
+          <button type="button" data-delete-candidate="1" onclick="deleteCandidateCase('${c.id}')" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити</button>
         </td>
       </tr>`).join('') : `
       <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
@@ -156,7 +158,7 @@ function showNewCandidateForm() {
         <div class="page-subtitle">Вихідна точка — рекомендаційний лист. Система робить виборку, а рекрутер підтверджує дані.</div>
       </div>
       <div class="quick-actions">
-        <button onclick="showCandidates()">← Назад до кандидатів</button>
+        <button onclick="crmNavigate('candidates')">← Назад до кандидатів</button>
       </div>
     </div>
 
@@ -289,7 +291,7 @@ function showNewCandidateForm() {
     }
   });
 
-  document.getElementById('cancelCandidate').onclick = showCandidates;
+  document.getElementById('cancelCandidate').onclick = ()=>crmNavigate('candidates');
   document.getElementById('candidateForm').onsubmit = saveCandidateFromRecommendation;
 }
 
@@ -845,25 +847,18 @@ async function saveCandidateFromRecommendation(event) {
 
   await updateDashboard();
 
+  form.dataset.savedCandidateId=data.id;
   setTimeout(() => {
-    showCandidates();
+    if(form.isConnected)crmNavigate('card',data.id);
   }, 1100);
+  return data.id;
 }
 
 function setupMenu() {
-  document.querySelectorAll('.menu-item').forEach(item => {
-    item.addEventListener('click', () => {
-      document.querySelectorAll('.menu-item').forEach(x => x.classList.remove('active'));
-      item.classList.add('active');
-
-      const text = item.textContent.trim();
-      if (text === 'Головна') location.reload();
-      if (text === 'Кандидати') showCandidates();
-      if (text === 'Нова особова справа') showNewCandidateForm();
-      if (text === 'Документи') alert('Документи будуть доступні в картці кандидата.');
-      if (text === 'Пошук') showCandidates();
-      if (text === 'Налаштування') alert('Налаштування ролей додамо наступним етапом.');
-    });
+  document.querySelectorAll('[data-nav]').forEach(item => {
+    if (item.dataset.navBound) return;
+    item.dataset.navBound = '1';
+    item.addEventListener('click', () => crmNavigate(item.dataset.nav));
   });
 }
 
@@ -874,6 +869,7 @@ async function startCRM() {
   setupMenu();
 }
 
+setupMenu();
 startCRM();
 
 /* PSK_NAME_CASES_INTEGRATION_V1 */
@@ -1095,7 +1091,7 @@ async function renderCandidateCard(candidateId) {
         <p class="page-subtitle">Єдина форма перевірки та підтвердження даних з документів.</p>
       </div>
       <div class="quick-actions">
-        <button onclick="showCandidates()">← До кандидатів</button>
+        <button onclick="crmNavigate('candidates')">← До кандидатів</button>
       </div>
     </div>
 
@@ -1247,7 +1243,7 @@ async function renderCandidateCard(candidateId) {
 
       <div style="display:flex;gap:9px;flex-wrap:wrap">
         <button type="submit" style="background:#18232d;color:#fff">Зберегти зміни</button>
-        <button type="button" onclick="showCandidates()" style="border:1px solid #d8e0e3;background:#fff;color:#45525a">Скасувати</button>
+        <button type="button" onclick="crmNavigate('candidates')" style="border:1px solid #d8e0e3;background:#fff;color:#45525a">Скасувати</button>
       </div>
       <div id="candidateCardSaveStatus" style="margin-top:12px;color:#68757d;font-size:12px;min-height:18px"></div>
     </form>`;
@@ -1440,7 +1436,7 @@ window.openCandidateCard = async function(candidateId) {
     console.error('Помилка відкриття картки кандидата:', e);
     const content = document.querySelector('.content');
     if (content) {
-      content.innerHTML = '<div class="card"><b>Помилка відкриття картки кандидата.</b><div style="margin-top:8px;color:#a23f38">' + escapeHtml(e?.message || e || 'Невідома помилка') + '</div><button type="button" onclick="showCandidates()" style="margin-top:14px;padding:9px 12px;border:1px solid #cfd8dc;border-radius:7px;background:#fff">← Назад до кандидатів</button></div>';
+      content.innerHTML = '<div class="card"><b>Помилка відкриття картки кандидата.</b><div style="margin-top:8px;color:#a23f38">' + escapeHtml(e?.message || e || 'Невідома помилка') + '</div><button type="button" onclick="crmNavigate(\'candidates\')" style="margin-top:14px;padding:9px 12px;border:1px solid #cfd8dc;border-radius:7px;background:#fff">← Назад до кандидатів</button></div>';
     } else {
       alert('Помилка відкриття картки кандидата: ' + (e?.message || e || 'Невідома помилка'));
     }

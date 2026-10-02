@@ -18,11 +18,13 @@ jobs:
           s=p.read_text(encoding='utf-8')
           # Remove every legacy/duplicate recommendation uploader include.
           s=re.sub(r'<script\s+src=["\']recommendation-upload-fix\.js(?:\?[^"\']*)?["\']></script>\s*', '', s)
+          # The bridge must be single and follow its uploader.
+          s=re.sub(r'<script\s+src=["\']ai-recommendation-bridge\.js(?:\?[^"\']*)?["\']></script>\s*', '', s)
           marker='</body>'
           if marker not in s: raise SystemExit('Cannot find </body>')
           tags=(
               '<script src="recommendation-upload-fix.js?v=20260930-ai5"></script>\n'
-              '<script src="ai-recommendation-bridge.js?v=20260930-ai1"></script>\n'
+              '<script src="ai-recommendation-bridge.js?v=20261002-ux1"></script>\n'
           )
           s=s.replace(marker,tags+marker,1)
           p.write_text(s,encoding='utf-8')
