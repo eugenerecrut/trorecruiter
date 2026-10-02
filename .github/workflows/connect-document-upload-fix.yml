@@ -1,4 +1,4 @@
-name: Fix document menu
+name: Restore document menu
 on:
   push:
     branches: [main]
@@ -9,27 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch document menu handlers
+      - name: Restore Documents menu handlers
         shell: python
         run: |
           from pathlib import Path
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-          old1 = '<div class="menu-item">▣ &nbsp;Документи</div>'
-          new1 = '<div class="menu-item" onclick="showDocuments()">▣ &nbsp;Документи</div>'
-          if old1 in s:
-              s = s.replace(old1, new1, 1)
-          old2 = '<button onclick="showCandidates()">▣ Документи</button>'
-          new2 = '<button onclick="showDocuments()">▣ Документи</button>'
-          if old2 in s:
-              s = s.replace(old2, new2, 1)
-          tag = '<script src="document-upload-fix.js"></script>'
-          if tag not in s and '</body>' in s:
-              s = s.replace('</body>', tag + '\n</body>', 1)
+          s = s.replace('onclick="showDocuments()">▣ &nbsp;Документи', 'onclick="showCandidates()">▣ &nbsp;Документи', 1)
+          s = s.replace('onclick="showDocuments()">▣ Документи', 'onclick="showCandidates()">▣ Документи', 1)
           p.write_text(s, encoding='utf-8')
-      - name: Commit patched index
+      - name: Commit restored index
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          if git diff --cached --quiet; then echo "No changes"; else git commit -m "Fix Documents menu handlers"; git push; fi
+          if git diff --cached --quiet; then echo "No changes"; else git commit -m "Restore Documents menu behavior"; git push; fi
