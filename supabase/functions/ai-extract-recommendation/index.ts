@@ -15,6 +15,7 @@ const schema = {
       additionalProperties: false,
       properties: {
         full_name: { type: ['string', 'null'] },
+        sex: { type: ['string', 'null'], enum: ['male', 'female', null] },
         birth_date: { type: ['string', 'null'] },
         phone: { type: ['string', 'null'] },
         address: { type: ['string', 'null'] },
@@ -23,7 +24,7 @@ const schema = {
         tcc: { type: ['string', 'null'] },
         civilian_profession: { type: ['string', 'null'] },
       },
-      required: ['full_name','birth_date','phone','address','rnokpp','military_rank','tcc','civilian_profession'],
+      required: ['full_name','sex','birth_date','phone','address','rnokpp','military_rank','tcc','civilian_profession'],
     },
     service: {
       type: 'object',
@@ -83,6 +84,7 @@ const systemPrompt = [
   'Спочатку визнач за змістом документа, які дані він підтверджує. Не вимагай від документа військових або службових полів, яких у ньому закономірно немає.',
   'Якщо значення немає або воно нечитабельне — поверни null для полів personal/service або порожній рядок для полів relatives та додай поле до missing_fields.',
   'Зберігай ПІБ, дати, місця, назви установ, військові частини, ВОС, ШПК та інші формулювання максимально близько до документа.',
+  'Для кандидата визнач стать лише за його ПІБ (особливо по батькові та граматичною формою імені). Поверни male або female, тільки якщо впевненість висока; інакше null. Не визначай стать за підписантом, рекрутером чи іншою згаданою особою.',
   'Службові дані рекомендаційного листа повинні потрапляти до service, а не до personal.',
   'КРИТИЧНО ДЛЯ РОДИЧІВ: якщо свідоцтво про народження містить батька та/або матір дитини, обов’язково створи для кожного окремий об’єкт у relatives з relation = Батько або Мати.',
   'У свідоцтві про народження ПІБ дитини є кандидатом (personal.full_name), а ПІБ батька та матері є родичами кандидата. Не плутай їх місцями.',
