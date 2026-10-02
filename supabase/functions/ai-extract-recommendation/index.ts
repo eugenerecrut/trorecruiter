@@ -101,6 +101,43 @@ const systemPrompt = [
   'meta.source: вкажи фактичний тип документа, якщо його можна визначити з тексту (наприклад: Свідоцтво про народження, Свідоцтво про шлюб, Свідоцтво про розірвання шлюбу, Рекомендаційний лист, Інший підтвердний документ).',
 ].join('\n')
 
+async function fetchGeminiWithRetries(apiKey:string,model:string,requestBody:unknown):Promise<Response>{
+  const deadline=Date.now()+110000;
+  let lastResponse:Response|undefined;
+  let lastResponseBody:string|undefined;
+  let lastError:unknown;
+  for(let attempt=1;attempt<=6;attempt++){
+    const remaining=deadline-Date.now();
+    if(remaining<=0)break;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),Math.min(8000,remaining));
+    try{
+      lastResponse=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+        method:'POST',
+        headers:{'x-goog-api-key':apiKey,'Content-Type':'application/json'},
+        body:JSON.stringify(requestBody),
+        signal:controller.signal,
+      });
+      lastError=undefined;
+    }catch(error){
+      lastResponse=undefined;
+      lastError=error;
+    }finally{
+      clearTimeout(timer);
+    }
+    if(lastResponse?.ok)return lastResponse;
+    if(lastResponse&&![429,500,502,503,504].includes(lastResponse.status))return lastResponse;
+    if(lastResponse)lastResponseBody=await lastResponse.text().catch(()=> '');
+    if(attempt===6)break;
+    const pause=Math.min(1000*Math.pow(2,attempt-1),10000,Math.max(0,deadline-Date.now()));
+    if(pause<=0)break;
+    console.warn('Gemini transient error; retrying',{model,attempt,status:lastResponse?.status??'network',pauseMs:pause});
+    await new Promise(resolve=>setTimeout(resolve,pause));
+  }
+  if(lastResponse)return new Response(lastResponseBody??'',{status:lastResponse.status,statusText:lastResponse.statusText,headers:lastResponse.headers});
+  throw lastError??new Error('Gemini retry deadline reached before a response');
+}
+
 async function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } })
 }
