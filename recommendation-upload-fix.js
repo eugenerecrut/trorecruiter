@@ -96,5 +96,18 @@
     if (docError) { await client.storage.from('candidate-documents').remove([storagePath]); return { ok:false, reason:`Реєстр документів: ${docError.message}` }; }
     return { ok:true, storagePath, verified:true };
   };
+
+  // Restore the main CRM Documents menu action without touching index.html.
+  function bindDocumentsMenu() {
+    document.querySelectorAll('.menu-item').forEach((el) => {
+      if (String(el.textContent || '').replace(/\s+/g, ' ').trim().includes('Документи')) {
+        el.onclick = function () { window.location.href = 'candidates.html'; };
+        el.style.cursor = 'pointer';
+      }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindDocumentsMenu, { once: true });
+  else bindDocumentsMenu();
+
   console.info('PSK recommendation upload + AI extraction fix v8 loaded');
 })();
