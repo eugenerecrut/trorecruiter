@@ -36,6 +36,7 @@
     return {
       full_name: p.full_name || '', birth_date: p.birth_date || '', phone: p.phone || '', address: p.address || '',
       rnokpp: p.rnokpp || '', military_rank: p.military_rank || '', tcc: p.tcc || '', civilian_profession: p.civilian_profession || '',
+      sex: ['male','female'].includes(p.sex) ? p.sex : '', name_gender: p.sex === 'male' ? 'Чоловіча' : p.sex === 'female' ? 'Жіноча' : n.gender || '',
       gender: n.gender || '', name_nominative: n.nominative || p.full_name || '', name_genitive: n.genitive || '', name_dative: n.dative || '',
       name_accusative: n.accusative || '', name_instrumental: n.instrumental || '', name_locative: n.locative || '', name_vocative: n.vocative || '',
       military_unit: s.military_unit || '', desired_unit: s.desired_unit || '', desired_position: s.desired_position || '', shpk: s.shpk || '',
