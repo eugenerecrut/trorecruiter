@@ -1074,6 +1074,11 @@ async function renderCandidateCard(candidateId) {
   const c = candidateRes.data || {};
   const pf = fileRes.data || {};
   const docs = docsRes.data || [];
+  let candidateProfile = c.profile_data || {};
+  if (typeof candidateProfile === 'string') {
+    try { candidateProfile = JSON.parse(candidateProfile); } catch (_) { candidateProfile = {}; }
+  }
+  if (!candidateProfile || typeof candidateProfile !== 'object' || Array.isArray(candidateProfile)) candidateProfile = {};
 
   const nameNom = c.name_nominative || c.full_name || '';
   const nameGen = c.name_genitive || '';
@@ -1106,7 +1111,30 @@ async function renderCandidateCard(candidateId) {
           ${profileField('Дата народження','birth_date',c.birth_date,'type="date"')}
           ${profileField('Місце народження','birth_place',c.birth_place || pf.birth_place)}
           ${profileField('РНОКПП','rnokpp',c.rnokpp)}
-          ${profileField('Паспортні дані','passport_data',c.passport_data || pf.passport_data)}
+          <div style="grid-column:1/-1">
+            <label>Тип документа</label>
+            <select name="identity_document_type" id="identityDocumentType">
+              <option value="" ${!candidateProfile.identity_document_type ? 'selected' : ''}>Не визначено</option>
+              <option value="ID" ${candidateProfile.identity_document_type === 'ID' ? 'selected' : ''}>Паспорт громадянина України (ID-картка)</option>
+              <option value="passport" ${candidateProfile.identity_document_type === 'passport' ? 'selected' : ''}>Паспорт громадянина України (книжечка)</option>
+              <option value="birth" ${candidateProfile.identity_document_type === 'birth' ? 'selected' : ''}>Свідоцтво про народження</option>
+            </select>
+          </div>
+          <div id="idCardFields" style="grid-column:1/-1;display:${candidateProfile.identity_document_type === 'ID' ? 'grid' : 'none'};grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
+            ${profileField('Номер ID-картки','id_card_number',candidateProfile.passport_number)}
+            ${profileField('Ким видана ID-картка','id_card_issuer',candidateProfile.passport_issuer)}
+            ${profileField('Дата видачі ID-картки','id_card_issue_date',candidateProfile.passport_issue_date,'type="date"')}
+          </div>
+          <div id="bookletFields" style="grid-column:1/-1;display:${candidateProfile.identity_document_type === 'passport' ? 'grid' : 'none'};grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px">
+            ${profileField('Серія паспорта-книжечки','passport_series',candidateProfile.passport_series)}
+            ${profileField('Номер паспорта-книжечки','passport_number',candidateProfile.passport_number)}
+            ${profileField('Ким виданий паспорт','passport_issuer',candidateProfile.passport_issuer)}
+            ${profileField('Дата видачі паспорта','passport_issue_date',candidateProfile.passport_issue_date,'type="date"')}
+          </div>
+          <div id="birthCertificateFields" style="grid-column:1/-1;display:${candidateProfile.identity_document_type === 'birth' ? 'block' : 'none'}">
+            ${profileField('Номер свідоцтва про народження','birth_certificate',candidateProfile.birth_certificate || candidateProfile.document_number || '')}
+          </div>
+          ${!candidateProfile.identity_document_type ? profileField('Паспортні дані','passport_data',c.passport_data || pf.passport_data) : ''}
           ${profileField('Телефон','phone',c.phone)}
           ${profileField('Email','email',c.email)}
           ${profileField('Адреса','address',pf.address)}
@@ -1226,6 +1254,15 @@ async function renderCandidateCard(candidateId) {
 
   const sexEl = document.getElementById('candidateSex');
   const maritalEl = document.getElementById('maritalStatus');
+  const identityTypeEl = document.getElementById('identityDocumentType');
+  if (identityTypeEl) {
+    identityTypeEl.addEventListener('change', () => {
+      const value = identityTypeEl.value;
+      document.getElementById('idCardFields').style.display = value === 'ID' ? 'grid' : 'none';
+      document.getElementById('bookletFields').style.display = value === 'passport' ? 'grid' : 'none';
+      document.getElementById('birthCertificateFields').style.display = value === 'birth' ? 'block' : 'none';
+    });
+  }
   if (sexEl && maritalEl) {
     sexEl.addEventListener('change', () => {
       maritalEl.innerHTML = maritalOptions(sexEl.value, '');
@@ -1245,7 +1282,9 @@ async function renderCandidateCard(candidateId) {
     }
 
     const parseBool = v => v === '' ? null : v === 'true';
-    const previousProfile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
+    const previousProfile = candidateProfile;
+    const identityDocumentType = String(fd.get('identity_document_type') || '').trim();
+    const profileValue = (key, inputName) => String(fd.get(inputName) || '').trim() || previousProfile[key] || null;
 
     status.textContent = 'Зберігаємо підтверджені дані...';
 
@@ -1258,7 +1297,7 @@ async function renderCandidateCard(candidateId) {
         birth_date: fd.get('birth_date') || null,
         birth_place: String(fd.get('birth_place') || '').trim() || null,
         rnokpp: String(fd.get('rnokpp') || '').trim() || null,
-        passport_data: String(fd.get('passport_data') || '').trim() || null,
+        passport_data: fd.has('passport_data') ? (String(fd.get('passport_data') || '').trim() || null) : (c.passport_data || null),
         sex: String(fd.get('sex') || '') || null,
         marital_status: String(fd.get('marital_status') || '').trim() || null,
         has_children: parseBool(fd.get('has_children')),
@@ -1277,6 +1316,12 @@ async function renderCandidateCard(candidateId) {
         notes: String(fd.get('notes') || '').trim() || null,
         profile_data: {
           ...previousProfile,
+          identity_document_type: identityDocumentType || previousProfile.identity_document_type || null,
+          birth_certificate: String(fd.get('birth_certificate') || '').trim() || previousProfile.birth_certificate || null,
+          passport_series: profileValue('passport_series','passport_series'),
+          passport_number: profileValue('passport_number',identityDocumentType === 'ID' ? 'id_card_number' : 'passport_number'),
+          passport_issuer: profileValue('passport_issuer',identityDocumentType === 'ID' ? 'id_card_issuer' : 'passport_issuer'),
+          passport_issue_date: profileValue('passport_issue_date',identityDocumentType === 'ID' ? 'id_card_issue_date' : 'passport_issue_date'),
           military_unit: String(fd.get('military_unit') || '').trim() || '',
           updated_from_candidate_card: true
         },
@@ -1294,7 +1339,7 @@ async function renderCandidateCard(candidateId) {
       address: String(fd.get('address') || '').trim() || null,
       family_status: String(fd.get('marital_status') || '').trim() || null,
       birth_place: String(fd.get('birth_place') || '').trim() || null,
-      passport_data: String(fd.get('passport_data') || '').trim() || null,
+      passport_data: fd.has('passport_data') ? (String(fd.get('passport_data') || '').trim() || null) : (pf.passport_data || null),
       children_info: String(fd.get('children_info') || '').trim() || null,
       work_history: String(fd.get('work_history') || '').trim() || null,
       military_service_history: String(fd.get('military_service_history') || '').trim() || null,
