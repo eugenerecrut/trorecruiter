@@ -16,8 +16,8 @@ jobs:
           import re
           p=Path('index.html')
           s=p.read_text(encoding='utf-8')
-          # Remove every legacy/duplicate recommendation uploader include.
-          s=re.sub(r'<script\s+src=["\']recommendation-upload-fix\.js(?:\?[^"\']*)?["\']></script>\s*', '', s)
+          # Keep one current include of each recommendation script.
+          s=re.sub(r'<script\s+src=["\'](?:recommendation-upload-fix|ai-recommendation-bridge)\.js(?:\?[^"\']*)?["\']></script>\s*', '', s)
           marker='</body>'
           if marker not in s: raise SystemExit('Cannot find </body>')
           tags=(
