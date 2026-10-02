@@ -65,10 +65,11 @@ async function showDocuments(id){
   });
   const knownIds=new Set(reqs.map(r=>r.id)),knownTypes=new Set(reqs.map(r=>r.document_type));
   docs.filter(d=>!knownIds.has(d.requirement_id)&&!knownTypes.has(d.document_type)).forEach(d=>rows.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true}));
-  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docScanFiles">Сканувати пакет</button></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
+  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docCameraFiles">📷 Сканувати камерою</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
   content.querySelector('#docBackCard').onclick=()=>crmNavigate('card',id);
   content.querySelector('#docAddFiles').onclick=()=>openAddDocumentModal(id);
   content.querySelector('#docScanFiles').onclick=()=>openScannerImport(id);
+  content.querySelector('#docCameraFiles').onclick=()=>openCameraDocument(id);
   const mandatory=rows.filter(row=>row.r.is_required&&row.condition===true);
   const uploaded=mandatory.filter(row=>row.files.length).length;
   const verified=mandatory.filter(row=>row.files.some(d=>d.verification_status==='Підтверджено')).length;
@@ -113,11 +114,11 @@ async function makeDocumentInput(id,reqId=''){
   document.body.append(modal);
   return getDocumentRequirements().then(reqs=>{
     const options='<option value="">Оберіть тип документа</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
-    modal.innerHTML='<h2>Додати документи</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · виберіть тип для кожного файла до обробки.</p><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label><input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
+    modal.innerHTML='<h2>Додати документи</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · виберіть тип для кожного файла до обробки.</p><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
     const input=modal.querySelector('#docFileInput'),rootType=modal.querySelector('#docRequirement'),plan=modal.querySelector('#docFilePlan'),upload=modal.querySelector('#docUploadButton');
     const render=()=>{
       const files=Array.from(input.files||[]);
-      plan.innerHTML=files.map((file,i)=>'<div class="crm-review-field"><strong>'+docEscape(file.name)+'</strong><select data-file-type="'+i+'" class="crm-search">'+options+'</select><small data-file-mode="'+i+'"></small></div>').join('');
+      plan.innerHTML=files.map((file,i)=>'<div class="crm-review-field"><strong>'+docEscape(file.name)+'</strong><small style="display:block;margin:6px 0">'+formatDocSize(file.size)+'</small><select data-file-type="'+i+'" class="crm-search">'+options+'</select><small data-file-mode="'+i+'"></small></div>').join('');
       plan.querySelectorAll('select').forEach(select=>select.value=rootType.value);updateMode();
     };
     const updateMode=()=>{
@@ -128,12 +129,37 @@ async function makeDocumentInput(id,reqId=''){
     input.addEventListener('change',render);
     rootType.addEventListener('change',()=>{plan.querySelectorAll('select').forEach(s=>s.value=rootType.value);updateMode()});
     plan.addEventListener('change',updateMode);
-    modal.querySelector('#closeDocModal').onclick=async()=>{if(CRMWorkspace.busy)return;modal.close();modal.remove();await showDocuments(id)};
+    modal.querySelector('#closeDocModal').onclick=async()=>{if(CRMWorkspace.busy)return;if(modal.querySelector('#docFileInput')?.files?.length&&modal.dataset.uploadComplete!=='true'&&!confirm('Файли ще не завантажені. Закрити вікно та відкинути вибір?'))return;modal.close();modal.remove();await showDocuments(id)};
     modal.addEventListener('cancel',e=>{e.preventDefault();if(!CRMWorkspace.busy)modal.querySelector('#closeDocModal').click()});
-    upload.onclick=uploadSelectedDocuments;modal.showModal();
+    upload.onclick=uploadSelectedDocuments;
+    modal.querySelector('#docModalCamera').onclick=()=>scanIntoDocumentModal(modal);
+    modal.showModal();
   }).catch(e=>{modal.remove();alert(e.message)});
 }
 function openAddDocumentModal(id,reqId=''){activeDocumentsCandidateId=id;makeDocumentInput(id,reqId)}
+function scanIntoDocumentModal(modal){
+  if(!window.DocumentCamera||CRMWorkspace.busy||!modal?.isConnected)return;
+  const type=modal.querySelector('#docRequirement');
+  const title=type.value?type.options[type.selectedIndex].text:'Документ';
+  DocumentCamera.open({title,onComplete:async file=>{
+    if(!modal.isConnected)throw new Error('Вікно завантаження закрите. Відкрийте його знову.');
+    const input=modal.querySelector('#docFileInput');
+    const selectedTypes=[...modal.querySelectorAll('[data-file-type]')].map(select=>select.value);
+    const transfer=new DataTransfer();
+    [...input.files,file].forEach(item=>transfer.items.add(item));input.files=transfer.files;
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    modal.querySelectorAll('[data-file-type]').forEach((select,index)=>{if(index<selectedTypes.length)select.value=selectedTypes[index]});
+    modal.querySelector('#docFilePlan').dispatchEvent(new Event('change',{bubbles:true}));
+    modal.querySelector('#docUploadStatus').textContent='PDF підготовлено. Перевірте тип і натисніть «Завантажити документи».';
+  }});
+}
+async function openCameraDocument(id,reqId=''){
+  if(CRMWorkspace.busy)return;
+  await makeDocumentInput(id,reqId);
+  const modal=document.getElementById('documentModal');
+  if(modal?.dataset.candidateId===id)scanIntoDocumentModal(modal);
+}
+
 async function classifyStoredDocument(documentId,path,fileName,extractedText=''){
 if(!documentId)throw new Error('Не передано ID документа для AI');
 const doc={id:documentId};
@@ -212,6 +238,7 @@ async function uploadSelectedDocuments(){
     status.textContent=results.join('\n');
     modal.querySelector('#closeDocModal').disabled=false;
     modal.querySelector('#docUploadButton').textContent='Обробку завершено';
+    modal.dataset.uploadComplete='true';
   }
 }
 

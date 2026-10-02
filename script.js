@@ -180,6 +180,7 @@ function showNewCandidateForm() {
         </div>
       </label>
       <input id="recommendationFile" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style="display:none">
+      <div class="crm-actions"><button type="button" class="crm-button" data-scan-recommendation>📷 Сканувати рекомендаційний лист</button></div>
 
       <div id="ocrStatus" style="margin-top:15px;color:#68757d;font-size:12px;min-height:18px"></div>
 

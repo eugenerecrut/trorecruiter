@@ -1,0 +1,124 @@
+/* Layout is chosen by CRMInterface; desktop and mobile share all forms and data. */
+.crm-interface-choice{display:flex;align-items:center;gap:6px;font-size:12px;color:#53616a}
+.crm-interface-choice select{max-width:150px;min-height:38px;padding:6px 8px;border:1px solid #d8e0e3;border-radius:8px;background:#fff;color:#24313a}
+.crm-bottom-nav,.crm-menu-shade,.crm-side-mode{display:none}
+.sidebar{flex-shrink:0}.header-left,.user-area{min-width:0}
+html[data-crm-layout="desktop"] .content{min-width:650px}
+html[data-crm-layout="desktop"] .side{flex-shrink:0}
+html[data-crm-layout="mobile"] body{overflow-x:hidden}
+html[data-crm-layout="mobile"] .header{height:68px;padding:0 12px;gap:8px}
+html[data-crm-layout="mobile"] .header-left{gap:7px}
+html[data-crm-layout="mobile"] .header-logo{font-size:14px;letter-spacing:0}
+html[data-crm-layout="mobile"] .header-meta,
+html[data-crm-layout="mobile"] .user-email,
+html[data-crm-layout="mobile"] .user-badge{display:none}
+html[data-crm-layout="mobile"] .user-area{gap:6px}
+html[data-crm-layout="mobile"] .user-area .crm-interface-choice{display:none}
+html[data-crm-layout="mobile"] .crm-side-mode{display:grid;gap:8px;color:#c4ced4;margin:16px 12px}
+html[data-crm-layout="mobile"] .crm-side-mode select{width:100%;max-width:none}
+html[data-crm-layout="mobile"] .crm-interface-choice>span{display:none}
+html[data-crm-layout="mobile"] .crm-interface-choice select{font-size:12px;max-width:117px;min-height:44px}
+html[data-crm-layout="mobile"] .logout{padding:8px;min-height:44px;font-size:12px}
+html[data-crm-layout="mobile"] .mobile-menu{display:block;min-width:44px;min-height:44px;padding:5px}
+html[data-crm-layout="mobile"] .layout{display:block;min-height:calc(100dvh - 68px)}
+html[data-crm-layout="mobile"] .sidebar{position:fixed;left:0;top:68px;bottom:0;width:min(300px,86vw);z-index:25;transform:translateX(-100%);transition:transform .2s;overflow:auto}
+html[data-crm-layout="mobile"] .sidebar.open{transform:translateX(0)}
+html[data-crm-layout="mobile"] .crm-menu-shade:not([hidden]){display:block;position:fixed;inset:68px 0 0;background:#0a121866;z-index:24;border:0}
+html[data-crm-layout="mobile"] .sidebar .menu-item{min-height:48px}
+html[data-crm-layout="mobile"] .content{width:100%;max-width:760px;margin:0 auto;padding:18px 12px calc(90px + env(safe-area-inset-bottom))}
+html[data-crm-layout="mobile"] .dashboard-top{align-items:stretch;flex-direction:column;gap:12px;margin-bottom:18px}
+html[data-crm-layout="mobile"] .page-title{font-size:23px;overflow-wrap:anywhere}
+html[data-crm-layout="mobile"] .page-subtitle{font-size:13px;line-height:1.5}
+html[data-crm-layout="mobile"] .quick-actions{gap:8px}
+html[data-crm-layout="mobile"] .quick-actions button{flex:1 1 140px;min-height:44px}
+html[data-crm-layout="mobile"] .cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+html[data-crm-layout="mobile"] .metric-card{padding:12px 9px}
+html[data-crm-layout="mobile"] .card-number{font-size:27px}
+html[data-crm-layout="mobile"] .card-note{font-size:10px;line-height:1.4}
+html[data-crm-layout="mobile"] .metric-card::after{display:none}
+html[data-crm-layout="mobile"] .dashboard-grid,
+html[data-crm-layout="mobile"] .lower-grid{grid-template-columns:minmax(0,1fr)}
+html[data-crm-layout="mobile"] .card{overflow-wrap:anywhere}
+html[data-crm-layout="mobile"] .panel-head{gap:10px}
+html[data-crm-layout="mobile"] .crm-bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:12;padding:7px 8px calc(7px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #d8e0e3;box-shadow:0 -4px 20px #17232c0a}
+html[data-crm-layout="mobile"] .crm-bottom-nav button{flex:1;border:0;background:#fff;border-radius:10px;min-height:48px;font-weight:700;color:#64727b;display:grid;gap:3px;place-content:center;font-size:12px}
+html[data-crm-layout="mobile"] .crm-bottom-nav button span{font-size:18px}
+html[data-crm-layout="mobile"] .crm-bottom-nav button.active{background:#edf4db;color:#536c21}
+html[data-crm-layout="mobile"] .crm-adaptive-table{display:block;min-width:0!important;width:100%!important}
+html[data-crm-layout="mobile"] .crm-adaptive-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+html[data-crm-layout="mobile"] .crm-adaptive-table tbody{display:grid;gap:12px;padding:10px}
+html[data-crm-layout="mobile"] .crm-adaptive-table tr{display:block;border:1px solid #e0e6e8!important;border-radius:12px;overflow:hidden;background:#fff}
+html[data-crm-layout="mobile"] .crm-adaptive-table td{display:block!important;padding:9px 12px!important;white-space:normal!important;border:0;font-size:14px;overflow-wrap:anywhere}
+html[data-crm-layout="mobile"] .crm-adaptive-table td[data-label]::before{content:attr(data-label);display:block;font-size:11px;color:#7b8991;margin-bottom:4px;font-weight:600}
+html[data-crm-layout="mobile"] .crm-adaptive-table td:first-child{background:#f7f9f9;padding-top:13px!important}
+html[data-crm-layout="mobile"] .crm-adaptive-table td:first-child b{font-size:15px;line-height:1.45}
+html[data-crm-layout="mobile"] .crm-adaptive-table td:last-child{padding-bottom:13px!important}
+html[data-crm-layout="mobile"] .crm-adaptive-table td button{min-height:44px;margin:3px 3px 3px 0;font-size:13px}
+html[data-crm-layout="mobile"] .crm-adaptive-table .status{font-size:12px;line-height:1.4}
+html[data-crm-layout="mobile"] .crm-document-file{display:grid;grid-template-columns:1fr 1fr;gap:6px;border:1px solid #e6eaec;border-radius:10px;padding:10px}
+html[data-crm-layout="mobile"] .crm-document-file small{grid-column:1/-1;max-width:none;font-size:12px}
+html[data-crm-layout="mobile"] .crm-filter-bar{flex-wrap:nowrap;overflow:auto;padding-bottom:6px}
+html[data-crm-layout="mobile"] .crm-filter-bar button{white-space:nowrap;min-height:44px}
+html[data-crm-layout="mobile"] .crm-card-nav{top:68px;flex-wrap:nowrap;overflow:auto;scrollbar-width:thin;padding:8px 0;margin-bottom:12px}
+html[data-crm-layout="mobile"] .crm-card-nav button{flex-shrink:0;min-height:44px}
+html[data-crm-layout="mobile"] .cc-grid,
+html[data-crm-layout="mobile"] .cc-templates,
+html[data-crm-layout="mobile"] #candidateForm,
+html[data-crm-layout="mobile"] #extractionGrid,
+html[data-crm-layout="mobile"] #nameCasesGrid{grid-template-columns:minmax(0,1fr)!important}
+html[data-crm-layout="mobile"] .cc-wide{grid-column:1/-1}
+html[data-crm-layout="mobile"] .cc-section{padding:16px}
+html[data-crm-layout="mobile"] .cc-section-head{margin:-16px -16px 16px;padding:14px 16px;gap:8px;flex-wrap:wrap}
+html[data-crm-layout="mobile"] input,
+html[data-crm-layout="mobile"] textarea,
+html[data-crm-layout="mobile"] select:not([data-interface-mode]){font-size:16px!important;max-width:100%;min-width:0!important}
+html[data-crm-layout="mobile"] .content button{min-height:44px}
+html[data-crm-layout="mobile"] .crm-desktop-scanner{display:none}
+html[data-crm-layout="mobile"] .cc-actions{bottom:calc(67px + env(safe-area-inset-bottom));gap:8px;margin-bottom:0}
+html[data-crm-layout="mobile"] .cc-actions button{flex:1}
+html[data-crm-layout="mobile"] .cc-status{width:100%}
+html[data-crm-layout="mobile"] .cc-doc{align-items:stretch;flex-direction:column}
+html[data-crm-layout="mobile"] .crm-picker,
+html[data-crm-layout="mobile"] .crm-template-grid,
+html[data-crm-layout="mobile"] .crm-review-values{grid-template-columns:minmax(0,1fr)}
+html[data-crm-layout="mobile"] .crm-information{padding:18px;font-size:12pt}
+html[data-crm-layout="mobile"] .crm-dialog{width:100%;max-width:none;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0;padding:18px 14px calc(18px + env(safe-area-inset-bottom));overflow:auto}
+html[data-crm-layout="mobile"] .crm-dialog .crm-actions button{min-height:44px;flex:1}
+html[data-crm-layout="mobile"] .crm-photo{gap:12px;align-items:flex-start}
+html[data-crm-layout="mobile"] .crm-photo img{width:81px;height:108px}
+html[data-crm-layout="mobile"] #candidateSearch{width:100%;flex-basis:100%!important}
+html[data-crm-layout="mobile"] #candidateStatus{width:100%}
+html[data-crm-layout="mobile"] .login-box{padding:26px 22px}
+/* The settings page uses the same remembered layout. */
+html[data-crm-layout="mobile"] .side{width:100%;padding:12px;display:flex;flex-wrap:wrap;gap:5px}
+html[data-crm-layout="mobile"] .side .brand{width:100%;padding:8px}
+html[data-crm-layout="mobile"] .side .section,
+html[data-crm-layout="mobile"] .side .sub{display:none}
+html[data-crm-layout="mobile"] .main{width:100%;padding:18px 12px;max-width:760px;margin:auto}
+html[data-crm-layout="mobile"] .steps{grid-template-columns:1fr}
+html[data-crm-layout="mobile"] .panel{padding:18px}
+/* Camera document editor, shared by both layouts. */
+.scan-dialog{width:min(850px,calc(100% - 24px));max-height:94dvh;padding:20px;border:1px solid #d8e0e3;border-radius:14px;color:#24313a;overflow:auto}
+.scan-dialog::backdrop{background:#0a1218a6}.scan-dialog h2{margin:0;font-size:21px}
+.scan-heading{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.scan-heading p{margin:6px 0 12px;font-size:13px;color:#66757e;line-height:1.5}
+.scan-dialog button{min-height:44px;border:1px solid #d8e0e3;border-radius:9px;background:#fff;color:#34414a;padding:10px 12px;font-weight:700;cursor:pointer}
+.scan-dialog button.primary{background:#25343f;border-color:#25343f;color:#fff}
+.scan-dialog .scan-tools{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.scan-tools button{flex:1}
+.scan-preview{position:relative;width:100%;max-width:520px;margin:12px auto;background:#17232c;border-radius:8px;overflow:hidden;line-height:0;touch-action:none}
+.scan-preview canvas{display:block;width:100%;height:auto}
+.scan-crop{position:absolute;border:2px solid #b7d957;box-shadow:0 0 0 2000px #10182066;pointer-events:none}
+.scan-handle{position:absolute;width:30px;height:30px;pointer-events:auto;touch-action:none;padding:0!important;border-radius:50%!important;border:3px solid #fff!important;background:#718d2e!important;min-height:30px!important;transform:translate(-50%,-50%)}
+.scan-handle[data-corner="tl"]{left:0;top:0}.scan-handle[data-corner="tr"]{left:100%;top:0}.scan-handle[data-corner="br"]{left:100%;top:100%}.scan-handle[data-corner="bl"]{left:0;top:100%}
+.scan-crop-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;font-size:12px}
+.scan-crop-fields label{display:grid;grid-template-columns:1fr 65px;align-items:center;gap:6px}
+.scan-crop-fields input{width:65px;padding:8px;border:1px solid #cfd8dc;border-radius:7px;font-size:16px}
+.scan-pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:14px 0}
+.scan-page{padding:10px;border:1px solid #d8e0e3;border-radius:10px;min-width:0}
+.scan-page img{display:block;width:100%;height:135px;object-fit:contain;background:#f3f5f5;margin:8px 0}
+.scan-page .scan-tools{gap:4px;margin:4px 0}.scan-page button{padding:7px;font-size:12px;flex:1;min-width:0}
+.scan-status{padding:10px 0;min-height:35px;font-size:13px;line-height:1.5;white-space:pre-line;color:#53616a}.scan-status[data-error="true"]{color:#a23e36}
+.scan-footer{position:sticky;bottom:0;background:#fff;padding:12px 0 0;border-top:1px solid #e0e6e8}
+.scan-dialog [name="scanName"]{width:100%;padding:12px;border:1px solid #cfd8dc;border-radius:8px;font-size:16px;margin:8px 0}
+.scan-discard{padding:12px;background:#fff4e6;border:1px solid #ecd3ad;border-radius:9px}
+html[data-crm-layout="mobile"] .scan-dialog{width:100%;max-width:none;height:100dvh;max-height:100dvh;margin:0;border-radius:0;border:0;padding:16px 12px calc(16px + env(safe-area-inset-bottom))}
+@media print{.crm-interface-choice,.crm-bottom-nav,.crm-menu-shade{display:none!important}html[data-crm-layout="mobile"] .content{max-width:none;padding:0}html[data-crm-layout="mobile"] .crm-information{padding:0;font-size:14pt}}
