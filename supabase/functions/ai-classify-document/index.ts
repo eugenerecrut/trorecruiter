@@ -40,7 +40,7 @@ Deno.serve(async(req)=>{
   if(!text&&!fileUrl)return json({error:'Не передано текст або файл'},400);
   const key=Deno.env.get('GEMINI_API_KEY')||Deno.env.get('Gemini API Key');
   if(!key)return json({error:'GEMINI_API_KEY не налаштовано в Supabase Secrets.'},500);
-  const model=Deno.env.get('GEMINI_MODEL')||'gemini-3.5-flash-lite';
+  const model=Deno.env.get('GEMINI_MODEL')||'gemini-3.8-flash';
 
   const parts:any[]=[{text:prompt+'\nНазва файлу: '+fileName}];
   if(text)parts.push({text:'OCR-текст (допоміжний; може містити помилки):\n'+text.slice(0,50000)});
