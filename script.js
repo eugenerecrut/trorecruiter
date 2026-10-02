@@ -533,6 +533,7 @@ function renderExtraction(parsed) {
 
   const fields = [
     ['ПІБ', parsed.full_name],
+    ['Стать', parsed.sex === 'male' ? 'Чоловіча' : parsed.sex === 'female' ? 'Жіноча' : ''],
     ['Дата народження', parsed.birth_date ? parsed.birth_date.split('-').reverse().join('.') : ''],
     ['Телефон', parsed.phone],
     ['Адреса', parsed.address],
@@ -763,6 +764,7 @@ async function saveCandidateFromRecommendation(event) {
     phone: String(fd.get('phone') || '').trim() || null,
     email: null,
     birth_date: fd.get('birth_date') || null,
+    sex: ['male', 'female'].includes(String(fd.get('sex') || '')) ? String(fd.get('sex')) : null,
     rnokpp: String(fd.get('rnokpp') || '').trim() || null,
     military_rank: String(fd.get('military_rank') || '').trim() || null,
     military_status: null,
@@ -884,7 +886,7 @@ startCRM();
   function getNameCases(parsed) {
     const c = parsed?.name_cases || {};
     return {
-      gender: parsed?.name_gender || c.gender || '',
+      gender: parsed?.name_gender || c.gender || (parsed?.sex === 'male' ? 'Чоловіча' : parsed?.sex === 'female' ? 'Жіноча' : ''),
       nominative: c.nominative || parsed?.full_name || '',
       genitive: c.genitive || '',
       dative: c.dative || '',
@@ -969,6 +971,17 @@ startCRM();
 
   window.fillCandidateForm = function(parsed) {
     originalFillCandidateForm(parsed);
+    const form = document.getElementById('candidateForm');
+    if (form) {
+      let sex = form.elements.sex;
+      if (!sex) {
+        sex = document.createElement('input');
+        sex.type = 'hidden';
+        sex.name = 'sex';
+        form.appendChild(sex);
+      }
+      sex.value = ['male', 'female'].includes(parsed?.sex) ? parsed.sex : '';
+    }
     renderNameCases(parsed);
   };
 
