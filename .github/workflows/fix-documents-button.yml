@@ -1,0 +1,34 @@
+name: Fix Documents button
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.event.head_commit.message != 'Fix Documents button'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Documents button
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old = '<div class="menu-item">▣ &nbsp;Документи</div>'
+          new = '<div class="menu-item" onclick="showCandidates()">▣ &nbsp;Документи</div>'
+          if old not in s:
+              raise SystemExit('Target Documents button not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Commit and remove one-shot fixer
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Fix Documents button"
+          git rm .github/workflows/fix-documents-button.yml
+          git commit -m "Remove one-shot Documents fixer"
+          git push
