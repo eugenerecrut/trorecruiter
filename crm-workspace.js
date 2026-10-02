@@ -133,7 +133,15 @@ CRMWorkspace.loadHome=async function(){
     tasks.insertAdjacentHTML('beforeend',group('Неповні комплекти документів',missing)+group('Неперевірені документи',owners(review))+group('Помилки розпізнавання',owners(errors)));
   }
 };
-supabaseClient.auth.onAuthStateChange((event,session)=>{if(session?.user)setTimeout(()=>{updateDashboard();CRMWorkspace.loadHome().catch(console.error)},0)});
+supabaseClient.auth.onAuthStateChange((event,session)=>{
+  if(!session?.user)return;
+  const refresh=()=>setTimeout(()=>{
+    if(typeof updateDashboard!=='function'||typeof getDocumentRequirements!=='function')return;
+    updateDashboard();CRMWorkspace.loadHome().catch(console.error);
+  },0);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refresh,{once:true});
+  else refresh();
+});
 CRMWorkspace.trackNewForm=function(){
   const form=document.querySelector('#candidateForm');if(!form)return;
   const state={form,dirty:false,save:null,saving:null};this.card=state;
