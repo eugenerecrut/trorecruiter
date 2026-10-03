@@ -89,8 +89,8 @@
   }
   // Detect a bright sheet against its background on a small image. Uncertain
   // shapes fall back to the whole photo; original pixels are always retained.
-  function detectCorners(canvas) {
-    const scale=Math.min(1,420/Math.max(canvas.width,canvas.height));
+  function detectCorners(canvas, {minArea=.035,maxSide=420} = {}) {
+    const scale=Math.min(1,maxSide/Math.max(canvas.width,canvas.height));
     const sample=newCanvas(Math.max(1,Math.round(canvas.width*scale)),Math.max(1,Math.round(canvas.height*scale)));
     const w=sample.canvas.width,h=sample.canvas.height,n=w*h;
     sample.ctx.drawImage(canvas,0,0,w,h);
@@ -114,12 +114,12 @@
           }
           if(border)boundary.push({x,y});
         }
-        if(tail<n*.15||tail>n*.94||edges>2*(w+h)*.12)continue;
+        if(tail<n*minArea*.8||tail>n*.94||edges>2*(w+h)*.12)continue;
         let outline=hull(boundary);if(outline.length<4)continue;
         const hullArea=area(outline);
         while(outline.length>4){let remove=0,min=Infinity;for(let i=0;i<outline.length;i++){const v=Math.abs(cross(outline[(i+outline.length-1)%outline.length],outline[i],outline[(i+1)%outline.length]));if(v<min){min=v;remove=i;}}outline.splice(remove,1);}
         const quadArea=area(outline);
-        if(quadArea<n*.18||quadArea/hullArea<.87||tail/quadArea<.65)continue;
+        if(quadArea<n*minArea||quadArea/hullArea<.87||tail/quadArea<.65)continue;
         // Require a brightness difference outside the sheet to avoid text islands.
         let outside=0,outCount=0;
         for(let i=0;i<n;i+=7){const x=i%w,y=Math.floor(i/w),p={x,y};if(outline.some((a,k)=>cross(a,outline[(k+1)%4],p)<0)){outside+=gray[i];outCount++;}}
@@ -190,7 +190,111 @@
     }
     result.ctx.putImageData(data,0,0);return result.canvas;
   }
+  const LIVE_INTERVAL = 450;
+  const LIVE_STABLE_MS = 1400;
+  const PDF_MAX_SIDE = 2000;
+  const PDF_JPEG_QUALITY = 0.76;
+
+  function liveMessage(s,text) {
+    const node=s.dialog.querySelector('[data-live-status]');
+    if(node.textContent!==text)node.textContent=text;
+  }
+  function resetLive(s) {
+    clearTimeout(s.liveTimer);s.liveTimer=null;s.liveCorners=null;s.liveAnchor=null;s.liveSince=0;
+    s.liveWidth=0;s.liveHeight=0;s.liveFrameTime=-1;
+    if(s.liveSample){s.liveSample.canvas.width=s.liveSample.canvas.height=0;s.liveSample=null;}
+    const overlay=s.dialog.querySelector('[data-live-outline]');overlay.setAttribute('hidden','');
+    s.dialog.querySelector('[data-live-progress]').value=0;
+    s.dialog.querySelector('.scan-camera-frame').hidden=false;
+  }
+  // Use the same four corners as the full-resolution crop. Sampling only the
+  // document interior keeps the table/background out of the sharpness estimate.
+  function clearEnough(canvas,points) {
+    const w=canvas.width,h=canvas.height,rgba=canvas.getContext('2d').getImageData(0,0,w,h).data;
+    const gray=new Uint8Array(w*h);
+    for(let i=0;i<gray.length;i++)gray[i]=Math.round(.299*rgba[i*4]+.587*rgba[i*4+1]+.114*rgba[i*4+2]);
+    const centre=points.reduce((a,p)=>({x:a.x+p.x/4,y:a.y+p.y/4}),{x:0,y:0});
+    const inner=points.map(p=>({x:(centre.x+(p.x-centre.x)*.85)*(w-1)/100,y:(centre.y+(p.y-centre.y)*.85)*(h-1)/100}));
+    let count=0,sum=0,squares=0,light=0;
+    for(let y=2;y<h-2;y+=2)for(let x=2;x<w-2;x+=2){
+      if(inner.some((p,i)=>cross(p,inner[(i+1)%4],{x,y})<0))continue;
+      const id=y*w+x,value=gray[id-1]+gray[id+1]+gray[id-w]+gray[id+w]-4*gray[id];
+      count++;sum+=value;squares+=value*value;light+=gray[id];
+    }
+    return count>100&&light/count>70&&squares/count-Math.pow(sum/count,2)>=35;
+  }
+  async function automaticCapture(s) {
+    if(session!==s||s.busy||!s.stream||s.editor)return;
+    s.busy=true;update(s);liveMessage(s,'Знімаю…');
+    try{await capture(s);}
+    catch(error){stopCamera(s);status(s,error.message||'Не вдалося зняти сторінку. Відкрийте камеру знову.',true);}
+    finally{s.busy=false;if(session===s)update(s);}
+  }
+  function startLiveDetection(s) {
+    const token=s.cameraToken;
+    const tick=()=>{
+      s.liveTimer=null;
+      if(session!==s||token!==s.cameraToken||!s.stream||s.busy||document.hidden)return;
+      const video=s.dialog.querySelector('[data-scan-video]'),started=performance.now();
+      let takePhoto=false;
+      try {
+        if(video.readyState>=2&&!video.paused&&video.videoWidth&&video.videoHeight&&video.currentTime!==s.liveFrameTime) {
+          s.liveFrameTime=video.currentTime;
+          const ratio=video.videoWidth/video.videoHeight;
+          // The wrapper and SVG have the video's exact ratio: no letterboxing
+          // offset between the visible document and its detected outline.
+          s.dialog.querySelector('.scan-live').style.width='min(100%, calc(58dvh * '+ratio+'))';
+          if(s.liveWidth!==video.videoWidth||s.liveHeight!==video.videoHeight){
+            s.liveCorners=null;s.liveAnchor=null;s.liveSince=0;s.liveWidth=video.videoWidth;s.liveHeight=video.videoHeight;
+          }
+          const scale=Math.min(1,360/Math.max(video.videoWidth,video.videoHeight));
+          if(!s.liveSample)s.liveSample=newCanvas(Math.round(video.videoWidth*scale),Math.round(video.videoHeight*scale));
+          const sample=s.liveSample;
+          sample.canvas.width=Math.round(video.videoWidth*scale);sample.canvas.height=Math.round(video.videoHeight*scale);
+          sample.ctx.drawImage(video,0,0,sample.canvas.width,sample.canvas.height);
+          const points=detectCorners(sample.canvas,{minArea:.035,maxSide:360});
+          const outline=s.dialog.querySelector('[data-live-outline]'),guide=s.dialog.querySelector('.scan-camera-frame'),progress=s.dialog.querySelector('[data-live-progress]');
+          let guideHeight=.82,guideWidth=guideHeight/ratio*210/297;
+          if(guideWidth>.88){guideWidth=.88;guideHeight=guideWidth*ratio*297/210;}
+          guide.style.width=guideWidth*100+'%';guide.style.height=guideHeight*100+'%';
+          if(points) {
+            outline.removeAttribute('hidden');guide.hidden=true;
+            s.dialog.querySelector('[data-live-polygon]').setAttribute('points',points.map(p=>p.x+','+p.y).join(' '));
+            s.dialog.querySelector('[data-live-mask]').setAttribute('d','M0 0H100V100H0Z M'+points.map(p=>p.x+' '+p.y).join('L')+'Z');
+            const now=performance.now(),old=s.liveCorners;
+            const anchor=s.liveAnchor;
+            const steady=old&&anchor&&points.every((p,i)=>Math.hypot(p.x-old[i].x,p.y-old[i].y)<1.3&&Math.hypot(p.x-anchor[i].x,p.y-anchor[i].y)<1.3);
+            const inside=points.every(p=>p.x>1&&p.x<99&&p.y>1&&p.y<99);
+            const shortSide=Math.min(...points.map((p,i)=>{const q=points[(i+1)%4];return Math.hypot((p.x-q.x)*sample.canvas.width/100,(p.y-q.y)*sample.canvas.height/100);}));
+            const sharp=shortSide>=60&&clearEnough(sample.canvas,points);
+            const auto=s.dialog.querySelector('[data-auto-capture]').checked;
+            if(!steady||!inside||!sharp||!auto){s.liveSince=now;s.liveAnchor=copyCorners(points);}
+            if(!s.liveSince)s.liveSince=now;
+            const held=now-s.liveSince;progress.value=auto&&sharp&&inside?Math.min(1,held/LIVE_STABLE_MS):0;
+            outline.dataset.ready=String(auto&&steady&&inside&&sharp);
+            liveMessage(s,!inside?'Умістіть усі кути документа в кадрі.':shortSide<60?'Наблизьте телефон до документа.':!sharp?'Наведіть різкість, додайте світла або зніміть вручну.':!auto?'Краї знайдено. Натисніть «Зняти».':'Краї знайдено. Тримайте телефон нерухомо — автозйомка…');
+            s.liveCorners=copyCorners(points);
+            takePhoto=!!(auto&&steady&&inside&&sharp&&held>=LIVE_STABLE_MS);
+          }else {
+            outline.setAttribute('hidden','');guide.hidden=false;progress.value=0;s.liveCorners=null;s.liveAnchor=null;s.liveSince=0;
+            liveMessage(s,'Шукаю краї. Покладіть документ на темніший фон, умістіть усі кути в кадрі.');
+          }
+        }else {
+          s.liveSince=0;s.liveCorners=null;s.liveAnchor=null;
+          s.dialog.querySelector('[data-live-progress]').value=0;
+          s.dialog.querySelector('[data-live-outline]').setAttribute('hidden','');
+          s.dialog.querySelector('.scan-camera-frame').hidden=false;
+          liveMessage(s,'Очікую зображення камери…');
+        }
+      }catch(error){resetLive(s);liveMessage(s,'Пошук країв недоступний. Можна натиснути «Зняти» та поправити кути вручну.');return;}
+      if(takePhoto){void automaticCapture(s);return;}
+      if(session===s&&token===s.cameraToken&&s.stream)s.liveTimer=setTimeout(tick,Math.max(LIVE_INTERVAL,(performance.now()-started)*3));
+    };
+    clearTimeout(s.liveTimer);s.liveTimer=setTimeout(tick,100);
+  }
+
   function stopCamera(s) {
+    resetLive(s);
     s.cameraToken=(s.cameraToken||0)+1;s.cameraPending=false;
     s.stream?.getTracks().forEach(track=>track.stop());s.stream=null;
     const video=s.dialog.querySelector('[data-scan-video]');video.pause();video.srcObject=null;
@@ -200,6 +304,8 @@
     if(!navigator.mediaDevices?.getUserMedia||!window.isSecureContext){status(s,'Камера браузера недоступна. Скористайтеся «Камера телефона» або галереєю.',true);return;}
     stopCamera(s);const token=s.cameraToken;s.cameraPending=true;
     s.dialog.querySelector('[data-scan-live]').hidden=false;update(s);
+    liveMessage(s,'Очікую дозвіл камери…');
+    s.dialog.querySelector('[data-scan-live]').scrollIntoView({block:'start',behavior:'smooth'});
     status(s,'Дозвольте доступ до камери. Мікрофон не потрібний.');
     try {
       const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:2400},height:{ideal:3200}}});
@@ -207,8 +313,8 @@
       s.stream=stream;s.cameraPending=false;
       stream.getVideoTracks().forEach(track=>{track.onended=()=>{if(session===s&&s.stream===stream){stopCamera(s);update(s);status(s,'Камеру вимкнено. Відкрийте її знову або виберіть фото.');}};});
       const video=s.dialog.querySelector('[data-scan-video]');video.srcObject=stream;
-      video.onloadeddata=()=>{if(session===s&&s.stream){update(s);status(s,'Умістіть усі чотири кути документа в кадрі та натисніть «Зняти».');}};
-      await video.play();update(s);
+      video.onloadeddata=()=>{if(session===s&&s.stream){update(s);liveMessage(s,'Шукаю краї документа…');}};
+      await video.play();update(s);startLiveDetection(s);
     }catch(error){if(session!==s||token!==s.cameraToken)return;stopCamera(s);update(s);status(s,'Не вдалося відкрити камеру. Перевірте дозвіл або скористайтеся «Камера телефона» / галереєю.',true);}
   }
   async function capture(s) {
@@ -217,8 +323,10 @@
     const scale=Math.min(1,2400/Math.max(video.videoWidth,video.videoHeight));
     const shot=newCanvas(Math.round(video.videoWidth*scale),Math.round(video.videoHeight*scale));
     shot.ctx.drawImage(video,0,0,shot.canvas.width,shot.canvas.height);
+    // Re-detect on the captured frame so the saved crop matches that exact shot.
+    const shotCorners=detectCorners(shot.canvas);
     stopCamera(s);
-    try{const source=await jpeg(shot.canvas);if(s.pages.reduce((sum,page)=>sum+page.source.size,source.size)>MAX_SOURCES)throw new Error('Забагато фото. Збережіть документ частинами.');await editSource(s,source);}
+    try{const source=await jpeg(shot.canvas);if(s.pages.reduce((sum,page)=>sum+page.source.size,source.size)>MAX_SOURCES)throw new Error('Забагато фото. Збережіть документ частинами.');await editSource(s,source);if(shotCorners){s.editor.corners=copyCorners(shotCorners);drawCrop(s);}}
     finally{shot.canvas.width=shot.canvas.height=0;}
   }
   function invalidatePreview(s) {s.dialog.querySelector('[data-scan-result]').hidden=true;}
@@ -268,6 +376,8 @@
     s.dialog.querySelector('[data-scan-editor]').hidden = !s.editor;
     s.dialog.querySelector('[data-scan-action="save-page"]').textContent = s.editor?.index >= 0 ? 'Зберегти сторінку' : 'Додати сторінку';
     s.dialog.querySelector('[data-scan-count]').textContent = s.pages.length ? 'Сторінок у PDF: ' + s.pages.length : 'Ще немає сторінок';
+    const bytes=s.pages.reduce((sum,page)=>sum+page.image.size+1000,1000);
+    s.dialog.querySelector('[data-scan-size]').textContent=s.pages.length?'Орієнтовний розмір PDF: '+(bytes<1024*1024?Math.ceil(bytes/1024)+' КБ':(bytes/1024/1024).toFixed(1)+' МБ'):'';
   }
   function renderPages(s) {
     s.urls.forEach(url => URL.revokeObjectURL(url)); s.urls = [];
@@ -340,8 +450,8 @@
   async function savePage(s) {
     const e = s.editor; if (!e) return;
     status(s,'Готую вирівняну сторінку…');
-    const canvas=await preparePage(e),width=canvas.width,height=canvas.height;
-    let image;try{image=await jpeg(canvas);}finally{canvas.width=canvas.height=0;}
+    const canvas=await preparePage(e,PDF_MAX_SIDE),width=canvas.width,height=canvas.height;
+    let image;try{image=await jpeg(canvas,PDF_JPEG_QUALITY);}finally{canvas.width=canvas.height=0;}
     const page = {source:e.source, rotation:e.rotation, corners:copyCorners(e.corners), filter:e.filter, image, width, height};
     if (e.index >= 0) s.pages[e.index] = page; else s.pages.push(page);
     e.canvas.width = e.canvas.height = 0; s.editor = null;
@@ -366,7 +476,7 @@
       <div class="scan-tools"><button type="button" data-scan-action="camera">📷 Сканувати камерою</button><button type="button" data-scan-action="gallery">▧ Фото з галереї</button></div>
       <button type="button" data-scan-action="native-camera">Камера телефона</button>
       <input type="file" data-scan-camera accept="image/*" capture="environment" hidden><input type="file" data-scan-gallery accept="image/*" multiple hidden>
-      <section data-scan-live hidden><div class="scan-live"><video data-scan-video autoplay muted playsinline></video><div class="scan-camera-frame" aria-hidden="true"></div></div><p class="muted">Усі кути мають бути в кадрі. Краї визначаться після знімка.</p><div class="scan-tools"><button type="button" data-scan-action="stop-camera">Закрити камеру</button><button type="button" class="primary" data-scan-action="capture" disabled>Зняти</button></div></section>
+      <section data-scan-live hidden><div class="scan-live"><video data-scan-video autoplay muted playsinline></video><div class="scan-camera-frame" aria-hidden="true"><span>A4</span></div><svg data-live-outline class="scan-live-outline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" hidden><path data-live-mask fill-rule="evenodd"></path><polygon data-live-polygon vector-effect="non-scaling-stroke"></polygon></svg></div><label class="scan-auto"><input type="checkbox" data-auto-capture checked> Автозйомка після визначення країв</label><p data-live-status class="scan-live-status" role="status" aria-live="polite">Шукаю краї документа…</p><progress data-live-progress max="1" value="0" aria-label="Готовність автозйомки"></progress><p class="muted" style="font-size:12px">A4 — орієнтир для аркуша. Знайдений контур підлаштовується під фактичний розмір документа. Після автознімка перевірте сторінку.</p><div class="scan-tools"><button type="button" data-scan-action="stop-camera">Закрити камеру</button><button type="button" class="primary" data-scan-action="capture" disabled>Зняти</button></div></section>
       <p class="muted" style="font-size:12px">Покладіть документ на темнішу рівну поверхню. Уникайте тіней та відблисків. Фото обробляється на вашому пристрої.</p>
       <div data-scan-discard class="scan-discard" hidden><strong>Вийти та втратити незбережені сторінки?</strong><div class="scan-tools"><button type="button" data-scan-action="keep">Продовжити сканування</button><button type="button" data-scan-action="discard">Вийти без збереження</button></div></div>
       <section data-scan-editor hidden><h3>1. Перевірте чотири кути</h3><div class="scan-tools"><button type="button" data-scan-action="rotate">↻ Повернути 90°</button><button type="button" data-scan-action="auto">Знайти краї</button><button type="button" data-scan-action="reset">Усе фото</button></div>
@@ -378,11 +488,12 @@
       <div class="scan-tools"><button type="button" data-scan-action="preview">Переглянути вирівняну сторінку</button></div><section data-scan-result hidden><strong>Так сторінка виглядатиме у PDF</strong><canvas data-scan-result-canvas aria-label="Вирівняна сторінка"></canvas></section>
       <div class="scan-tools"><button type="button" data-scan-action="skip">Не додавати це фото</button><button type="button" class="primary" data-scan-action="save-page">Додати сторінку</button></div></section>
       <h3 data-scan-count>Ще немає сторінок</h3><div class="scan-pages" data-scan-pages></div><div class="scan-status" role="status" aria-live="polite" data-scan-status></div>
-      <div class="scan-footer"><label>Назва PDF<input name="scanName" value="${escape(title)}"></label><div class="scan-tools"><button type="button" class="primary" data-scan-action="finish" disabled>Сформувати PDF і продовжити</button></div><small class="muted">PDF буде передано у вікно завантаження. Там перевірте тип документа та натисніть «Завантажити».</small></div>`;
+      <div class="scan-footer"><div data-scan-size class="muted"></div><small class="muted">PDF зі стисненням · перевірте дрібний текст перед завантаженням.</small><label>Назва PDF<input name="scanName" value="${escape(title)}"></label><div class="scan-tools"><button type="button" class="primary" data-scan-action="finish" disabled>Сформувати PDF і продовжити</button></div><small class="muted" data-scan-upload-hint>PDF буде передано у вікно завантаження. Там перевірте тип документа та натисніть «Завантажити».</small></div>`;
     dialog.addEventListener('cancel', event => {event.preventDefault(); requestClose(s);});
     dialog.querySelector('[data-scan-camera]').addEventListener('change', event => importPhotos(s, [...event.target.files]));
     dialog.querySelector('[data-scan-gallery]').addEventListener('change', event => importPhotos(s, [...event.target.files]));
     dialog.querySelectorAll('[data-point]').forEach(input=>input.addEventListener('change',()=>{if(!s.editor||s.busy)return;const i=Number(input.dataset.point),p=s.editor.corners[i];moveCorner(s,i,input.dataset.axis==='x'?Number(input.value):p.x,input.dataset.axis==='y'?Number(input.value):p.y);}));
+    dialog.querySelector('[data-auto-capture]').addEventListener('change',()=>{s.liveSince=0;s.liveCorners=null;s.liveAnchor=null;dialog.querySelector('[data-live-progress]').value=0;});
     dialog.querySelector('[data-scan-filter]').addEventListener('change',event=>{if(s.editor&&!s.busy){s.editor.filter=event.target.value;invalidatePreview(s);}});
     dialog.querySelectorAll('[data-corner]').forEach(handle=>{
       const index=CORNERS.indexOf(handle.dataset.corner);
@@ -424,7 +535,7 @@
     document.body.append(dialog); dialog.showModal(); update(s);
     if (recommendation) {
       dialog.querySelector('[data-scan-action="finish"]').textContent = 'Сформувати PDF і розпізнати лист';
-      dialog.querySelector('.scan-footer small').textContent = 'PDF передається у наявне розпізнавання рекомендаційного листа. Перевірте результат перед створенням справи.';
+      dialog.querySelector('[data-scan-upload-hint]').textContent = 'PDF передається у наявне розпізнавання рекомендаційного листа. Перевірте результат перед створенням справи.';
     }
   }
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&session){stopCamera(session);update(session);}});
