@@ -97,7 +97,7 @@
     const pf = pr.data || {};
     let profile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
     if (typeof c.profile_data === 'string') { try { profile = JSON.parse(c.profile_data); } catch (_) {} }
-    const docs = dr.data || [];
+    const docs = CRMResponsibility.latest(dr.data || []);
     CRMWorkspace.setContext(candidateId,c.name_nominative||c.full_name);
     const activeCardSection=window.crmActiveCardSection||'personal';
     const relatives = Array.isArray(profile.relatives) ? profile.relatives : [];
@@ -115,6 +115,7 @@
         .cc-section-head{display:flex;justify-content:space-between;align-items:center;margin:-20px -20px 18px;padding:15px 20px;border-bottom:1px solid #e7ecee;background:#fbfcfc;border-radius:12px 12px 0 0}.cc-section-head h3{margin:0;font-size:15px}.cc-section-head small{display:block;color:#7d8a93;margin-top:4px;font-size:11px}.cc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.cc-field label{display:block;color:#44515a;font-weight:700;font-size:12px;margin-bottom:6px}.cc-field input,.cc-field select,.cc-field textarea{width:100%;color:#24313a;background:#fff;border:1px solid #cfd8dc;border-radius:8px;padding:10px 11px;outline:none}.cc-field input:focus,.cc-field select:focus,.cc-field textarea:focus{border-color:#9ebd45;box-shadow:0 0 0 3px rgba(183,217,87,.16)}.cc-wide{grid-column:1/-1}.cc-actions{display:flex;gap:9px;flex-wrap:wrap;margin:4px 0 22px}.cc-actions button{border-radius:8px;padding:11px 16px;font-weight:800;border:1px solid #d8e0e3;background:#fff;color:#45525a}.cc-actions .primary{background:#18232d;color:#fff;border-color:#18232d}.cc-status{font-size:12px;color:#68757d;min-height:18px}.cc-docs{display:grid;gap:9px}.cc-doc{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #e6eaec;border-radius:9px;background:#fbfcfc}.cc-doc b{display:block;font-size:12px}.cc-doc small{display:block;color:#89959c;margin-top:4px;font-size:10px}.cc-doc button{border:1px solid #cfd8dc;background:#fff;border-radius:7px;padding:7px 10px;font-weight:800}.cc-templates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.cc-template{padding:12px;border:1px solid #d8e0e3;background:#f7f9f9;border-radius:8px;text-align:left;font-weight:800;color:#45525a}.cc-hint{padding:11px 13px;background:#f7faed;border:1px solid #dce8b7;border-radius:8px;color:#68757d;font-size:11px;margin-bottom:14px}.cc-empty{text-align:center;color:#89959c;padding:18px}.cc-badge{padding:5px 9px;border-radius:12px;background:#e8f2cc;color:#5d741f;font-size:10px;font-weight:800}.cc-relative-row{border:1px solid #dfe6e9;border-radius:10px;padding:14px;margin-bottom:12px;background:#fbfcfc}.cc-relative-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:#44515a}.cc-relative-remove{border:1px solid #e1caca!important;background:#fff!important;color:#96504e!important;padding:6px 9px!important;font-size:11px}.cc-relative-add{margin-top:4px;border:1px solid #cfd8dc!important;background:#f7f9f9!important;color:#45525a!important}
       </style>
       <div class="dashboard-top cc-wrap"><div><div class="page-title">Картка кандидата</div><p class="page-subtitle">Усі дані кандидата в одному місці. Усі поля редагуються рекрутером.</p></div><div class="quick-actions"><span class="cc-badge">${esc(c.name_nominative||c.full_name)}</span><button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи</button><button type="button" onclick="crmNavigate('information','${candidateId}')">Обов’язкова інформація</button><button onclick="crmNavigate('candidates')">← До кандидатів</button></div></div>
+      <section class="crm-responsibility" data-responsibility></section>
       <nav class="crm-card-nav cc-wrap" id="crmCardNav" aria-label="Розділи картки"></nav>
       <form id="candidateCardV2" class="cc-wrap">
         <div class="crm-photo" data-card-photo><img id="crmCardPhoto" alt="Фото кандидата 9×12" hidden><div><strong>Фото кандидата 9×12</strong><p id="crmCardPhotoStatus" class="muted">Завантажуємо фото…</p><button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи та фото</button></div></div>
@@ -184,6 +185,7 @@
 
 
 
+    await CRMResponsibility.mountCard(c,content);
     const formForNavigation=content.querySelector('#candidateCardV2');
     const groups=[
       ['personal','Картка',[1,2,3,4]],['family','Рідні та близькі',[13]],['education','Освіта',[5]],

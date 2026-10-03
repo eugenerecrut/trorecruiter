@@ -49,7 +49,7 @@ async function showDocuments(id){
   const content=document.querySelector('.content');if(!content)return;
   activeDocumentsCandidateId=id;
   const [docs,reqs,cr]=await Promise.all([getCandidateDocuments(id),getDocumentRequirements(),supabaseClient.from('candidates').select('*').eq('id',id).single()]);
-  if(cr.error)throw cr.error;const c=cr.data,esc=docEscape;
+  if(cr.error)throw cr.error;await CRMResponsibility.ready();const allDocs=docs.slice();docs.splice(0,docs.length,...CRMResponsibility.latest(docs));const c=cr.data,esc=docEscape;
   CRMWorkspace.setContext(id,c.name_nominative||c.full_name);CRMWorkspace.markMenu('documents');
   let profile=c.profile_data||{};if(typeof profile==='string'){try{profile=JSON.parse(profile)}catch(_){profile={}}}
   const children=Number(c.children_count)||((profile.relatives||[]).filter(r=>/син|доньк|дитин/i.test(r.relationship||r.relation||'')).length);
@@ -82,10 +82,12 @@ async function showDocuments(id){
     const {r,files,condition,childIndex}=row;
     const required=r.is_required&&condition===true,missing=required&&!files.length,errors=files.some(d=>r.ai_enabled!==false&&d.processing_status==='AI помилка'),review=files.some(d=>d.verification_status!=='Підтверджено');
     const label=condition===null?'Уточніть у картці':condition===false?'Додатковий':required?'Обов’язковий':'За наявності';
-    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>'<div class="crm-document-file"><small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(d.verification_status==='Підтверджено'?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small><button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(d.verification_status!=='Підтверджено'?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'')+'</div>').join(''):required?'Не завантажено':'Не додано')+'</td><td><button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></td></tr>';
+    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>'<div class="crm-document-file"><small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(d.verification_status==='Підтверджено'?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>'+CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(d.verification_status!=='Підтверджено'?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'')+'</div>').join(''):required?'Не завантажено':'Не додано')+'</td><td><button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></td></tr>';
   }).join('');
   body.addEventListener('click',async e=>{
     const b=e.target.closest('button');if(!b)return;
+    if(b.dataset.aiHistory)return CRMResponsibility.aiHistory(b.dataset.aiHistory).catch(error=>alert(error.message));
+    if(b.dataset.docReplace){const d=allDocs.find(d=>d.id===b.dataset.docReplace);return makeDocumentInput(id,d.requirement_id||'',d.id)}
     if(b.hasAttribute('data-doc-add'))return openAddDocumentModal(id,b.dataset.docAdd);
     if(b.dataset.docOpen)return openDocument(b.dataset.docOpen);
     if(b.dataset.docData)return reviewDocumentData(b.dataset.docData).catch(error=>alert(error.message));
@@ -108,13 +110,14 @@ async function confirmDocument(id){
   if(error)throw error;if(!data?.length)throw new Error('Документ не підтверджено. Перевірте права доступу до цього файла.');
   await showDocuments(data[0].candidate_id);
 }
-async function makeDocumentInput(id,reqId=''){
+async function makeDocumentInput(id,reqId='',replacementId=''){
   const old=document.getElementById('documentModal');if(old)old.remove();
-  const modal=document.createElement('dialog');modal.id='documentModal';modal.className='crm-dialog';modal.dataset.candidateId=id;
+  const modal=document.createElement('dialog');modal.id='documentModal';modal.className='crm-dialog';modal.dataset.candidateId=id;modal.dataset.replacementId=replacementId;
   document.body.append(modal);
   return getDocumentRequirements().then(reqs=>{
     const options='<option value="">Оберіть тип документа</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
-    modal.innerHTML='<h2>Додати документи</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · виберіть тип для кожного файла до обробки.</p><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
+    modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · виберіть тип для кожного файла до обробки.</p><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
+    if(replacementId)modal.querySelector('#docFileInput').removeAttribute('multiple');
     const input=modal.querySelector('#docFileInput'),rootType=modal.querySelector('#docRequirement'),plan=modal.querySelector('#docFilePlan'),upload=modal.querySelector('#docUploadButton');
     const render=()=>{
       const files=Array.from(input.files||[]);
@@ -177,26 +180,7 @@ if(/\bid\b|id[\s-]*карт/.test(type))return'ID';
 if(type.includes('паспорт'))return'passport';
 return null;
 }
-async function applyAiExtraction(candidateId,extracted,documentType=''){
-const {data:c,error}=await supabaseClient.from('candidates').select('*').eq('id',candidateId).single();
-if(error||!c)return['Не вдалося відкрити картку кандидата'];
-const {data:pf}=await supabaseClient.from('personal_files').select('*').eq('candidate_id',candidateId).maybeSingle();
-const cu={},pu={},conf=[];const identityType=identityDocumentTypeValue(documentType);
-const put=(key,val)=>{if(val===null||val===undefined||val==='')return;if(c[key]===null||c[key]===undefined||String(c[key]).trim()==='')cu[key]=val;else if(String(c[key]).trim().toLowerCase()!==String(val).trim().toLowerCase())conf.push(key+' відрізняється від даних картки')};
-const pput=(key,val)=>{if(val===null||val===undefined||val==='')return;if(!pf?.[key]||String(pf[key]).trim()==='')pu[key]=val;else if(String(pf[key]).trim().toLowerCase()!==String(val).trim().toLowerCase())conf.push('особова справа: '+key+' відрізняється')};
-const aiName=extracted.name_nominative||extracted.full_name;put('full_name',aiName);if(!c.full_name||normName(c.full_name)===normName(aiName))put('name_nominative',aiName);put('name_genitive',extracted.name_genitive);put('name_gender',extracted.name_gender);if(extracted.name_cases)put('name_cases',extracted.name_cases);
-if(extracted.birth_date&&!c.birth_date)cu.birth_date=extracted.birth_date;else if(extracted.birth_date&&c.birth_date&&String(c.birth_date)!==String(extracted.birth_date))conf.push('дата народження відрізняється');
-put('birth_place',extracted.birth_place);put('rnokpp',extracted.rnokpp);if(identityType!=='birth')put('passport_data',extracted.passport_data);put('phone',extracted.phone);put('email',extracted.email);put('sex',extracted.sex);put('marital_status',extracted.marital_status);put('military_rank',extracted.military_rank);put('civilian_profession',extracted.civilian_profession);put('desired_position',extracted.desired_position);put('direction',extracted.desired_unit);put('tcc',extracted.tcc);
-if(extracted.has_children!==null&&extracted.has_children!==undefined){if(c.has_children===null||c.has_children===undefined)cu.has_children=extracted.has_children;else if(c.has_children!==extracted.has_children)conf.push('наявність дітей відрізняється')}
-if(extracted.worked_before!==null&&extracted.worked_before!==undefined){if(c.worked_before===null||c.worked_before===undefined)cu.worked_before=extracted.worked_before;else if(c.worked_before!==extracted.worked_before)conf.push('дані про роботу відрізняються')}
-if(extracted.served_before!==null&&extracted.served_before!==undefined){if(c.served_before===null||c.served_before===undefined)cu.served_before=extracted.served_before;else if(c.served_before!==extracted.served_before)conf.push('дані про військову службу відрізняються')}
-if(extracted.military_unit||extracted.military_specialty){cu.profile_data={...(c.profile_data||{}),military_unit:extracted.military_unit||c.profile_data?.military_unit||null,military_specialty:extracted.military_specialty||c.profile_data?.military_specialty||null,last_ai_update:new Date().toISOString()}}
-if(identityType){let profile=cu.profile_data??c.profile_data??{};if(typeof profile==='string'){try{profile=JSON.parse(profile)}catch(_){profile={}}}profile={...profile};let profileUpdated=false;const profilePut=(key,value)=>{if(value===null||value===undefined||value==='')return;const current=profile[key];if(current===null||current===undefined||String(current).trim()===''){profile[key]=value;profileUpdated=true}else if(String(current).trim().toLowerCase()!==String(value).trim().toLowerCase())conf.push(key+' відрізняється від даних картки')};const savedIdentityType=String(profile.identity_document_type||'').trim().toLocaleLowerCase('uk-UA');const hasBirthType=savedIdentityType==='birth'||savedIdentityType.includes('свідоцтво про народження');const hasIdentityFields=['passport_series','passport_number','passport_issuer','passport_issue_date','passport_expiry_date'].some(key=>profile[key]!==null&&profile[key]!==undefined&&String(profile[key]).trim()!=='');if(identityType!=='birth'&&(hasBirthType||!hasIdentityFields)){profile.identity_document_type=identityType;profileUpdated=true}else profilePut('identity_document_type',identityType);if(identityType==='birth')profilePut('birth_certificate',extracted.document_number);if(identityType==='ID'||identityType==='passport'){profilePut('passport_number',extracted.document_number);profilePut('passport_issuer',extracted.document_issuer);profilePut('passport_issue_date',extracted.document_date)}if(identityType==='passport')profilePut('passport_series',extracted.document_series);if(profileUpdated)cu.profile_data=profile}
-pput('address',extracted.address);pput('birth_place',extracted.birth_place);pput('passport_data',extracted.passport_data);pput('education',extracted.education);pput('family_status',extracted.marital_status);pput('children_info',extracted.children_info);pput('work_history',extracted.worked_before===true?'Працював(-ла)':extracted.worked_before===false?'Не працював(-ла)':null);pput('military_service_history',extracted.military_service_history);
-if(Object.keys(cu).length){cu.updated_at=new Date().toISOString();const{error:e}=await supabaseClient.from('candidates').update(cu).eq('id',candidateId);if(e)conf.push('картку не оновлено: '+e.message)}
-if(Object.keys(pu).length){pu.candidate_id=candidateId;pu.updated_at=new Date().toISOString();const{error:e}=await supabaseClient.from('personal_files').upsert(pu,{onConflict:'candidate_id'});if(e)conf.push('особову справу не оновлено: '+e.message)}return conf;}
-
-async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId){
+async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId,replacementId=null){
 const name=String(file.name||'').toLowerCase(),mime=String(file.type||'').toLowerCase();
 const ok=mime==='application/pdf'||mime==='image/jpeg'||mime==='image/png'||mime==='application/msword'||mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||/\.(pdf|jpe?g|png|docx?)$/i.test(name);if(!ok)throw new Error('Підтримуються PDF, JPG, JPEG, PNG, DOC та DOCX');if(file.size>DOC_MAX_SIZE)throw new Error('Файл більший за 20 МБ');
 const reqs=await getDocumentRequirements(),forced=reqs.find(r=>r.id===requirementId),tempType=forced?.document_type||'Обробка AI';
@@ -205,14 +189,14 @@ const ext=(name.match(/\.[a-z0-9]+$/i)||[''])[0].toLowerCase();
 const safeName=Date.now()+'_'+Math.random().toString(36).slice(2,10)+ext;
 const path=forcedCandidateId+'/incoming/'+safeName;
 const upload=await supabaseClient.storage.from(DOC_BUCKET).upload(path,file,{upsert:false,contentType:mime||'application/octet-stream'});if(upload.error)throw new Error('Завантаження: '+upload.error.message);
-const baseDocument={candidate_id:forcedCandidateId,requirement_id:forced?.id||null,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:aiEnabled?'AI обробка':'Завантажено',ai_warnings:[]};
+const baseDocument={replaces_document_id:replacementId||null,candidate_id:forcedCandidateId,requirement_id:forced?.id||null,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:aiEnabled?'AI обробка':'Завантажено',ai_warnings:[]};
 const{data:document,error:documentError}=await supabaseClient.from('documents').insert(baseDocument).select('id').single();
 if(documentError||!document?.id){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація документа: '+(documentError?.message||'не створено запис'))}
 if(!aiEnabled)return{file:file.name,type:tempType,confidence:0,warnings:[],skipped:true};
 let documentText='';try{if(mime==='application/pdf'||/\.pdf$/i.test(name)){documentText=await extractPdfText(file);if(!documentText||documentText.length<100){const images=await pdfToImages(file,10),parts=[];for(let i=0;i<images.length;i++){const s=document.getElementById('docUploadStatus');if(s)s.textContent='OCR сторінки '+(i+1)+' із '+images.length+': '+file.name;const pt=await runOcr(images[i]);if(pt)parts.push(pt)}documentText=parts.join('\n\n').trim()}}else if(mime==='image/jpeg'||mime==='image/png'||/\.(jpe?g|png)$/i.test(name)){documentText=await runOcr(file)}}catch(e){console.warn('OCR не вдався:',e)}
 let ai=null;
 try{ai=await classifyStoredDocument(document.id,path,file.name,documentText)}catch(e){await supabaseClient.from('documents').update({processing_status:'AI помилка',notes:e.message}).eq('id',document.id);throw new Error('Файл збережено. Розпізнавання не завершено: '+e.message)}
-const extracted=ai?.extracted||{},aiType=ai?.document_type||tempType,matchedReq=forced||reqs.find(r=>r.document_type===aiType),matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];let syncWarnings=[];try{syncWarnings=await applyAiExtraction(forcedCandidateId,extracted,aiType)}catch(e){syncWarnings=['Перенесення даних у картку не виконано: '+e.message]}warnings.push(...syncWarnings);if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
+const extracted=ai?.extracted||{},aiType=ai?.document_type||tempType,matchedReq=forced||reqs.find(r=>r.document_type===aiType),matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
 const{error:updateError}=await supabaseClient.from('documents').update({requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,notes:ai?.model?`AI OK model=${ai.model}`:'AI OK'}).eq('id',document.id);if(updateError)throw new Error('Оновлення документа: '+updateError.message);return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
 }
 async function uploadSelectedDocuments(){
@@ -220,6 +204,7 @@ async function uploadSelectedDocuments(){
   const files=Array.from(modal.querySelector('#docFileInput').files||[]),id=modal.dataset.candidateId;
   const types=[...modal.querySelectorAll('[data-file-type]')].map(s=>s.value);
   if(!files.length||types.some(v=>!v))return;
+  if(modal.dataset.replacementId&&files.length!==1)return alert("Для нової версії виберіть один файл.");
   const user=await getCurrentUser();if(!user)return alert('Увійдіть повторно.');
   const candidates=await getCandidates(),status=modal.querySelector('#docUploadStatus');
   CRMWorkspace.busy=true;window.__PSK_DOC_AI_ENABLED=true;
@@ -229,7 +214,7 @@ async function uploadSelectedDocuments(){
     for(let i=0;i<files.length;i++){
       status.textContent='Обробка '+(i+1)+' із '+files.length+': '+files[i].name;
       try{
-        const result=await processOneDocument(files[i],types[i],user,candidates,id);
+        const result=await processOneDocument(files[i],types[i],user,candidates,id,modal.dataset.replacementId||null);
         results.push('✓ '+files[i].name+' — '+result.type+(result.skipped?' · без AI/OCR':' · розпізнано')+(result.warnings.length?'\n  '+result.warnings.join('; '):''));
       }catch(e){results.push('✕ '+files[i].name+' — '+e.message)}
     }
@@ -251,10 +236,7 @@ if(req?.ai_enabled===false)return alert('Для цього документа р
 const{data,error}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:id}});
 if(error){alert('Не вдалося повторити AI: '+error.message);return}
 if(!data?.ok&&!data?.extracted){alert(data?.error||'AI не повернув структуровані дані');return}
-let warnings=[];
-try{warnings=await applyAiExtraction(doc.candidate_id,data.extracted||{},data.document_type||doc.document_type||'')}
-catch(e){warnings=['Перенесення даних у картку не виконано: '+e.message]}
-alert('Повторне AI-розпізнавання завершено.'+(warnings.length?'\n'+warnings.join('\n'):''));
+alert('Повторне AI-розпізнавання завершено. Перевірте контейнер і виберіть поля для перенесення.');
 if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id)
 }
 async function openDocument(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();if(error||!data?.storage_path){alert('Документ не знайдено.');return}const{data:signed,error:se}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(data.storage_path,300);if(se||!signed?.signedUrl){alert('Не вдалося відкрити документ: '+(se?.message||'невідома помилка'));return}window.open(signed.signedUrl,'_blank','noopener,noreferrer')}
@@ -271,6 +253,7 @@ async function reviewDocumentData(id){
   if(error)throw error;
   const [cr,pr]=await Promise.all([supabaseClient.from('candidates').select('*').eq('id',d.candidate_id).single(),supabaseClient.from('personal_files').select('*').eq('candidate_id',d.candidate_id).maybeSingle()]);
   if(cr.error)throw cr.error;if(pr.error)throw pr.error;
+  await CRMResponsibility.ready();
   const c=cr.data,pf=pr.data||{},esc=docEscape,e=d.ai_extracted||{};
   let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
   const labels={full_name:'ПІБ',name_nominative:'ПІБ у називному відмінку',name_genitive:'ПІБ у родовому відмінку',name_gender:'Стать за ПІБ',name_cases:'Відмінки ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',passport_data:'Дані паспорта',phone:'Телефон',email:'Email',sex:'Стать',marital_status:'Сімейний стан',has_children:'Є діти',children_info:'Відомості про дітей',relatives:'Рідні та близькі',education:'Освіта',civilian_profession:'Цивільна професія',worked_before:'Працював / працювала',work_history:'Трудовий стаж',served_before:'Служив / служила',military_rank:'Військове звання',military_unit:'Військова частина',military_specialty:'ВОС',military_service_history:'Військовий стаж',desired_position:'Бажана посада',desired_unit:'Бажаний напрям',tcc:'ТЦК та СП',address:'Адреса з документа',registered_address:'Адреса реєстрації',citizenship:'Громадянство',unzr:'УНЗР',document_type:'Тип документа',document_number:'Номер документа',document_series:'Серія документа',document_date:'Дата видачі',document_issuer:'Ким виданий',passport_number:'Номер паспорта',passport_series:'Серія паспорта',passport_issuer:'Ким виданий паспорт',passport_issue_date:'Дата видачі паспорта',passport_expiry_date:'Дійсний до',birth_certificate:'Номер свідоцтва про народження',confidence:'Впевненість AI',warnings:'Попередження',meta:'Додаткові відомості',relationship:'Спорідненість',workplace:'Місце роботи',position:'Посада',notes:'Примітки',signatory:'Підписант',recommender_unit:'Організація рекомендації',recruiter_name:'Рекрутер'};
@@ -293,6 +276,7 @@ async function reviewDocumentData(id){
     add('candidate','name_nominative',e.name_nominative||e.full_name);
     add('candidate','name_genitive',e.name_genitive);
     for(const key of ['education','work_history','military_service_history','children_info'])add('file',key,e[key]);
+    add('profile','relatives',e.relatives);
   }
   if(ownIdentity){
     add('profile','identity_document_type',type,'Тип документа у картці');
@@ -306,8 +290,10 @@ async function reviewDocumentData(id){
       for(const key of ['citizenship','unzr','registered_address'])add('profile',key,e[key]||e.meta?.[key]);
     }
   }
+  const currentVersion=await supabaseClient.from('documents').select('id').eq('version_group_id',d.version_group_id).gt('version_number',d.version_number).limit(1);if(currentVersion.error)throw currentVersion.error;const archived=!!currentVersion.data?.length;if(archived)changes.splice(0);
   const dialog=document.createElement('dialog');dialog.className='crm-dialog';
   dialog.innerHTML='<h2>Розпізнані дані документа</h2><p>'+esc(c.name_nominative||c.full_name)+' · '+esc(d.file_name)+'</p><div class="crm-actions"><button data-original>Відкрити оригінал</button><button data-close>Закрити</button></div>'+(changes.length?'<h3>Відмінності від картки</h3><p>Позначте лише ті значення, які потрібно перенести. Без позначки дані картки залишаться.</p><div class="crm-review-grid">'+changes.map((change,i)=>'<label class="crm-review-field"><input type="checkbox" data-change="'+i+'"> <strong>'+esc(change.label)+'</strong><div class="crm-review-values"><span>У картці:<br>'+esc(display(change.current))+'</span><span>З документа:<br>'+esc(display(change.incoming))+'</span></div></label>').join('')+'</div><div class="crm-actions"><button data-apply>Взяти позначені дані з документа</button></div>':'<p>Для доступних полів перенесення немає відмінностей від картки.</p>')+'<p role="status"></p><h3>Контейнер документа</h3><div class="crm-review-grid">'+Object.entries(e).map(([key,value])=>'<section class="crm-review-field"><strong>'+esc(labels[key]||key)+'</strong><div>'+renderValue(value)+'</div></section>').join('')+'</div>'+(d.ai_warnings?.length?'<h3>Попередження</h3><p>'+renderValue(d.ai_warnings)+'</p>':'');
+  dialog.innerHTML+=CRMResponsibility.documentInfo(d);CRMResponsibility.bindHistory(dialog);
   document.body.append(dialog);dialog.showModal();
   const close=()=>{dialog.close();dialog.remove()};
   dialog.querySelector('[data-close]').onclick=close;
@@ -319,17 +305,12 @@ async function reviewDocumentData(id){
     if(!selected.length)return;
     apply.disabled=true;dialog.querySelectorAll('[data-close],input').forEach(el=>el.disabled=true);CRMWorkspace.busy=true;
     try{
-      // Refresh profile to preserve unrelated edits performed after the dialog opened.
-      const current=await supabaseClient.from('candidates').select('profile_data').eq('id',d.candidate_id).single();if(current.error)throw current.error;
-      let profile=current.data.profile_data||{};if(typeof profile==='string')profile=JSON.parse(profile);
-      const cp={},fp={};
-      selected.forEach(change=>{if(change.target==='candidate')cp[change.key]=change.incoming;else if(change.target==='file')fp[change.key]=change.incoming;else profile[change.key]=change.incoming});
-      if(selected.some(change=>change.target==='profile'))cp.profile_data=profile;
-      if(Object.keys(cp).length){const r=await supabaseClient.from('candidates').update(cp).eq('id',d.candidate_id).select('id');if(r.error)throw r.error;if(!r.data?.length)throw new Error('Картку не оновлено. Перевірте права доступу.');}
-      if(Object.keys(fp).length){const r=await supabaseClient.from('personal_files').upsert({...fp,candidate_id:d.candidate_id},{onConflict:'candidate_id'});if(r.error)throw r.error;}
+      const result=await supabaseClient.rpc('crm_apply_document_fields',{document_id:d.id,selections:selected});if(result.error)throw result.error;
       dialog.querySelector('[role=status]').textContent='Позначені дані збережено в картці.';apply.textContent='Дані збережено';
       dialog.querySelectorAll('[data-change]:checked').forEach(el=>{el.checked=false;el.disabled=true});
     }catch(err){dialog.querySelector('[role=status]').textContent='Помилка збереження: '+err.message;apply.disabled=false;dialog.querySelectorAll('input').forEach(el=>el.disabled=false)}
     finally{CRMWorkspace.busy=false;dialog.querySelector('[data-close]').disabled=false;}
   };
 }
+
+function versionHistory(d,docs){const older=docs.filter(v=>v.version_group_id===d.version_group_id&&v.version_number<d.version_number).sort((a,b)=>b.version_number-a.version_number);return older.length?'<details class="crm-ai-container"><summary>Попередні версії ('+older.length+')</summary>'+older.map(v=>'<article><b>Версія '+docEscape(v.version_number)+' · '+docEscape(v.file_name)+'</b>'+CRMResponsibility.documentInfo(v)+'<button type="button" data-doc-open="'+docEscape(v.id)+'">Оригінал</button>'+(v.ai_extracted?'<button type="button" data-doc-data="'+docEscape(v.id)+'">Дані AI</button>':'')+'</article>').join('')+'</details>':''}

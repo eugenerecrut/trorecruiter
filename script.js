@@ -73,6 +73,7 @@ function showCandidates() {
 
     <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
       <input id="candidateSearch" placeholder="Пошук за ПІБ, телефоном, посадою" style="flex:1;min-width:260px;padding:12px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a">
+      <select id="candidateRecruiter" class="crm-owner-select" aria-label="Фільтр за рекрутером"><option value="">Усі рекрутери</option><option value="mine">Мої кандидати</option><option value="unassigned">Не призначено</option></select>
       <select id="candidateStatus" style="padding:12px;border-radius:8px;border:1px solid #cfd8dc;background:#fff;color:#24313a">
         <option value="">Всі статуси</option>
         <option>Новий</option>
@@ -97,6 +98,7 @@ function showCandidates() {
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Бажана посада</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Напрям</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Статус</th>
+            <th style="padding:14px">Відповідальний рекрутер</th>
             <th data-delete-column="1" style="padding:14px;border-bottom:1px solid #e0e6e8">Дії</th>
           </tr>
         </thead>
@@ -106,9 +108,12 @@ function showCandidates() {
 
   async function render() {
     const candidates = await getCandidates();
+    await CRMResponsibility.ready();
     if(!content.querySelector('#candidateSearch'))return;
     const q = content.querySelector('#candidateSearch').value.trim().toLowerCase();
     const status = content.querySelector('#candidateStatus').value;
+    const rf=content.querySelector('#candidateRecruiter'),recruiter=rf.value;
+    rf.innerHTML='<option value="">Усі рекрутери</option><option value="mine">Мої кандидати</option><option value="unassigned">Не призначено</option>'+CRMResponsibility.options().replace('<option value="">Не призначено</option>','');rf.value=recruiter;
 
     const filtered = candidates.filter(c => {
       const text = [
@@ -117,7 +122,7 @@ function showCandidates() {
       ].join(' ').toLowerCase();
 
       return (!q || text.includes(q)) &&
-        (!status || c.recruitment_status === status);
+        (!status || c.recruitment_status === status) && (!recruiter || (recruiter==='mine'?c.responsible_recruiter_id===CRMResponsibility.userId:recruiter==='unassigned'?!c.responsible_recruiter_id:c.responsible_recruiter_id===recruiter));
     });
 
     const rows = content.querySelector('#candidateRows');
@@ -129,20 +134,23 @@ function showCandidates() {
         <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
         <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
+        <td style="padding:14px">${CRMResponsibility.control(c)}</td>
         <td style="padding:14px;white-space:nowrap;display:flex;gap:7px">
           <button type="button" onclick="crmNavigate('card','${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">↗ Відкрити</button>
           <button type="button" onclick="crmNavigate('documents','${c.id}')" style="padding:8px 11px;border:1px solid #cfd8dc;border-radius:7px;background:#fff;color:#34414a;font-weight:800;cursor:pointer">▣ Документи</button>
           <button type="button" data-delete-candidate="1" onclick="deleteCandidateCase('${c.id}')" style="padding:8px 11px;border:1px solid #e2b9b5;border-radius:7px;background:#fff5f4;color:#a23f38;font-weight:800;cursor:pointer">🗑 Видалити</button>
         </td>
       </tr>`).join('') : `
-      <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
+      <tr><td colspan="7" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
 
     CandidatePhotos.hydrate(rows, filtered);
+    CRMResponsibility.bind(rows,filtered);
 
   }
 
   document.getElementById('candidateSearch').oninput = render;
   document.getElementById('candidateStatus').onchange = render;
+  document.getElementById('candidateRecruiter').onchange=render;
   render();
 }
 

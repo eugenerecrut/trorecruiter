@@ -1,0 +1,32 @@
+(function(){
+  'use strict';
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  let staff=[],user=null;
+  async function ready(){
+    const [r,u]=await Promise.all([supabaseClient.from('crm_staff').select('*').order('display_name'),supabaseClient.auth.getUser()]);
+    if(r.error)throw r.error;if(u.error)throw u.error;staff=r.data||[];user=u.data.user;return staff;
+  }
+  const name=id=>staff.find(s=>s.user_id===id)?.display_name||(id?'Автор не записаний у довіднику':'Не призначено');
+  const date=v=>v?new Date(v).toLocaleString('uk-UA',{timeZone:'Europe/Kyiv'}):'Час не записаний';
+  const canAssign=()=>staff.some(s=>s.user_id===user?.id&&s.active&&['owner','lead'].includes(s.role));
+  const options=(current=null)=>'<option value="">Не призначено</option>'+staff.filter(s=>s.active&&['lead','recruiter'].includes(s.role)||s.user_id===current).map(s=>'<option value="'+esc(s.user_id)+'" '+(s.user_id===current?'selected':'')+'>'+esc(s.display_name)+(s.active?'':' (неактивний)')+'</option>').join('');
+  const control=c=>canAssign()?'<select class="crm-owner-select" aria-label="Відповідальний рекрутер" data-assign="'+esc(c.id)+'">'+options(c.responsible_recruiter_id)+'</select>':'<strong>'+esc(name(c.responsible_recruiter_id))+'</strong>';
+  async function assign(c,value){
+    let q=supabaseClient.from('candidates').update({responsible_recruiter_id:value||null}).eq('id',c.id);
+    q=c.responsible_recruiter_id?q.eq('responsible_recruiter_id',c.responsible_recruiter_id):q.is('responsible_recruiter_id',null);
+    const r=await q.select('id');if(r.error)throw r.error;if(!r.data?.length)throw new Error('Призначення вже змінилося. Оновіть список.');c.responsible_recruiter_id=value||null;
+  }
+  function bind(root,candidates){root.querySelectorAll('[data-assign]').forEach(select=>select.onchange=async()=>{const c=candidates.find(c=>c.id===select.dataset.assign),old=c.responsible_recruiter_id;select.disabled=true;try{await assign(c,select.value)}catch(e){select.value=old||'';alert(e.message)}finally{select.disabled=false}})}
+  async function mountCard(c,root){await ready();const box=root.querySelector('[data-responsibility]');if(!box)return;box.innerHTML='<div><h3>Відповідальність</h3><label>Закріплений рекрутер<br>'+control(c)+'</label><p class="muted">Призначення змінюєте ви або Совін. Обидва рекрутери можуть вести справу.</p></div><button type="button" data-history>Історія справи</button>';bind(box,[c]);box.querySelector('[data-history]').onclick=()=>history(c.id).catch(e=>alert(e.message))}
+  const latest=docs=>docs.filter(d=>!docs.some(other=>other.version_group_id===d.version_group_id&&other.version_number>d.version_number));
+  function documentInfo(d){
+    const author=d.uploaded_by?name(d.uploaded_by):'Автор не записаний';
+    return '<div class="crm-doc-accountability"><b>Завантажив: '+esc(author)+'</b><small>'+esc(date(d.created_at))+' · версія '+esc(d.version_number||1)+'</small><small>'+(d.verified_by?'Перевірив: '+esc(name(d.verified_by))+' · '+esc(date(d.verified_at)):d.verification_status==='Підтверджено'?'Підтверджено раніше; автор перевірки не записаний':'Ручну перевірку ще не виконано')+'</small></div>'+
+      ((d.ai_extracted||d.ai_raw_response||d.processing_status==='AI помилка')?'<details class="crm-ai-container"><summary>Контейнер AI · '+esc(d.processing_status||'Архівний результат')+'</summary><p>Модель: '+esc(d.ai_model||'не записана')+' · '+esc(date(d.ai_processed_at))+'</p><p>Тип: '+esc(d.ai_document_type||d.document_type)+' · впевненість: '+esc(d.ai_confidence??'не записана')+'</p><pre>'+esc(JSON.stringify({fields:d.ai_extracted,warnings:d.ai_warnings},null,2))+'</pre><details><summary>Повна відповідь AI</summary><pre>'+esc(d.ai_raw_response?JSON.stringify(d.ai_raw_response,null,2):'Для цього старого результату повна відповідь не зберігалася.')+'</pre></details><button type="button" data-ai-history="'+esc(d.id)+'">Історія розпізнавань</button></details>':'');
+  }
+  function dialog(title,html){const d=document.createElement('dialog');d.className='crm-dialog crm-history';d.innerHTML='<h2>'+esc(title)+'</h2><button type="button" data-close>Закрити</button>'+html;document.body.append(d);d.showModal();const close=()=>{d.close();d.remove()};d.querySelector('[data-close]').onclick=close;d.addEventListener('cancel',e=>{e.preventDefault();close()});return d}
+  async function aiHistory(id){const r=await supabaseClient.from('document_ai_runs').select('*').eq('document_id',id).order('recorded_at',{ascending:false});if(r.error)throw r.error;dialog('Історія розпізнавань',(r.data||[]).map(run=>'<article><h3>'+esc(date(run.processed_at))+'</h3><p>'+esc(run.actor_name)+' · модель '+esc(run.model||'не записана')+(run.is_legacy?' · архівний результат':'')+'</p><pre>'+esc(JSON.stringify(run.result,null,2))+'</pre></article>').join('')||'<p>Розпізнавань ще немає.</p>')}
+  async function history(id){const r=await supabaseClient.from('crm_activity').select('*').eq('candidate_id',id).order('occurred_at',{ascending:false});if(r.error)throw r.error;const labels={recruiter_assigned:'Зміна відповідального рекрутера',document_uploaded:'Завантаження документа',document_replaced:'Нова версія документа',document_verified:'Зміна перевірки',candidates_update:'Редагування картки',personal_files_update:'Редагування особової справи',documents_update:'Оновлення документа',candidates_insert:'Створення кандидата',personal_files_insert:'Створення особової справи',documents_delete:'Видалення документа'};dialog('Історія справи','<p>Журнал фіксує дії від запровадження цієї версії CRM.</p>'+(r.data||[]).map(a=>'<article><h3>'+esc(labels[a.action]||a.action)+'</h3><p>'+esc(a.actor_name)+' · '+esc(date(a.occurred_at))+(a.source_document_id?' · перенесення вибраних полів AI':'')+'</p><details><summary>Що змінилося</summary>'+Object.entries(a.changes).map(([key,v])=>'<p><b>'+esc(key==='responsible_recruiter_id'?'Рекрутер':key)+'</b></p><pre>'+esc(key==='responsible_recruiter_id'?name(v.before)+' → '+name(v.after):JSON.stringify(v,null,2))+'</pre>').join('')+'</details></article>').join(''))}
+  function bindHistory(root){root.addEventListener('click',e=>{const id=e.target.closest('[data-ai-history]')?.dataset.aiHistory;if(id)aiHistory(id).catch(e=>alert(e.message))})}
+  window.CRMResponsibility={ready,name,date,control,bind,mountCard,latest,documentInfo,bindHistory,aiHistory,history,options,get userId(){return user?.id}};
+})();

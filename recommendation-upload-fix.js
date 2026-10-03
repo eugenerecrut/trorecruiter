@@ -70,6 +70,7 @@
     }
     throw new Error('Supabase Functions API недоступний у браузері.');
   }
+  let recognizedFile=null,recognizedResponse=null;
   window.aiExtractRecommendation = async function (text) {
     const file = getRecommendationFile();
     const body = { text: String(text || '') };
@@ -81,6 +82,7 @@
     }
     const data = await invokeAI(body);
     if (!data?.extracted) throw new Error(data?.error || 'AI не повернув структурованих даних.');
+    recognizedFile=file;recognizedResponse=structuredClone(data);
     return flattenAIExtraction(data.extracted);
   };
   window.uploadRecommendation = async function (candidateId, user) {
@@ -93,9 +95,9 @@
     if (uploadError) return { ok:false, reason:`Storage: ${uploadError.message}` };
     const { data:req,error:reqError } = await client.from('document_requirements').select('id').eq('document_type','Копія рекомендаційного листа').eq('active',true).limit(1).maybeSingle();
     if (reqError) { await client.storage.from('candidate-documents').remove([storagePath]); return { ok:false, reason:`Вимога документа: ${reqError.message}` }; }
-    const { error:docError } = await client.from('documents').insert({candidate_id:candidateId,requirement_id:req?.id||null,document_type:'Рекомендаційний лист',document_name:'Рекомендаційний лист',storage_path:storagePath,file_name:file.name,file_size:file.size,mime_type:file.type||'application/pdf',uploaded_by:user?.id||null,status:'Завантажено',processing_status:'AI-структуровано',verification_status:'Підтверджено'});
+    const { error:docError } = await client.from('documents').insert({candidate_id:candidateId,requirement_id:req?.id||null,document_type:'Рекомендаційний лист',document_name:'Рекомендаційний лист',storage_path:storagePath,file_name:file.name,file_size:file.size,mime_type:file.type||'application/pdf',uploaded_by:user?.id||null,status:'Завантажено',processing_status:recognizedFile===file&&recognizedResponse?'AI оброблено':'Завантажено',verification_status:'Не перевірено',...(recognizedFile===file&&recognizedResponse?{ai_raw_response:recognizedResponse,ai_extracted:recognizedResponse.extracted,ai_model:recognizedResponse.model||null,ai_processed_at:new Date().toISOString(),ai_document_type:'Рекомендаційний лист',ai_warnings:recognizedResponse.warnings||[],ai_confidence:recognizedResponse.confidence??null}:{})});
     if (docError) { await client.storage.from('candidate-documents').remove([storagePath]); return { ok:false, reason:`Реєстр документів: ${docError.message}` }; }
-    return { ok:true, storagePath, verified:true };
+    return { ok:true, storagePath, verified:false };
   };
 
   console.info('PSK recommendation upload + AI extraction fix v8 loaded');
