@@ -124,7 +124,7 @@ function showCandidates() {
     if(!rows)return;
     rows.innerHTML = filtered.length ? filtered.map(c => `
       <tr data-candidate-id="${escapeHtml(c.id)}" style="border-top:1px solid #edf0f1">
-        <td style="padding:14px"><b>${escapeHtml(c.name_nominative || c.full_name || '')}</b></td>
+        <td style="padding:14px">${CandidatePhotos.markup(c)}</td>
         <td style="padding:14px">${escapeHtml(c.phone || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
@@ -136,6 +136,8 @@ function showCandidates() {
         </td>
       </tr>`).join('') : `
       <tr><td colspan="6" style="padding:46px;text-align:center;color:#89969d">Кандидатів поки немає</td></tr>`;
+
+    CandidatePhotos.hydrate(rows, filtered);
 
   }
 
