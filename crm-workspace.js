@@ -116,10 +116,10 @@ CRMWorkspace.loadHome=async function(){
   if(!document.querySelector('.cards'))return;
   const candidates=await getCandidates();
   const reqs=await getDocumentRequirements();
-  const result=await supabaseClient.from('documents').select('id,candidate_id,requirement_id,document_type,verification_status,processing_status');
+  const result=await supabaseClient.from('documents').select('id,candidate_id,requirement_id,document_type,verification_status,processing_status,version_group_id,version_number,deleted_at');
   if(result.error)throw result.error;
   if(!document.querySelector('.cards'))return;
-  const docs=result.data||[],esc=this.escape;
+  const docs=CRMResponsibility.latest(result.data||[]),esc=this.escape;
   const recent=document.querySelector('.dashboard-grid tbody');
   if(recent)recent.innerHTML=candidates.slice(0,6).map(c=>'<tr><td><button class="crm-button" onclick="crmNavigate(\'card\',\''+esc(c.id)+'\')">'+esc(c.name_nominative||c.full_name)+'</button></td><td>'+esc(c.desired_position||'—')+'</td><td>'+esc(c.recruitment_status||'Новий')+'</td><td>'+esc(c.profile_data?.recruiter_name||'—')+'</td></tr>').join('')||'<tr><td colspan="4">Кандидатів поки немає.</td></tr>';
   const tasks=document.querySelector('.lower-grid .card');

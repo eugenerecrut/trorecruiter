@@ -90,7 +90,7 @@
     try {
       for (let i = 0; i < candidates.length; i += 100) {
         const {data, error} = await supabaseClient.from('documents')
-          .select('id,candidate_id,document_type,document_name,storage_path,file_name,mime_type,created_at')
+          .select('id,candidate_id,document_type,document_name,storage_path,file_name,mime_type,created_at,version_group_id,version_number,deleted_at')
           .in('candidate_id', candidates.slice(i, i + 100).map(candidate => candidate.id))
           .or('document_type.ilike.%фото%,document_name.ilike.%фото%')
           .order('created_at', {ascending: false}).order('id', {ascending: false});
@@ -99,7 +99,7 @@
       }
       if (!container.isConnected || started !== generation || renders.get(container) !== renderId) return;
       const latest = new Map();
-      documents.forEach(doc => {
+      CRMResponsibility.latest(documents).forEach(doc => {
         if (!latest.has(doc.candidate_id) && /фото\s*9\s*[×xх\/]\s*12/i.test((doc.document_type || '') + ' ' + (doc.document_name || '')) && doc.storage_path) latest.set(doc.candidate_id, doc);
       });
       observer ||= new IntersectionObserver(entries => {

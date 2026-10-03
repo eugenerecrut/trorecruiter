@@ -18,6 +18,7 @@ Deno.serve(async req=>{
     if(!id)return json({error:'document_id required'},400);
     const {data:doc,error:de}=await sb.from('documents').select('*').eq('id',id).single();
     if(de||!doc)throw new Error('Документ не знайдено');
+    if(doc.deleted_at)return json({error:'Видалений документ не можна розпізнавати'},409);
     const newer=await sb.from('documents').select('id').eq('version_group_id',doc.version_group_id).gt('version_number',doc.version_number).limit(1);
     if(newer.error)throw newer.error;if(newer.data?.length)return json({error:'Архівну версію не можна розпізнавати повторно'},409);
     const {data:s,error:se}=await sb.storage.from('candidate-documents').createSignedUrl(doc.storage_path,600);

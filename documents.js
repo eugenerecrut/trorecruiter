@@ -65,8 +65,10 @@ async function showDocuments(id){
   });
   const knownIds=new Set(reqs.map(r=>r.id)),knownTypes=new Set(reqs.map(r=>r.document_type));
   docs.filter(d=>!knownIds.has(d.requirement_id)&&!knownTypes.has(d.document_type)).forEach(d=>rows.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true}));
-  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docCameraFiles">📷 Сканувати камерою</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
+  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docDeletedFiles">Видалені ('+allDocs.filter(d=>d.deleted_at).length+')</button><button id="docCaseHistory">Історія дій</button><button id="docCameraFiles">📷 Сканувати камерою</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
   content.querySelector('#docBackCard').onclick=()=>crmNavigate('card',id);
+  content.querySelector('#docDeletedFiles').onclick=()=>showDeletedDocuments(id,allDocs);
+  content.querySelector('#docCaseHistory').onclick=()=>CRMResponsibility.history(id).catch(e=>alert(e.message));
   content.querySelector('#docAddFiles').onclick=()=>openAddDocumentModal(id);
   content.querySelector('#docScanFiles').onclick=()=>openScannerImport(id);
   content.querySelector('#docCameraFiles').onclick=()=>openCameraDocument(id);
@@ -82,7 +84,7 @@ async function showDocuments(id){
     const {r,files,condition,childIndex}=row;
     const required=r.is_required&&condition===true,missing=required&&!files.length,errors=files.some(d=>r.ai_enabled!==false&&d.processing_status==='AI помилка'),review=files.some(d=>d.verification_status!=='Підтверджено');
     const label=condition===null?'Уточніть у картці':condition===false?'Додатковий':required?'Обов’язковий':'За наявності';
-    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>'<div class="crm-document-file"><small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(d.verification_status==='Підтверджено'?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>'+CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(d.verification_status!=='Підтверджено'?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'')+'</div>').join(''):required?'Не завантажено':'Не додано')+'</td><td><button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></td></tr>';
+    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>'<div class="crm-document-file"><small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(d.verification_status==='Підтверджено'?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>'+CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(d.verification_status!=='Підтверджено'?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'')+'</div>').join(''):required?'Не завантажено':'Не додано')+'</td><td><button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></td></tr>';
   }).join('');
   body.addEventListener('click',async e=>{
     const b=e.target.closest('button');if(!b)return;
@@ -93,6 +95,7 @@ async function showDocuments(id){
     if(b.dataset.docData)return reviewDocumentData(b.dataset.docData).catch(error=>alert(error.message));
     b.disabled=true;CRMWorkspace.busy=true;
     try{
+      if(b.dataset.docDelete)await setDocumentDeleted(allDocs.find(d=>d.id===b.dataset.docDelete),true);
       if(b.dataset.docRetry)await retryDocumentAI(b.dataset.docRetry);
       if(b.dataset.docConfirm)await confirmDocument(b.dataset.docConfirm);
     }catch(error){alert(error.message)}finally{CRMWorkspace.busy=false;if(b.isConnected)b.disabled=false}
@@ -239,7 +242,7 @@ if(!data?.ok&&!data?.extracted){alert(data?.error||'AI не повернув с�
 alert('Повторне AI-розпізнавання завершено. Перевірте контейнер і виберіть поля для перенесення.');
 if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id)
 }
-async function openDocument(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();if(error||!data?.storage_path){alert('Документ не знайдено.');return}const{data:signed,error:se}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(data.storage_path,300);if(se||!signed?.signedUrl){alert('Не вдалося відкрити документ: '+(se?.message||'невідома помилка'));return}window.open(signed.signedUrl,'_blank','noopener,noreferrer')}
+async function openDocument(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();if(error||data?.deleted_at||!data?.storage_path){alert('Документ не знайдено.');return}const{data:signed,error:se}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(data.storage_path,300);if(se||!signed?.signedUrl){alert('Не вдалося відкрити документ: '+(se?.message||'невідома помилка'));return}window.open(signed.signedUrl,'_blank','noopener,noreferrer')}
 function installDocumentControls(){
   document.querySelectorAll('.menu-item:not([data-nav])').forEach(item=>{
     if(!String(item.textContent||'').includes('Документи')||item.dataset.docBound)return;
@@ -250,7 +253,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 // Review the existing document container; never infer values that AI did not return.
 async function reviewDocumentData(id){
   const {data:d,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();
-  if(error)throw error;
+  if(error)throw error;if(d.deleted_at)throw new Error('Документ видалено. Спочатку відновіть його.');
   const [cr,pr]=await Promise.all([supabaseClient.from('candidates').select('*').eq('id',d.candidate_id).single(),supabaseClient.from('personal_files').select('*').eq('candidate_id',d.candidate_id).maybeSingle()]);
   if(cr.error)throw cr.error;if(pr.error)throw pr.error;
   await CRMResponsibility.ready();
@@ -314,3 +317,22 @@ async function reviewDocumentData(id){
 }
 
 function versionHistory(d,docs){const older=docs.filter(v=>v.version_group_id===d.version_group_id&&v.version_number<d.version_number).sort((a,b)=>b.version_number-a.version_number);return older.length?'<details class="crm-ai-container"><summary>Попередні версії ('+older.length+')</summary>'+older.map(v=>'<article><b>Версія '+docEscape(v.version_number)+' · '+docEscape(v.file_name)+'</b>'+CRMResponsibility.documentInfo(v)+'<button type="button" data-doc-open="'+docEscape(v.id)+'">Оригінал</button>'+(v.ai_extracted?'<button type="button" data-doc-data="'+docEscape(v.id)+'">Дані AI</button>':'')+'</article>').join('')+'</details>':''}
+
+async function setDocumentDeleted(doc,deleted){
+  if(!doc)throw new Error('Документ не знайдено. Оновіть список.');
+  await CRMResponsibility.ready();
+  if(!CRMResponsibility.canDelete())throw new Error('Недостатньо прав.');
+  const actor=CRMResponsibility.name(CRMResponsibility.userId);
+  if(!confirm((deleted?'Видалити зі справи':'Відновити у справі')+' документ «'+(doc.file_name||doc.document_name)+'»?\nВідповідальний: '+actor+(deleted?'\nФайл і дані AI збережуться в історії.':'')))return false;
+  const r=await supabaseClient.rpc('crm_set_document_deleted',{document_id:doc.id,deleted});
+  if(r.error)throw r.error;if(!r.data)throw new Error('Дію не виконано. Оновіть список.');
+  window.CandidatePhotos?.clear();await showDocuments(doc.candidate_id);return true;
+}
+function showDeletedDocuments(candidateId,docs){
+  const esc=docEscape,removed=docs.filter(d=>d.deleted_at).sort((a,b)=>new Date(b.deleted_at)-new Date(a.deleted_at));
+  const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-history';
+  dialog.innerHTML='<h2>Видалені документи</h2><p class="muted">Файли й результати AI збережено для історії. Після відновлення документ знову враховується у комплекті.</p><button type="button" data-close>Закрити</button>'+ (removed.map(d=>'<article><h3>'+esc(d.file_name||d.document_name)+'</h3><p>'+esc(d.document_type)+' · версія '+esc(d.version_number)+'</p><p><b>Видалив: '+esc(d.deleted_by_name||CRMResponsibility.name(d.deleted_by))+'</b><br>'+esc(CRMResponsibility.date(d.deleted_at))+'</p>'+CRMResponsibility.documentInfo(d)+(CRMResponsibility.canDelete()?'<button type="button" data-doc-restore="'+esc(d.id)+'">Відновити</button>':'')+'</article>').join('')||'<p>Видалених документів немає.</p>');
+  document.body.append(dialog);dialog.showModal();const close=()=>{dialog.close();dialog.remove()};dialog.querySelector('[data-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close()});
+  CRMResponsibility.bindHistory(dialog);
+  dialog.addEventListener('click',async e=>{const b=e.target.closest('[data-doc-restore]');if(!b)return;b.disabled=true;CRMWorkspace.busy=true;try{if(await setDocumentDeleted(removed.find(d=>d.id===b.dataset.docRestore),false))close()}catch(error){alert(error.message)}finally{CRMWorkspace.busy=false;if(b.isConnected)b.disabled=false}});
+}
