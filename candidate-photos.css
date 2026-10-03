@@ -6,3 +6,27 @@
 .candidate-avatar [hidden]{display:none!important}
 html[data-crm-layout="mobile"] .candidate-identity{gap:12px;min-height:64px}
 html[data-crm-layout="mobile"] .crm-adaptive-table td .candidate-identity{padding:0;min-height:64px;margin:0;background:transparent;border:0}
+
+/* Readable desktop columns and native table cells. */
+.candidate-table{table-layout:fixed;min-width:1280px}
+.candidate-col-name{width:280px}.candidate-col-phone{width:145px}.candidate-col-direction{width:215px}.candidate-col-status{width:135px}.candidate-col-recruiter{width:200px}.candidate-col-actions{width:170px}
+.candidate-table td{vertical-align:middle;line-height:1.45;overflow-wrap:break-word}
+.candidate-table td:first-child{padding:18px!important}
+.candidate-table .candidate-identity{gap:14px}
+.candidate-table .candidate-identity b{flex:1;min-width:0;font-size:14px;line-height:1.5;word-break:normal;overflow-wrap:break-word}
+.candidate-table td:nth-child(2){white-space:nowrap;font-variant-numeric:tabular-nums}
+.candidate-table td:nth-child(3),.candidate-table td:nth-child(4){font-size:13px}
+.candidate-table tbody tr:hover{background:#fafcf6}
+.candidate-table .crm-owner-select{width:100%;min-width:0;font-size:13px}
+.candidate-actions-cell{padding:14px!important}
+.candidate-actions{display:flex;gap:6px;align-items:center}
+.candidate-actions button{height:40px;padding:0 10px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#34414a;font-weight:700;white-space:nowrap}
+.candidate-actions .candidate-delete-button{width:40px;flex:none;padding:0;color:#a23f38;border-color:#e2b9b5;background:#fff7f6}
+.candidate-filters #candidateRecruiter,.candidate-filters #candidateStatus{max-width:240px}
+html[data-crm-layout="mobile"] .candidate-table{table-layout:auto;min-width:0}
+html[data-crm-layout="mobile"] .candidate-table colgroup{display:none}
+html[data-crm-layout="mobile"] .candidate-table .candidate-identity b{font-size:15px}
+html[data-crm-layout="mobile"] .candidate-actions{justify-content:flex-start}
+html[data-crm-layout="mobile"] .candidate-actions button{min-height:44px}
+html[data-crm-layout="mobile"] .candidate-filters #candidateSearch{min-width:0!important;width:100%;flex-basis:100%!important}
+html[data-crm-layout="mobile"] .candidate-filters #candidateRecruiter,html[data-crm-layout="mobile"] .candidate-filters #candidateStatus{max-width:none;min-width:0;width:calc(50% - 5px);flex:1}
