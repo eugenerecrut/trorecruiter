@@ -155,7 +155,7 @@
           '<div class="cc-wide"><h4>Збережені дипломи</h4>'+((Array.isArray(profile.education_records)?profile.education_records:[]).map(r=>'<p>'+esc([r.degree,r.institution,r.specialty_code,r.specialty,r.qualification,r.graduation_year,[r.diploma_series,r.diploma_number].filter(Boolean).join(' ')].filter(Boolean).join(' · '))+'</p>').join('')||'<p>Записи з’являться після підтвердженого перенесення документа.</p>')+'</div>'
         )}
         ${section('6. Трудова діяльність','Відомості про роботу',
-          select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+input('Цивільна професія','civilian_profession',c.civilian_profession)+textarea('Трудова діяльність','work_history',pf.work_history || pf.civilian_experience,'cc-wide')+workEditor(profile)
+          select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+(String(c.civilian_profession||'').trim()?input('Цивільна професія','civilian_profession',c.civilian_profession):'')+(String(pf.work_history||pf.civilian_experience||'').trim()?textarea('Трудова діяльність','work_history',pf.work_history||pf.civilian_experience,'cc-wide'):'')+workEditor(profile)
         )}
         ${section('7. Військова служба','Відомості про попередню та поточну службу',
           select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')
@@ -321,7 +321,7 @@
         tcc: String(fd.get('tcc') || '').trim() || null,
         vlk_status: String(fd.get('vlk_status') || '').trim() || null,
         recruitment_status: String(fd.get('recruitment_status') || 'Новий'),
-        civilian_profession: String(fd.get('civilian_profession') || '').trim() || null,
+        civilian_profession: fd.has('civilian_profession')?(String(fd.get('civilian_profession')||'').trim()||null):(c.civilian_profession??null),
         notes: String(fd.get('notes') || '').trim() || null,
         profile_data: { ...oldProfile, military_unit: militaryUnit, updated_from_candidate_card: true },
         updated_at: new Date().toISOString()
@@ -336,7 +336,7 @@
         birth_place: String(fd.get('birth_place') || '').trim() || null,
         passport_data: String(fd.get('passport_data') || '').trim() || null,
         children_info: String(fd.get('children_info') || '').trim() || null,
-        work_history: String(fd.get('work_history') || '').trim() || null,
+        work_history: fd.has('work_history')?(String(fd.get('work_history')||'').trim()||null):(pf.work_history??null),
         military_service_history: String(fd.get('military_service_history') || '').trim() || null,
         education: String(fd.get('education') || '').trim() || null,
         updated_at: new Date().toISOString()
