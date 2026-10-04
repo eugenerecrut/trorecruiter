@@ -148,8 +148,7 @@
         )}
         ${section('4. Адреси','Зареєстроване та фактичне місце проживання',
           input('Зареєстроване місце проживання','registered_address',profile.registered_address || pf.registered_address,'text','cc-wide')+
-          input('Фактичне місце проживання','address',pf.address,'text','cc-wide')+
-          input('Область','region',profile.region)+input('Населений пункт','locality',profile.locality)+input('Вулиця','street',profile.street)+input('Будинок','house',profile.house)+input('Квартира','apartment',profile.apartment)+input('Індекс','postal_code',profile.postal_code)
+          input('Фактичне місце проживання','address',pf.address,'text','cc-wide')
         )}
         ${section('5. Освіта','Освітні документи та кваліфікація',
           select('Рівень освіти','education_level',profile.education_level || '',[['','Не визначено'],['середня','Середня'],['професійна','Професійно-технічна'],['фахова','Фахова передвища'],['вища','Вища']])+input('Заклад освіти','education_institution',profile.education_institution)+input('Спеціальність','education_specialty',profile.education_specialty)+input('Кваліфікація','education_qualification',profile.education_qualification)+input('Рік закінчення','education_year',profile.education_year,'number')+textarea('Деталі освіти','education',pf.education,'cc-wide')
