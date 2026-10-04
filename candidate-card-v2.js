@@ -49,7 +49,7 @@
     return `<div class="cc-relative-row" data-relative-row="${index}">
       <div class="cc-relative-head"><strong>Близький родич</strong><button type="button" class="cc-relative-remove" data-remove-relative>Видалити</button></div>
       <div class="cc-grid">
-        ${select('Ступінь споріднення','relationship',item.relationship || item.relation || '',options)}
+        ${select('Ступінь споріднення','relationship',RELATIONSHIP_OPTIONS.find(x=>x.toLocaleLowerCase('uk-UA')===String(item.relationship||item.relation||'').toLocaleLowerCase('uk-UA'))||item.relationship||item.relation||'',options)}
         ${input('ПІБ','full_name',item.full_name || '')}
         ${input('Дата народження','birth_date',item.birth_date || '','date')}
         ${select('Стан родича','deceased',item.deceased===true?'true':item.deceased===false?'false':'',[['','Не визначено'],['false','Живий / Жива'],['true','Помер / Померла']])}${input('Дата смерті: рік, рік-місяць або повна дата','death_date',item.death_date||'')}${item.birth_date_partial?'<p class="cc-hint">Неповна дата народження: '+esc(item.birth_date_partial.value)+'</p>':''}${input('Місце народження','birth_place',item.birth_place || '')}
@@ -61,6 +61,34 @@
         ${textarea('Примітки','notes',item.notes || '','cc-wide')}
       </div>
     </div>`;
+  }
+
+  function relativePolicy(relationship,deceased,birthDate,today) {
+    const relation=String(relationship||'').trim().toLocaleLowerCase('uk-UA');
+    const male=['батько','тато','чоловік','колишній чоловік','син','брат'].includes(relation);
+    const female=['мати','мама','дружина','колишня дружина','донька','сестра'].includes(relation);
+    const child=['син','донька'].includes(relation);
+    let minor=false;
+    if(child&&/^\d{4}-\d{2}-\d{2}$/.test(birthDate||'')) {
+      const born=new Date(birthDate+'T00:00:00Z');
+      if(Number.isFinite(born.getTime())&&born.toISOString().slice(0,10)===birthDate&&birthDate<=today) {
+        const y=Number(today.slice(0,4))-Number(birthDate.slice(0,4));
+        minor=y-(today.slice(5)<birthDate.slice(5)?1:0)<18;
+      }
+    }
+    return {alive:male?'Живий':female?'Жива':'Живий / Жива',dead:male?'Помер':female?'Померла':'Помер / Померла',hidden:[...(deceased==='false'?['death_date']:[]),...(deceased==='true'?['address','phone','workplace','position']:minor?['workplace','position']:[])]};
+  }
+  function updateRelativeConditions(row) {
+    const get=k=>row.querySelector('[name="'+k+'"]')?.value||'';
+    const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const policy=relativePolicy(get('relationship'),get('deceased'),get('birth_date'),today);
+    const state=row.querySelector('[name="deceased"]');
+    state.querySelector('[value="false"]').textContent=policy.alive;
+    state.querySelector('[value="true"]').textContent=policy.dead;
+    for(const key of ['death_date','address','phone','workplace','position']){
+      const field=row.querySelector('[name="'+key+'"]')?.closest('.cc-field');
+      if(field)field.hidden=policy.hidden.includes(key);
+    }
   }
 
   function nameNominative(value) {
@@ -235,8 +263,11 @@
     const addRelativeButton = content.querySelector('#ccAddRelative');
     let relativeIndex = relBox ? relBox.querySelectorAll('[data-relative-row]').length : 0;
     addRelativeButton?.addEventListener('click', () => {
-      relBox.insertAdjacentHTML('beforeend', relativeRow({}, relativeIndex++));cardState.dirty=true;
+      relBox.insertAdjacentHTML('beforeend', relativeRow({}, relativeIndex++));updateRelativeConditions(relBox.lastElementChild);cardState.dirty=true;
     });
+    relBox?.querySelectorAll('[data-relative-row]').forEach(updateRelativeConditions);
+    relBox?.addEventListener('change',event=>{const row=event.target.closest('[data-relative-row]');if(row)updateRelativeConditions(row)});
+    relBox?.addEventListener('input',event=>{const row=event.target.closest('[data-relative-row]');if(row&&event.target.name==='birth_date')updateRelativeConditions(row)});
     relBox?.addEventListener('click', event => {
       const remove = event.target.closest('[data-remove-relative]');
       if (!remove) return;
@@ -286,7 +317,7 @@
           phone: window.CRMPhone.normalize(get('phone')), workplace: get('workplace'), position: get('position'), notes: get('notes')
         };
       }).filter(r => r.full_name||r.relationship);
-      if(savedRelatives.some(r=>r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
+      if(savedRelatives.some(r=>r.deceased!==false&&r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
       oldProfile.relatives = savedRelatives;
       const existingWork=Array.isArray(oldProfile.work_records)?oldProfile.work_records:[];
       const workRows=[...form.querySelectorAll('[data-work-row]')].map(row=>{
