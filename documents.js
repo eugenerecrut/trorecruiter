@@ -275,6 +275,7 @@ async function reviewDocumentData(id){
     if(JSON.stringify(current)===JSON.stringify(incoming)||String(current??'').trim()===String(incoming).trim())return;
     changes.push({target,key,incoming,current,label:label||labels[key]||key});
   };
+  if(residenceCheck?.unzr)add('profile','unzr',residenceCheck.unzr,'УНЗР');
   if(residenceCheck?.address)add('profile','registered_address',residenceCheck.address,'Зареєстроване місце проживання');
   if(personalSource){
     for(const key of ['birth_date','birth_place','rnokpp','phone','email','sex','marital_status','has_children','worked_before','served_before','military_rank','civilian_profession','desired_position','tcc'])add('candidate',key,e[key]);
