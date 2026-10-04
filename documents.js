@@ -84,7 +84,7 @@ async function showDocuments(id){
     const {r,files,condition,childIndex}=row;
     const required=r.is_required&&condition===true,missing=required&&!files.length,errors=files.some(d=>r.ai_enabled!==false&&d.processing_status==='AI помилка'),review=files.some(d=>d.verification_status!=='Підтверджено');
     const label=condition===null?'Уточніть у картці':condition===false?'Додатковий':required?'Обов’язковий':'За наявності';
-    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>'<div class="crm-document-file"><small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(d.verification_status==='Підтверджено'?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>'+CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(d.verification_status!=='Підтверджено'?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'')+'</div>').join(''):required?'Не завантажено':'Не додано')+'</td><td><button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></td></tr>';
+    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>'<div class="crm-document-file"><small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(d.verification_status==='Підтверджено'?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>'+CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(d.verification_status!=='Підтверджено'?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'')+'</div>').join(''):required?'Не завантажено':'Не додано')+'</td><td><button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></td></tr>';
   }).join('');
   body.addEventListener('click',async e=>{
     const b=e.target.closest('button');if(!b)return;
@@ -109,9 +109,11 @@ async function showDocuments(id){
 }
 async function confirmDocument(id){
   const user=await getCurrentUser();if(!user)throw new Error('Увійдіть повторно.');
-  const {data,error}=await supabaseClient.from('documents').update({verification_status:'Підтверджено',verified_by:user.id,verified_at:new Date().toISOString()}).eq('id',id).select('id,candidate_id');
+  const {data,error}=await supabaseClient.from('documents').update({verification_status:'Підтверджено',verified_by:user.id,verified_at:new Date().toISOString()}).eq('id',id).select('id,candidate_id,ai_extracted');
   if(error)throw error;if(!data?.length)throw new Error('Документ не підтверджено. Перевірте права доступу до цього файла.');
   await showDocuments(data[0].candidate_id);
+  if(data[0].ai_extracted&&Object.values(data[0].ai_extracted).some(v=>v!==null&&v!==undefined&&v!==''&&(!Array.isArray(v)||v.length)))await reviewDocumentData(id);
+  else document.querySelector('#docBatchStatus').textContent='Документ підтверджено. Даних AI для перенесення немає; заповніть картку вручну або повторіть розпізнавання.';
 }
 async function makeDocumentInput(id,reqId='',replacementId=''){
   const old=document.getElementById('documentModal');if(old)old.remove();
@@ -295,7 +297,7 @@ async function reviewDocumentData(id){
   }
   const currentVersion=await supabaseClient.from('documents').select('id').eq('version_group_id',d.version_group_id).gt('version_number',d.version_number).limit(1);if(currentVersion.error)throw currentVersion.error;const archived=!!currentVersion.data?.length;if(archived)changes.splice(0);
   const dialog=document.createElement('dialog');dialog.className='crm-dialog';
-  dialog.innerHTML='<h2>Розпізнані дані документа</h2><p>'+esc(c.name_nominative||c.full_name)+' · '+esc(d.file_name)+'</p><div class="crm-actions"><button data-original>Відкрити оригінал</button><button data-close>Закрити</button></div>'+(changes.length?'<h3>Відмінності від картки</h3><p>Позначте лише ті значення, які потрібно перенести. Без позначки дані картки залишаться.</p><div class="crm-review-grid">'+changes.map((change,i)=>'<label class="crm-review-field"><input type="checkbox" data-change="'+i+'"> <strong>'+esc(change.label)+'</strong><div class="crm-review-values"><span>У картці:<br>'+esc(display(change.current))+'</span><span>З документа:<br>'+esc(display(change.incoming))+'</span></div></label>').join('')+'</div><div class="crm-actions"><button data-apply>Взяти позначені дані з документа</button></div>':'<p>Для доступних полів перенесення немає відмінностей від картки.</p>')+'<p role="status"></p><h3>Контейнер документа</h3><div class="crm-review-grid">'+Object.entries(e).map(([key,value])=>'<section class="crm-review-field"><strong>'+esc(labels[key]||key)+'</strong><div>'+renderValue(value)+'</div></section>').join('')+'</div>'+(d.ai_warnings?.length?'<h3>Попередження</h3><p>'+renderValue(d.ai_warnings)+'</p>':'');
+  dialog.innerHTML='<h2>Розпізнані дані документа</h2><p>'+esc(c.name_nominative||c.full_name)+' · '+esc(d.file_name)+'</p><div class="crm-actions"><button data-original>Відкрити оригінал</button><button data-close>Закрити</button></div>'+(changes.length?'<h3>Перенесення даних у картку</h3><p>Підтвердження документа фіксує перевірку файла. Щоб зберегти його дані в картці, позначте поля та натисніть «Перенести позначені поля». Непозначені значення залишаться без змін.</p><button type="button" data-select-empty>Позначити порожні поля картки</button><div class="crm-review-grid">'+changes.map((change,i)=>'<label class="crm-review-field"><input type="checkbox" data-change="'+i+'"> <strong>'+esc(change.label)+'</strong><div class="crm-review-values"><span>У картці:<br>'+esc(display(change.current))+'</span><span>З документа:<br>'+esc(display(change.incoming))+'</span></div></label>').join('')+'</div><div class="crm-actions"><button data-apply disabled>Перенести позначені поля (0)</button></div>':'<p>'+(archived?'Це архівна версія: її дані доступні лише для перегляду.':Object.values(e).some(v=>v!==null&&v!==undefined&&v!=='')?'Доступні для перенесення дані вже збігаються з карткою або цей тип документа не підтримує перенесення.':'AI не повернув даних для перенесення. Повторіть розпізнавання або заповніть картку вручну.')+'</p>')+'<p role="status"></p><h3>Контейнер документа</h3><div class="crm-review-grid">'+Object.entries(e).map(([key,value])=>'<section class="crm-review-field"><strong>'+esc(labels[key]||key)+'</strong><div>'+renderValue(value)+'</div></section>').join('')+'</div>'+(d.ai_warnings?.length?'<h3>Попередження</h3><p>'+renderValue(d.ai_warnings)+'</p>':'');
   dialog.innerHTML+=CRMResponsibility.documentInfo(d);CRMResponsibility.bindHistory(dialog);
   document.body.append(dialog);dialog.showModal();
   const close=()=>{dialog.close();dialog.remove()};
@@ -303,16 +305,20 @@ async function reviewDocumentData(id){
   dialog.addEventListener('cancel',ev=>{ev.preventDefault();if(!CRMWorkspace.busy)close()});
   dialog.querySelector('[data-original]').onclick=()=>openDocument(id);
   const apply=dialog.querySelector('[data-apply]');
+  const updateSelection=()=>{if(!apply)return;const count=dialog.querySelectorAll('[data-change]:checked').length;apply.disabled=count===0;apply.textContent='Перенести позначені поля ('+count+')';};
+  dialog.querySelectorAll('[data-change]').forEach(el=>el.addEventListener('change',updateSelection));
+  const selectEmpty=dialog.querySelector('[data-select-empty]');
+  if(selectEmpty)selectEmpty.onclick=()=>{dialog.querySelectorAll('[data-change]').forEach(el=>{if(el.disabled)return;const current=changes[Number(el.dataset.change)].current;if(current===null||current===undefined||current==='')el.checked=true});updateSelection()};
   if(apply)apply.onclick=async()=>{
     const selected=[...dialog.querySelectorAll('[data-change]:checked')].map(el=>changes[Number(el.dataset.change)]);
-    if(!selected.length)return;
-    apply.disabled=true;dialog.querySelectorAll('[data-close],input').forEach(el=>el.disabled=true);CRMWorkspace.busy=true;
+    if(!selected.length){dialog.querySelector('[role=status]').textContent='Позначте поля для перенесення.';return}
+    apply.disabled=true;dialog.querySelectorAll('[data-close],[data-select-empty],input').forEach(el=>el.disabled=true);CRMWorkspace.busy=true;
     try{
       const result=await supabaseClient.rpc('crm_apply_document_fields',{document_id:d.id,selections:selected});if(result.error)throw result.error;
-      dialog.querySelector('[role=status]').textContent='Позначені дані збережено в картці.';apply.textContent='Дані збережено';
+      dialog.querySelector('[role=status]').textContent='Позначені дані збережено в картці.';apply.textContent='Дані збережено';dialog.querySelector('[role=status]').insertAdjacentHTML('afterend','<button type="button" data-open-candidate>Відкрити картку кандидата</button>');dialog.querySelector('[data-open-candidate]').onclick=()=>{close();crmNavigate('card',d.candidate_id)};
       dialog.querySelectorAll('[data-change]:checked').forEach(el=>{el.checked=false;el.disabled=true});
     }catch(err){dialog.querySelector('[role=status]').textContent='Помилка збереження: '+err.message;apply.disabled=false;dialog.querySelectorAll('input').forEach(el=>el.disabled=false)}
-    finally{CRMWorkspace.busy=false;dialog.querySelector('[data-close]').disabled=false;}
+    finally{CRMWorkspace.busy=false;dialog.querySelector('[data-close]').disabled=false;if(selectEmpty)selectEmpty.disabled=false;}
   };
 }
 
