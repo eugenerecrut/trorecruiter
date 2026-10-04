@@ -17,7 +17,7 @@
     const r=await q.select('id');if(r.error)throw r.error;if(!r.data?.length)throw new Error('Призначення вже змінилося. Оновіть список.');c.responsible_recruiter_id=value||null;
   }
   function bind(root,candidates){root.querySelectorAll('[data-assign]').forEach(select=>select.onchange=async()=>{const c=candidates.find(c=>c.id===select.dataset.assign),old=c.responsible_recruiter_id;select.disabled=true;try{await assign(c,select.value)}catch(e){select.value=old||'';alert(e.message)}finally{select.disabled=false}})}
-  async function mountCard(c,root){await ready();const box=root.querySelector('[data-responsibility]');if(!box)return;box.innerHTML='<div><h3>Відповідальність</h3><label>Закріплений рекрутер<br>'+control(c)+'</label><p class="muted">Призначення змінюєте ви або Совін. Обидва рекрутери можуть вести справу.</p></div><button type="button" data-history>Історія справи</button>';bind(box,[c]);box.querySelector('[data-history]').onclick=()=>history(c.id).catch(e=>alert(e.message))}
+  async function mountCard(c,root){await ready();const box=root.querySelector('[data-responsibility]');if(!box)return;box.innerHTML='<div><h3>Відповідальність</h3><label>Закріплений рекрутер<br>'+control(c)+'</label></div><button type="button" data-history>Історія справи</button>';bind(box,[c]);box.querySelector('[data-history]').onclick=()=>history(c.id).catch(e=>alert(e.message))}
   const latest=docs=>docs.filter(d=>!d.deleted_at&&!docs.some(other=>other.version_group_id===d.version_group_id&&other.version_number>d.version_number));
   function documentInfo(d){
     const author=d.uploaded_by?name(d.uploaded_by):'Автор не записаний';
