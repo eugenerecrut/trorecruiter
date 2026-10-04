@@ -17,7 +17,7 @@
     const r=await q.select('id');if(r.error)throw r.error;if(!r.data?.length)throw new Error('Призначення вже змінилося. Оновіть список.');c.responsible_recruiter_id=value||null;
   }
   function bind(root,candidates){root.querySelectorAll('[data-assign]').forEach(select=>select.onchange=async()=>{const c=candidates.find(c=>c.id===select.dataset.assign),old=c.responsible_recruiter_id;select.disabled=true;try{await assign(c,select.value)}catch(e){select.value=old||'';alert(e.message)}finally{select.disabled=false}})}
-  async function mountCard(c,root){await ready();const box=root.querySelector('[data-responsibility]');if(!box)return;box.innerHTML='<div><h3>Відповідальність</h3><label>Закріплений рекрутер<br>'+control(c)+'</label></div><button type="button" data-history>Історія справи</button>';bind(box,[c]);box.querySelector('[data-history]').onclick=()=>history(c.id).catch(e=>alert(e.message))}
+  async function mountCard(c,root){await ready();const box=root.querySelector('[data-responsibility]');if(!box)return;box.innerHTML='<div><label>Закріплений рекрутер<br>'+control(c)+'</label></div><button type="button" data-history>Історія справи</button>';bind(box,[c]);box.querySelector('[data-history]').onclick=()=>history(c.id).catch(e=>alert(e.message))}
   const latest=docs=>docs.filter(d=>!d.deleted_at&&!docs.some(other=>other.version_group_id===d.version_group_id&&other.version_number>d.version_number));
   function documentInfo(d){
     const author=d.uploaded_by?name(d.uploaded_by):'Автор не записаний';
@@ -25,8 +25,29 @@
       ((d.ai_extracted||d.ai_raw_response||d.processing_status==='AI помилка')?'<details class="crm-ai-container"><summary>Контейнер AI · '+esc(d.processing_status||'Архівний результат')+'</summary><p>Модель: '+esc(d.ai_model||'не записана')+' · '+esc(date(d.ai_processed_at))+'</p><p>Тип: '+esc(d.ai_document_type||d.document_type)+' · впевненість: '+esc(d.ai_confidence??'не записана')+'</p><pre>'+esc(JSON.stringify({fields:d.ai_extracted,warnings:d.ai_warnings},null,2))+'</pre><details><summary>Повна відповідь AI</summary><pre>'+esc(d.ai_raw_response?JSON.stringify(d.ai_raw_response,null,2):'Для цього старого результату повна відповідь не зберігалася.')+'</pre></details><button type="button" data-ai-history="'+esc(d.id)+'">Історія розпізнавань</button></details>':'');
   }
   function dialog(title,html){const d=document.createElement('dialog');d.className='crm-dialog crm-history';d.innerHTML='<h2>'+esc(title)+'</h2><button type="button" data-close>Закрити</button>'+html;document.body.append(d);d.showModal();const close=()=>{d.close();d.remove()};d.querySelector('[data-close]').onclick=close;d.addEventListener('cancel',e=>{e.preventDefault();close()});return d}
-  async function aiHistory(id){const r=await supabaseClient.from('document_ai_runs').select('*').eq('document_id',id).order('recorded_at',{ascending:false});if(r.error)throw r.error;dialog('Історія розпізнавань',(r.data||[]).map(run=>'<article><h3>'+esc(date(run.processed_at))+'</h3><p>'+esc(run.actor_name)+' · модель '+esc(run.model||'не записана')+(run.is_legacy?' · архівний результат':'')+'</p><pre>'+esc(JSON.stringify(run.result,null,2))+'</pre></article>').join('')||'<p>Розпізнавань ще немає.</p>')}
-  async function history(id){const r=await supabaseClient.from('crm_activity').select('*').eq('candidate_id',id).order('occurred_at',{ascending:false});if(r.error)throw r.error;const labels={recruiter_assigned:'Зміна відповідального рекрутера',document_uploaded:'Завантаження документа',document_replaced:'Нова версія документа',document_verified:'Зміна перевірки',candidates_update:'Редагування картки',personal_files_update:'Редагування особової справи',documents_update:'Оновлення документа',candidates_insert:'Створення кандидата',personal_files_insert:'Створення особової справи',documents_delete:'Видалення документа'};dialog('Історія справи','<p>Журнал фіксує дії від запровадження цієї версії CRM.</p>'+(r.data||[]).map(a=>'<article><h3>'+esc(a.changes.deleted_at?(a.changes.deleted_at.after?'Видалення документа':'Відновлення документа'):(labels[a.action]||a.action))+'</h3><p>'+esc(a.actor_name)+' · '+esc(date(a.occurred_at))+(a.source_document_id?' · перенесення вибраних полів AI':'')+'</p><details><summary>Що змінилося</summary>'+Object.entries(a.changes).map(([key,v])=>'<p><b>'+esc(({file_name:'Назва файла',deleted_at:'Час видалення',deleted_by:'Користувач, що видалив',deleted_by_name:'Відповідальний за видалення'})[key]||(key==='responsible_recruiter_id'?'Рекрутер':key))+'</b></p><pre>'+esc(key==='responsible_recruiter_id'?name(v.before)+' → '+name(v.after):JSON.stringify(v,null,2))+'</pre>').join('')+'</details></article>').join(''))}
+  async function aiHistory(id){
+    await ready();
+    const r=await supabaseClient.from('document_ai_runs').select('*').eq('document_id',id).order('recorded_at',{ascending:false});if(r.error)throw r.error;
+    dialog('Історія розпізнавань',(r.data||[]).map(run=>{
+      const result=typeof run.result==='object'&&run.result?run.result:{};
+      return '<article><h3>'+esc(date(run.processed_at||run.recorded_at))+'</h3><p>'+esc(run.actor_name||'Автор не записаний')+(run.is_legacy?' · архівний результат':'')+'</p><p>Тип документа: '+esc(result.document_type||'Не визначено')+'</p>'+CRMHistoryFormat.fields(result.extracted||result.fields||{},{person:name})+'</article>';
+    }).join('')||'<p>Розпізнавань ще немає.</p>');
+  }
+  async function history(id){
+    await ready();
+    const r=await supabaseClient.from('crm_activity').select('*').eq('candidate_id',id).order('occurred_at',{ascending:false});if(r.error)throw r.error;
+    const documents=await supabaseClient.from('documents').select('id,file_name,document_type').eq('candidate_id',id);if(documents.error)throw documents.error;
+    const lookup=new Map((documents.data||[]).map(d=>[d.id,d.file_name||d.document_type]));
+    const actions={recruiter_assigned:'Зміна відповідального рекрутера',document_uploaded:'Завантажено документ',document_replaced:'Завантажено нову версію',document_verified:'Змінено перевірку документа',document_deleted:'Документ видалено',document_restored:'Документ відновлено',candidates_update:'Змінено картку кандидата',personal_files_update:'Змінено особову справу',documents_update:'Оновлено документ',candidates_insert:'Створено кандидата',personal_files_insert:'Створено особову справу',documents_delete:'Документ видалено',personal_files_delete:'Особову справу видалено',candidates_delete:'Кандидата видалено'};
+    const articles=(r.data||[]).map(a=>{
+      const changes=a.changes||{},rows=CRMHistoryFormat.changes(changes,{person:name});
+      const title=changes.deleted_at?(changes.deleted_at.after?'Документ видалено':'Документ відновлено'):(actions[a.action]||'Оновлено відомості справи');
+      const file=changes.file_name?.after||changes.file_name?.before||lookup.get(a.document_id);
+      const source=a.source_document_id?lookup.get(a.source_document_id)||'документ особової справи':null;
+      return '<article><h3>'+esc(title)+'</h3><p>'+esc(a.actor_name||name(a.actor_id))+' · '+esc(date(a.occurred_at))+'</p>'+(file?'<p><b>Документ:</b> '+esc(file)+'</p>':'')+(source?'<p><b>Перенесено з документа:</b> '+esc(source)+'</p>':'')+'<details'+(rows.length<=4?' open':'')+'><summary>Що змінилося'+(rows.length?' · '+rows.length:'')+'</summary>'+CRMHistoryFormat.render(rows)+'</details></article>';
+    }).join('');
+    dialog('Історія справи','<p>Хто, коли та які відомості змінив. Найновіші дії — зверху.</p>'+ (articles||'<p>Дій у цій справі ще немає.</p>'));
+  }
   function bindHistory(root){root.addEventListener('click',e=>{const id=e.target.closest('[data-ai-history]')?.dataset.aiHistory;if(id)aiHistory(id).catch(e=>alert(e.message))})}
   window.CRMResponsibility={ready,name,date,canDelete:()=>staff.some(s=>s.user_id===user?.id&&s.active&&['owner','lead','recruiter'].includes(s.role)),control,bind,mountCard,latest,documentInfo,bindHistory,aiHistory,history,options,get userId(){return user?.id}};
 })();
