@@ -52,7 +52,7 @@
         ${select('Ступінь споріднення','relationship',item.relationship || item.relation || '',options)}
         ${input('ПІБ','full_name',item.full_name || '')}
         ${input('Дата народження','birth_date',item.birth_date || '','date')}
-        ${input('Місце народження','birth_place',item.birth_place || '')}
+        ${select('Стан родича','deceased',item.deceased===true?'true':item.deceased===false?'false':'',[['','Не визначено'],['false','Живий / Жива'],['true','Помер / Померла']])}${input('Дата смерті: рік, рік-місяць або повна дата','death_date',item.death_date||'')}${item.birth_date_partial?'<p class="cc-hint">Неповна дата народження: '+esc(item.birth_date_partial.value)+'</p>':''}${input('Місце народження','birth_place',item.birth_place || '')}
         ${input('Громадянство','citizenship',item.citizenship || '')}
         ${input('Місце проживання','address',item.address || '','text','cc-wide')}
         ${input('Телефон','phone',item.phone || '')}
@@ -152,13 +152,13 @@
         )}
         ${section('5. Освіта','Освітні документи та кваліфікація',
           select('Рівень освіти','education_level',profile.education_level || '',[['','Не визначено'],['середня','Середня'],['професійна','Професійно-технічна'],['фахова','Фахова передвища'],['вища','Вища'],['молодший спеціаліст','Молодший спеціаліст'],['фаховий молодший бакалавр','Фаховий молодший бакалавр'],['молодший бакалавр','Молодший бакалавр'],['бакалавр','Бакалавр'],['спеціаліст','Спеціаліст'],['магістр','Магістр'],['доктор філософії','Доктор філософії'],['доктор наук','Доктор наук']])+input('Заклад освіти','education_institution',profile.education_institution)+input('Спеціальність','education_specialty',profile.education_specialty)+input('Кваліфікація','education_qualification',profile.education_qualification)+input('Рік закінчення','education_year',profile.education_year,'number')+input('Код спеціальності','education_specialty_code',profile.education_specialty_code)+input('Початок навчання','education_start_date',profile.education_start_date,'date')+input('Завершення навчання','education_end_date',profile.education_end_date,'date')+input('Серія диплома','education_diploma_series',profile.education_diploma_series)+input('Номер диплома','education_diploma_number',profile.education_diploma_number)+input('Дата видачі диплома','education_diploma_issue_date',profile.education_diploma_issue_date,'date')+input('Номер додатка','education_supplement_number',profile.education_supplement_number)+input('Дата видачі додатка','education_supplement_issue_date',profile.education_supplement_issue_date,'date')+textarea('Деталі освіти','education',pf.education,'cc-wide')+
-          '<div class="cc-wide"><h4>Збережені дипломи</h4>'+((Array.isArray(profile.education_records)?profile.education_records:[]).map(r=>'<p>'+esc([r.degree,r.institution,r.specialty_code,r.specialty,r.qualification,r.graduation_year,[r.diploma_series,r.diploma_number].filter(Boolean).join(' ')].filter(Boolean).join(' · '))+'</p>').join('')||'<p>Записи з’являться після підтвердженого перенесення документа.</p>')+'</div>'
+          '<div class="cc-wide"><h4>Збережені дипломи</h4>'+((Array.isArray(profile.education_records)?profile.education_records:[]).map(r=>'<p>'+esc([r.degree,r.institution,r.specialty_code,r.specialty,r.qualification,r.graduation_year,[r.diploma_series,r.diploma_number].filter(Boolean).join(' ')].filter(Boolean).join(' · '))+'</p>').join('')||'<p>Записи з’являться після підтвердженого перенесення документа.</p>')+'</div>'+biographyClaims(profile,'bio_education_claims','Освіта')
         )}
         ${section('6. Трудова діяльність','Відомості про роботу',
-          select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+(String(c.civilian_profession||'').trim()?input('Цивільна професія','civilian_profession',c.civilian_profession):'')+(String(pf.work_history||pf.civilian_experience||'').trim()?textarea('Трудова діяльність','work_history',pf.work_history||pf.civilian_experience,'cc-wide'):'')+workEditor(profile)
+          select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+(String(c.civilian_profession||'').trim()?input('Цивільна професія','civilian_profession',c.civilian_profession):'')+(String(pf.work_history||pf.civilian_experience||'').trim()?textarea('Трудова діяльність','work_history',pf.work_history||pf.civilian_experience,'cc-wide'):'')+workEditor(profile)+biographyClaims(profile,'bio_work_claims','Трудова діяльність')
         )}
         ${section('7. Військова служба','Відомості про попередню та поточну службу',
-          select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')
+          select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')+biographyClaims(profile,'bio_service_claims','Служба')
         )}
         ${section('8. Військовий облік','Дані військового обліку',
           input('Військове звання','military_rank',c.military_rank)+input('ВОС','military_specialty',c.military_specialty || profile.military_specialty)+input('ТЦК та СП','tcc',c.tcc)+input('Номер військово-облікового документа','military_document_number',profile.military_document_number)+input('Номер у реєстрі Оберіг','military_registry_number',profile.military_registry_number)+input('Витяг Резерв+ дійсний до','military_document_expiry_date',profile.military_document_expiry_date,'date')+input('Дата уточнення даних','military_data_updated_at',profile.military_data_updated_at,'date')+input('Тип відстрочки','military_deferment_type',profile.military_deferment_type)+input('Відстрочка до','military_deferment_until',profile.military_deferment_until,'date')+input('Підстава зняття / виключення','military_registration_removal_reason',profile.military_registration_removal_reason)+input('Військова підготовка','military_training_status',profile.military_training_status)+input('Дата взяття на облік','military_registration_date',profile.military_registration_date,'date')+input('Категорія обліку','military_registration_category',profile.military_registration_category)+input('Стан обліку','military_registration_status',profile.military_registration_status)+input('Військовий документ','military_document_type',profile.military_document_type)
@@ -278,12 +278,15 @@
 
       const savedRelatives = [...form.querySelectorAll('[data-relative-row]')].map(row => {
         const get = key => row.querySelector(`[name="${key}"]`)?.value?.trim() || '';
+        const original=(Array.isArray(oldProfile.relatives)?oldProfile.relatives:[])[Number(row.dataset.relativeRow)]||{};
         return {
+          ...original, deceased:get('deceased')==='true'?true:get('deceased')==='false'?false:null,death_date:get('death_date')||null,death_date_precision:CRMBiography.partial(get('death_date'))?.precision||null,
           relationship: get('relationship'), full_name: get('full_name'), birth_date: get('birth_date'),
           birth_place: get('birth_place'), citizenship: get('citizenship'), address: get('address'),
           phone: window.CRMPhone.normalize(get('phone')), workplace: get('workplace'), position: get('position'), notes: get('notes')
         };
-      }).filter(r => Object.values(r).some(Boolean));
+      }).filter(r => r.full_name||r.relationship);
+      if(savedRelatives.some(r=>r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
       oldProfile.relatives = savedRelatives;
       const existingWork=Array.isArray(oldProfile.work_records)?oldProfile.work_records:[];
       const workRows=[...form.querySelectorAll('[data-work-row]')].map(row=>{
@@ -357,6 +360,12 @@
   }
 
 
+  function biographyClaims(profile,key,label){
+    const rows=Array.isArray(profile[key])?profile[key]:[];
+    if(!rows.length)return '';
+    const date=v=>{const p=CRMBiography.partial(v);return p?p.value:'—';};
+    return '<div class="cc-wide"><h4>'+esc(label)+' · автобіографія</h4><p class="cc-hint">Зі слів кандидата. Потребує звірки з документами.</p>'+rows.map(r=>'<div class="cc-section"><b>'+esc(r.institution||r.employer||r.unit||'')+'</b><p>'+esc(r.degree||r.position||'')+' · '+esc(r.specialty||'')+'</p><p>'+esc(date(r.start_date))+' — '+esc(date(r.end_date))+'</p><small>Джерело: '+esc(r.source_document_id||'')+'</small></div>').join('')+'</div>';
+  }
   function workEditor(profile){
     const rows=Array.isArray(profile.work_records)?profile.work_records:[];
     const row=(r={})=>'<div data-work-row class="cc-section"><div class="cc-grid">'+

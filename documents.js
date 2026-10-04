@@ -262,6 +262,7 @@ async function reviewDocumentData(id){
   const labels={work_records:'Періоди трудової діяльності',work_events:'Усі записи трудової діяльності',work_details:'Реквізити трудового документа',employer:'Роботодавець / організація',employer_code:'Код роботодавця',event_date:'Дата події',kind:'Тип запису',position_changes:'Зміни посади',start_date:'Початок',end_date:'Завершення',termination_reason:'Причина завершення',order_number:'Номер наказу',order_date:'Дата наказу',source_pages:'Сторінки джерела',vlk_commission:'Комісія / установа ВЛК',vlk_details:'Медичні відомості та підписи',education_records:"Усі дипломи",education_level:"Рівень освіти",education_institution:"Заклад освіти",education_specialty_code:"Код спеціальності",education_specialty:"Спеціальність",education_qualification:"Кваліфікація",education_year:"Рік закінчення",education_start_date:"Початок навчання",education_end_date:"Завершення навчання",education_diploma_series:"Серія диплома",education_diploma_number:"Номер диплома",education_diploma_issue_date:"Дата видачі диплома",education_supplement_number:"Номер додатка",education_supplement_issue_date:"Дата видачі додатка",education_prior_references:"Попередня освіта — згадки",education_details:"Дисципліни та додаткові відомості",military_record_entries:'Записи військового обліку',field_evidence:'Джерела й впевненість полів',raw_text:'Текст запису',legibility:'Читабельність',section:'Розділ',page:'Сторінка',requires_review:'Потрібна ручна перевірка',registration_records:'Історія реєстрацій',residence_registration_status:'Стан реєстрації',registered_at:'Дата реєстрації',deregistered_at:'Дата зняття / скасування',status:'Стан',military_registry_number:'Номер у реєстрі Оберіг',military_document_expiry_date:'Витяг Резерв+ дійсний до',military_data_updated_at:'Дата уточнення даних',military_deferment_type:'Тип відстрочки',military_deferment_until:'Відстрочка до',military_registration_removal_reason:'Підстава зняття / виключення',military_training_status:'Військова підготовка',military_document_number:'Номер військово-облікового документа',military_document_type:'Тип військового документа',military_registration_date:'Дата взяття на облік',military_registration_category:'Категорія військового обліку',military_registration_status:'Стан військового обліку',vlk_certificate_number:'Номер довідки ВЛК',vlk_date:'Дата ВЛК',vlk_conclusion:'Висновок ВЛК',vlk_category:'Категорія придатності',vlk_next_date:'Дата наступного огляду',full_name:'ПІБ',name_nominative:'ПІБ у називному відмінку',name_genitive:'ПІБ у родовому відмінку',name_gender:'Стать за ПІБ',name_cases:'Відмінки ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',passport_data:'Дані паспорта',phone:'Телефон',email:'Email',sex:'Стать',marital_status:'Сімейний стан',has_children:'Є діти',children_info:'Відомості про дітей',relatives:'Рідні та близькі',education:'Освіта',civilian_profession:'Цивільна професія',worked_before:'Працював / працювала',work_history:'Трудовий стаж',served_before:'Служив / служила',military_rank:'Військове звання',military_unit:'Військова частина',military_specialty:'ВОС',military_service_history:'Військовий стаж',desired_position:'Бажана посада',desired_unit:'Бажаний напрям',tcc:'ТЦК та СП',address:'Адреса з документа',registered_address:'Адреса реєстрації',citizenship:'Громадянство',unzr:'УНЗР',document_type:'Тип документа',document_number:'Номер документа',document_series:'Серія документа',document_date:'Дата видачі',document_issuer:'Ким виданий',passport_number:'Номер паспорта',passport_series:'Серія паспорта',passport_issuer:'Ким виданий паспорт',passport_issue_date:'Дата видачі паспорта',passport_expiry_date:'Дійсний до',birth_certificate:'Номер свідоцтва про народження',confidence:'Впевненість AI',warnings:'Попередження',meta:'Додаткові відомості',relationship:'Спорідненість',workplace:'Місце роботи',position:'Посада',notes:'Примітки',signatory:'Підписант',recommender_unit:'Організація рекомендації',recruiter_name:'Рекрутер'};
   const display=v=>v===true?'Так':v===false?'Ні':v==null||v===''?'Не вказано':typeof v==='object'?JSON.stringify(v,null,2):String(v);
   const renderValue=v=>Array.isArray(v)?v.map(renderValue).join('<hr>'):v&&typeof v==='object'?Object.entries(v).map(([k,value])=>'<div><b>'+esc(labels[k]||k)+':</b> '+renderValue(value)+'</div>').join(''):esc(display(v));
+  const biography=CRMBiography.isDocument(d.document_type)||CRMBiography.isDocument(d.ai_document_type),biographyCheck=biography?CRMBiography.review(e,c,p,pf,d.id):null;
   const vlk=CRMVLK.isDocument(d.document_type)||CRMVLK.isDocument(d.ai_document_type),vlkCheck=vlk?CRMVLK.review(e,c):null;
   const work=CRMWork.isDocument(d.document_type)||CRMWork.isDocument(d.ai_document_type),workCheck=work?CRMWork.review(e,c,p,d.id):null;
   const education=CRMEducation.isDocument(d.document_type)||CRMEducation.isDocument(d.ai_document_type),educationCheck=education?CRMEducation.review({...e,education_records:Array.isArray(e.education_records)?e.education_records.map(r=>({...r,source_document_id:d.id})):[]},c,p):null;
@@ -269,8 +270,8 @@ async function reviewDocumentData(id){
   const type=identityDocumentTypeValue(d.ai_document_type||d.document_type),changes=[];
   // Restrict editable mapping to candidate identity documents and the established
   // recommendation/autobiography flow. Other people's certificates stay in their container.
-  const ownIdentity=!residence&&(type==='ID'||type==='passport'||type==='birth')&&!/дітей/i.test(d.document_type||'');
-  const personalSource=!residence&&(ownIdentity||/рекомендац|автобіограф|ідентифікаційн/i.test(d.document_type||''));
+  const ownIdentity=!biography&&!residence&&(type==='ID'||type==='passport'||type==='birth')&&!/дітей/i.test(d.document_type||'');
+  const personalSource=!biography&&!residence&&(ownIdentity||/рекомендац|ідентифікаційн/i.test(d.document_type||''));
   const add=(target,key,incoming,label)=>{
     if(key==='phone'||key==='phone_secondary')incoming=window.CRMPhone.normalize(incoming);
     if(incoming===null||incoming===undefined||incoming==='')return;
@@ -279,16 +280,17 @@ async function reviewDocumentData(id){
     changes.push({target,key,incoming,current,label:label||labels[key]||key});
   };
 
-  if(workCheck?.accepted){add('profile','work_records',workCheck.records,'Періоди трудової діяльності');add('profile','work_events',workCheck.events,'Історія подій: робота, служба, безробіття');if(workCheck.events.some(r=>r.kind==='hire'))add('candidate','worked_before',true,'Працював / Працювала');}
-  if(vlkCheck)for(const [key,value] of Object.entries(vlkCheck.fields))add('profile',key,value);
-  if(educationCheck?.accepted){
+  if(biographyCheck)changes.push(...biographyCheck.proposals);
+  if(!biography&&workCheck?.accepted){add('profile','work_records',workCheck.records,'Періоди трудової діяльності');add('profile','work_events',workCheck.events,'Історія подій: робота, служба, безробіття');if(workCheck.events.some(r=>r.kind==='hire'))add('candidate','worked_before',true,'Працював / Працювала');}
+  if(!biography&&vlkCheck)for(const [key,value] of Object.entries(vlkCheck.fields))add('profile',key,value);
+  if(!biography&&educationCheck?.accepted){
     add('profile','education_records',educationCheck.records,'Усі дипломи та освіти');
     const h=educationCheck.highest;
     if(h&&(CRMEducation.ranks[h.degree]||0)>=(CRMEducation.ranks[p.education_level]||0)){
       for(const [key,value] of Object.entries({education_level:h.degree,education_institution:h.institution,education_specialty_code:h.specialty_code,education_specialty:h.specialty,education_qualification:h.qualification,education_year:h.graduation_year,education_start_date:h.study_start_date,education_end_date:h.study_end_date,education_diploma_series:h.diploma_series,education_diploma_number:h.diploma_number,education_diploma_issue_date:h.diploma_issue_date,education_supplement_number:h.supplement_number,education_supplement_issue_date:h.supplement_issue_date}))add('profile',key,value);
     }
   }
-  if(residenceCheck?.unzr)add('profile','unzr',residenceCheck.unzr,'УНЗР');
+  if(!biography&&residenceCheck?.unzr)add('profile','unzr',residenceCheck.unzr,'УНЗР');
   if(residenceCheck?.address)add('profile','registered_address',residenceCheck.address,'Зареєстроване місце проживання');
   if(personalSource){
     for(const key of ['birth_date','birth_place','rnokpp','phone','email','sex','marital_status','has_children','worked_before','served_before','military_rank','civilian_profession','desired_position','tcc'])add('candidate',key,e[key]);
@@ -298,7 +300,7 @@ async function reviewDocumentData(id){
     for(const key of ['education','work_history','military_service_history','children_info'])add('file',key,e[key]);
     add('profile','relatives',e.relatives);
   }
-  if(/резерв\s*\+|припис|призовної дільниці|військовий облік|військово[-\s]?обліков/iu.test(d.document_type||d.ai_document_type||'')){
+  if(!biography&&/резерв\s*\+|припис|призовної дільниці|військовий облік|військово[-\s]?обліков/iu.test(d.document_type||d.ai_document_type||'')){
     for(const key of ['full_name','rnokpp','tcc','military_rank','military_specialty'])add('candidate',key,e[key]);
     for(const key of ['military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status','military_document_number','military_document_type','military_registration_date','military_registration_category','military_registration_status','vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date'])add('profile',key,e[key]);
   }
@@ -320,6 +322,9 @@ async function reviewDocumentData(id){
   if(workCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=(workCheck.issues.length?workCheck.issues.join(' '):'Власника документа звірено.')+' Події служби й безробіття зберігаються окремо. Особисті реквізити не переносяться. Період без звільнення не підтверджує поточну роботу.';dialog.prepend(notice);}
   if(vlkCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=vlkCheck.issues.length?vlkCheck.issues.join(' '):'Власника довідки звірено. Переносяться лише поля ВЛК; дані військового обліку й особисті реквізити не змінюються.';dialog.prepend(notice);}
   if(educationCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=educationCheck.issues.length?educationCheck.issues.join(' '):'Власника диплома звірено. Оберіть записи освіти й поля для перенесення; особисті дані не змінюються.';dialog.prepend(notice);}
+  if(biographyCheck){
+    const notice=document.createElement('div');notice.className='cc-hint';notice.innerHTML='<p>Відомості зі слів кандидата. Підтверджені дипломи й записи роботи не замінюються. Оберіть поля для перенесення.</p>'+[...biographyCheck.issues,...biographyCheck.conflicts].map(x=>'<p>'+esc(x)+'</p>').join('');dialog.prepend(notice);
+  }
   if(residenceCheck){
     const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=residenceCheck.issues.length?residenceCheck.issues.join(' '):'Власника документа звірено. Переноситься лише зареєстрована адреса; фактичне місце проживання залишається без змін.';dialog.prepend(notice);
   }
@@ -339,7 +344,7 @@ async function reviewDocumentData(id){
     if(!selected.length){dialog.querySelector('[role=status]').textContent='Позначте поля для перенесення.';return}
     apply.disabled=true;dialog.querySelectorAll('[data-close],[data-select-empty],input').forEach(el=>el.disabled=true);CRMWorkspace.busy=true;
     try{
-      const result=await supabaseClient.rpc('crm_apply_document_fields',{document_id:d.id,selections:selected});if(result.error)throw result.error;
+      const result=await supabaseClient.rpc('crm_apply_document_fields',{document_id:d.id,selections:biographyCheck?CRMBiography.selections(selected,p):selected});if(result.error)throw result.error;
       dialog.querySelector('[role=status]').textContent='Позначені дані збережено в картці.';apply.textContent='Дані збережено';dialog.querySelector('[role=status]').insertAdjacentHTML('afterend','<button type="button" data-open-candidate>Відкрити картку кандидата</button>');dialog.querySelector('[data-open-candidate]').onclick=()=>{close();crmNavigate('card',d.candidate_id)};
       dialog.querySelectorAll('[data-change]:checked').forEach(el=>{el.checked=false;el.disabled=true});
     }catch(err){dialog.querySelector('[role=status]').textContent='Помилка збереження: '+err.message;apply.disabled=false;dialog.querySelectorAll('input').forEach(el=>el.disabled=false)}
