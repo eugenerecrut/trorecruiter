@@ -155,7 +155,7 @@
           '<div class="cc-wide"><h4>Збережені дипломи</h4>'+((Array.isArray(profile.education_records)?profile.education_records:[]).map(r=>'<p>'+esc([r.degree,r.institution,r.specialty_code,r.specialty,r.qualification,r.graduation_year,[r.diploma_series,r.diploma_number].filter(Boolean).join(' ')].filter(Boolean).join(' · '))+'</p>').join('')||'<p>Записи з’являться після підтвердженого перенесення документа.</p>')+'</div>'
         )}
         ${section('6. Трудова діяльність','Відомості про роботу',
-          select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+input('Цивільна професія','civilian_profession',c.civilian_profession)+textarea('Трудова діяльність','work_history',pf.work_history || pf.civilian_experience,'cc-wide')
+          select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+input('Цивільна професія','civilian_profession',c.civilian_profession)+textarea('Трудова діяльність','work_history',pf.work_history || pf.civilian_experience,'cc-wide')+workEditor(profile)
         )}
         ${section('7. Військова служба','Відомості про попередню та поточну службу',
           select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')
@@ -190,6 +190,8 @@
     const formForNavigation=content.querySelector('#candidateCardV2');
     CRMCandidateName.bind(formForNavigation);
     CRMCandidateConditions.bind(formForNavigation);
+    const updateWorkVisibility=()=>{formForNavigation.querySelector('[data-work-editor]').hidden=formForNavigation.querySelector('[name="worked_before"]').value==='false';};
+    formForNavigation.addEventListener('change',updateWorkVisibility);updateWorkVisibility();
     const groups=[
       ['personal','Картка',[1,2,3,4]],['family','Рідні та близькі',[13]],['education','Освіта',[5]],
       ['work','Трудовий стаж',[6]],['service','Військова служба',[7]],['military','Військовий облік',[8]],
@@ -251,6 +253,10 @@
       if (newOptions.includes(current)) maritalEl.value = current;
     });
 
+    formForNavigation.addEventListener('click',event=>{
+      if(event.target.closest('[data-add-work]')){formForNavigation.querySelector('[data-work-rows]').insertAdjacentHTML('beforeend',window.crmWorkRowMarkup());cardState.dirty=true;}
+      if(event.target.closest('[data-remove-work]')){event.target.closest('[data-work-row]').remove();cardState.dirty=true;}
+    });
     const saveCard=async function (event) {
       event.preventDefault();
       const form = event.target;
@@ -279,6 +285,16 @@
         };
       }).filter(r => Object.values(r).some(Boolean));
       oldProfile.relatives = savedRelatives;
+      const existingWork=Array.isArray(oldProfile.work_records)?oldProfile.work_records:[];
+      const workRows=[...form.querySelectorAll('[data-work-row]')].map(row=>{
+        const get=k=>row.querySelector('[name="work_'+k+'"]')?.value?.trim()||null;
+        const base=row.dataset.workIndex!==undefined?existingWork[Number(row.dataset.workIndex)]||{}:{};
+        return {...base,kind:get('kind'),employer:get('employer'),employer_code:get('employer_code'),position:get('position'),start_date:get('start_date'),end_date:get('end_date'),termination_reason:get('termination_reason'),order_number:get('order_number'),order_date:get('order_date'),end_order_number:get('end_order_number'),end_order_date:get('end_order_date')};
+      });
+      if(workRows.some(r=>!r.employer||!r.start_date||(r.end_date&&r.end_date<r.start_date))){status.textContent='У періодах діяльності вкажіть організацію й початок; завершення не може бути раніше початку.';return false;}
+      if(form.querySelector('[data-work-rows]'))oldProfile.work_records=workRows;
+      const workSummary=CRMWork.summary(workRows);
+      form.querySelector('[data-work-summary]').textContent='Підтверджені завершені періоди роботи: '+workSummary.days+' календарних днів. Неповних періодів: '+workSummary.incomplete+'. Це не розрахунок страхового стажу.';
       oldProfile.phone_secondary=window.CRMPhone.normalize(oldProfile.phone_secondary);
 
       const militaryUnit = String(fd.get('military_unit') || '').trim();
@@ -338,6 +354,23 @@
       return cardState.saving;
     };
     formForNavigation.addEventListener('submit',event=>{event.preventDefault();cardState.save()});
+  }
+
+
+  function workEditor(profile){
+    const rows=Array.isArray(profile.work_records)?profile.work_records:[];
+    const row=(r={})=>'<div data-work-row class="cc-section"><div class="cc-grid">'+
+      select('Тип періоду','work_kind',r.kind||'employment',[['employment','Робота'],['military_service','Військова служба'],['unemployment','Облік безробітного']])+
+      input('Роботодавець / організація','work_employer',r.employer)+input('Код роботодавця','work_employer_code',r.employer_code)+input('Посада на початку періоду','work_position',r.position)+
+      input('Початок','work_start_date',r.start_date,'date')+input('Завершення','work_end_date',r.end_date,'date')+
+      input('Причина завершення','work_termination_reason',r.termination_reason)+input('Наказ про початок: номер','work_order_number',r.order_number)+input('Дата наказу про початок','work_order_date',r.order_date,'date')+
+      input('Наказ про завершення: номер','work_end_order_number',r.end_order_number)+input('Дата наказу про завершення','work_end_order_date',r.end_order_date,'date')+
+      '<p class="cc-wide cc-hint">Джерело: '+esc(r.source_document_id||'Ручний запис')+(r.source_pages?.length?' · сторінки '+esc(r.source_pages.join(', ')):'')+'</p>'+
+      (r.position_changes?.length?'<div class="cc-wide"><b>Зміни посади</b>'+r.position_changes.map(x=>'<p>'+esc(x.date)+' · '+esc(x.position||'Посада не вказана')+' · наказ '+esc(x.order_number||'—')+'</p>').join('')+'</div>':'')+
+      '</div><button type="button" data-remove-work>Прибрати період із картки</button></div>';
+    window.crmWorkRowMarkup=row;
+    const s=CRMWork.summary(rows);
+    return '<div class="cc-wide" data-work-editor><h4>Періоди трудової діяльності</h4><p class="cc-hint" data-work-summary>Підтверджені завершені періоди роботи: '+s.days+' календарних днів. Неповних періодів: '+s.incomplete+'. Це не розрахунок страхового стажу.</p><div data-work-rows>'+rows.map((r,i)=>row(r).replace('data-work-row','data-work-row data-work-index="'+i+'"')).join('')+'</div><button type="button" data-add-work>＋ Додати період</button><details style="margin-top:12px"><summary>Історія подій із документів ('+(profile.work_events?.length||0)+')</summary>'+ (profile.work_events||[]).map(x=>'<p>'+esc(x.event_date)+' · '+esc(({hire:'Прийняття',dismissal:'Звільнення',transfer:'Переведення',service_start:'Початок служби',service_end:'Завершення служби',unemployment_start:'Початок обліку безробітного',unemployment_end:'Зняття з обліку безробітного'})[x.kind]||x.kind)+' · '+esc(x.employer)+' · '+esc(x.position||'')+'</p>').join('')+'</details><p class="cc-hint">Порожня дата завершення не підтверджує поточну зайнятість. Оригінальні записи залишаються в контейнері документа.</p></div>';
   }
 
   window.openCandidateCard = async function (candidateId) {
