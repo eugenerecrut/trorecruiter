@@ -121,7 +121,7 @@
         <div class="crm-photo" data-card-photo><img id="crmCardPhoto" alt="Фото кандидата 9×12" hidden><div><strong>Фото кандидата 9×12</strong><p id="crmCardPhotoStatus" class="muted">Завантажуємо фото…</p><button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи та фото</button></div></div>
         ${section('1. Персональні дані','Основні ідентифікаційні відомості',
           input('ПІБ у називному відмінку','name_nominative',c.name_nominative || c.full_name,'text')+
-          input('ПІБ у родовому відмінку','name_genitive',c.name_genitive || profile.name_genitive)+
+          input('ПІБ у родовому відмінку','name_genitive',CRMCandidateName.stored(c,profile))+
           input('Дата народження','birth_date',c.birth_date,'date')+
           input('Місце народження','birth_place',c.birth_place || pf.birth_place || profile.birth_place)+
           select('Стать','sex',sex,[['','Не визначено'],['male','Чоловіча'],['female','Жіноча']])+ 
@@ -187,6 +187,7 @@
 
     await CRMResponsibility.mountCard(c,content);
     const formForNavigation=content.querySelector('#candidateCardV2');
+    CRMCandidateName.bind(formForNavigation);
     const groups=[
       ['personal','Картка',[1,2,3,4]],['family','Рідні та близькі',[13]],['education','Освіта',[5]],
       ['work','Трудовий стаж',[6]],['service','Військова служба',[7]],['military','Військовий облік',[8]],

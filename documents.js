@@ -277,7 +277,7 @@ async function reviewDocumentData(id){
     for(const key of ['birth_date','birth_place','rnokpp','phone','email','sex','marital_status','has_children','worked_before','served_before','military_rank','civilian_profession','desired_position','tcc'])add('candidate',key,e[key]);
     add('candidate','full_name',e.name_nominative||e.full_name);
     add('candidate','name_nominative',e.name_nominative||e.full_name);
-    add('candidate','name_genitive',e.name_genitive);
+    add('candidate','name_genitive',e.name_genitive||e.name_cases?.genitive||e.name_cases?.['Родовий']);
     for(const key of ['education','work_history','military_service_history','children_info'])add('file',key,e[key]);
     add('profile','relatives',e.relatives);
   }
