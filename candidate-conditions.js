@@ -24,6 +24,14 @@
   const fields=(keys,hidden)=>keys.forEach(k=>{const el=form.querySelector('[name="'+k+'"]');if(el?.closest('.cc-field'))el.closest('.cc-field').hidden=hidden;});
   const update=()=>{
    const get=k=>form.querySelector('[name="'+k+'"]')?.value;
+   const served=form.querySelector('[name="served_before"]');
+   if(served){
+    const female=get('sex')==='female',male=get('sex')==='male';
+    const yes=female?'Служила':male?'Служив':'Служив / Служила';
+    const no=female?'Не служила':male?'Не служив':'Не служив / Не служила';
+    const label=served.closest('.cc-field')?.querySelector('label');if(label)label.textContent=yes;
+    for(const option of served.options){if(option.value==='true')option.textContent=yes;else if(option.value==='false')option.textContent=no;}
+   }
    fields(['children_count','children_info'],bool(get('has_children'))===false);
    fields(['work_history'],bool(get('worked_before'))===false);
    fields(['military_unit','military_position','service_start_date','service_end_date','combat_days','military_service_history'],bool(get('served_before'))===false);
