@@ -6,7 +6,7 @@
  const marital=v=>{const t=String(v||'').trim().toLocaleLowerCase('uk-UA');return ['одружений','одружена','married'].includes(t)?'married':['розлучений','розлучена','divorced'].includes(t)?'divorced':['не одружений','не одружена','неодружений','неодружена','single'].includes(t)?'single':null};
  function documentCondition(type,c){
   const t=String(type||'').toLocaleLowerCase('uk-UA');
-  if(/резерв\s*\+|приписного/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}
+  if(/резерв\s*\+|припис|військовий облік/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}
   if(/убд|військового квитка|витягу? з наказу|нагород/.test(t))return bool(value(c,'served_before'));
   if(/народження дітей/.test(t))return bool(value(c,'has_children'));
   if(/трудов|трудову діяльність/.test(t))return bool(value(c,'worked_before'));
