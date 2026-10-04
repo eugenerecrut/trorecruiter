@@ -24,6 +24,14 @@
   const fields=(keys,hidden)=>keys.forEach(k=>{const el=form.querySelector('[name="'+k+'"]');if(el?.closest('.cc-field'))el.closest('.cc-field').hidden=hidden;});
   const update=()=>{
    const get=k=>form.querySelector('[name="'+k+'"]')?.value;
+   const worked=form.querySelector('[name="worked_before"]');
+   if(worked){
+    const female=get('sex')==='female',male=get('sex')==='male';
+    const yes=female?'Працювала':male?'Працював':'Працював / Працювала';
+    const no=female?'Не працювала':male?'Не працював':'Не працював / Не працювала';
+    const label=worked.closest('.cc-field')?.querySelector('label');if(label)label.textContent=yes;
+    for(const option of worked.options){if(option.value==='true')option.textContent=yes;else if(option.value==='false')option.textContent=no;}
+   }
    const served=form.querySelector('[name="served_before"]');
    if(served){
     const female=get('sex')==='female',male=get('sex')==='male';
