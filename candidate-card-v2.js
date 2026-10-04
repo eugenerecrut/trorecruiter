@@ -26,6 +26,7 @@
   }
 
   function input(label, name, value, type = 'text', cls = '') {
+    if(name==='phone'||name==='phone_secondary'){value=window.CRMPhone.normalize(value);type='tel';}
     return `<div class="cc-field ${cls}"><label>${esc(label)}</label><input name="${esc(name)}" type="${type}" value="${esc(value ?? '')}"></div>`;
   }
 
@@ -273,10 +274,11 @@
         return {
           relationship: get('relationship'), full_name: get('full_name'), birth_date: get('birth_date'),
           birth_place: get('birth_place'), citizenship: get('citizenship'), address: get('address'),
-          phone: get('phone'), workplace: get('workplace'), position: get('position'), notes: get('notes')
+          phone: window.CRMPhone.normalize(get('phone')), workplace: get('workplace'), position: get('position'), notes: get('notes')
         };
       }).filter(r => Object.values(r).some(Boolean));
       oldProfile.relatives = savedRelatives;
+      oldProfile.phone_secondary=window.CRMPhone.normalize(oldProfile.phone_secondary);
 
       const militaryUnit = String(fd.get('military_unit') || '').trim();
       const candidatePatch = {
@@ -287,7 +289,7 @@
         birth_place: String(fd.get('birth_place') || '').trim() || null,
         rnokpp: String(fd.get('rnokpp') || '').trim() || null,
         passport_data: String(fd.get('passport_data') || '').trim() || null,
-        phone: String(fd.get('phone') || '').trim() || null,
+        phone: window.CRMPhone.normalize(fd.get('phone')) || null,
         email: String(fd.get('email') || '').trim() || null,
         sex: String(fd.get('sex') || '') || null,
         marital_status: String(fd.get('marital_status') || '').trim() || null,

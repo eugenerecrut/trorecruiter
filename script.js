@@ -131,7 +131,7 @@ function showCandidates() {
     rows.innerHTML = filtered.length ? filtered.map(c => `
       <tr data-candidate-id="${escapeHtml(c.id)}" style="border-top:1px solid #edf0f1">
         <td style="padding:14px">${CandidatePhotos.markup(c)}</td>
-        <td style="padding:14px">${escapeHtml(c.phone || '—')}</td>
+        <td style="padding:14px">${escapeHtml(window.CRMPhone.normalize(c.phone) || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
         <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
@@ -775,7 +775,7 @@ async function saveCandidateFromRecommendation(event) {
 
   const candidate = {
     full_name: String(fd.get('full_name') || '').trim(),
-    phone: String(fd.get('phone') || '').trim() || null,
+    phone: window.CRMPhone.normalize(fd.get('phone')) || null,
     email: null,
     birth_date: fd.get('birth_date') || null,
     sex: ['male', 'female'].includes(String(fd.get('sex') || '')) ? String(fd.get('sex')) : null,
@@ -1311,7 +1311,7 @@ async function renderCandidateCard(candidateId) {
         has_children: parseBool(fd.get('has_children')),
         worked_before: parseBool(fd.get('worked_before')),
         served_before: parseBool(fd.get('served_before')),
-        phone: String(fd.get('phone') || '').trim() || null,
+        phone: window.CRMPhone.normalize(fd.get('phone')) || null,
         email: String(fd.get('email') || '').trim() || null,
         desired_position: String(fd.get('desired_position') || '').trim() || null,
         direction: String(fd.get('desired_unit') || '').trim() || null,

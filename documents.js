@@ -270,6 +270,7 @@ async function reviewDocumentData(id){
   const ownIdentity=(type==='ID'||type==='passport'||type==='birth')&&!/дітей/i.test(d.document_type||'');
   const personalSource=ownIdentity||/рекомендац|автобіограф|ідентифікаційн/i.test(d.document_type||'');
   const add=(target,key,incoming,label)=>{
+    if(key==='phone'||key==='phone_secondary')incoming=window.CRMPhone.normalize(incoming);
     if(incoming===null||incoming===undefined||incoming==='')return;
     const current=target==='candidate'?c[key]:target==='file'?pf[key]:p[key];
     if(JSON.stringify(current)===JSON.stringify(incoming)||String(current??'').trim()===String(incoming).trim())return;
