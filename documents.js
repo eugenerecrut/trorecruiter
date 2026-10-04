@@ -285,8 +285,8 @@ async function reviewDocumentData(id){
     for(const key of ['education','work_history','military_service_history','children_info'])add('file',key,e[key]);
     add('profile','relatives',e.relatives);
   }
-  if(/резерв\s*\+|припис|призовної дільниці|військовий облік/iu.test(d.document_type||d.ai_document_type||'')){
-    for(const key of ['full_name','birth_date','birth_place','rnokpp','tcc','military_rank','military_specialty'])add('candidate',key,e[key]);
+  if(/резерв\s*\+|припис|призовної дільниці|військовий облік|військово[-\s]?обліков/iu.test(d.document_type||d.ai_document_type||'')){
+    for(const key of ['full_name','rnokpp','tcc','military_rank','military_specialty'])add('candidate',key,e[key]);
     for(const key of ['military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status','military_document_number','military_document_type','military_registration_date','military_registration_category','military_registration_status','vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date'])add('profile',key,e[key]);
   }
   if(ownIdentity){
