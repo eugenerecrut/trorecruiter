@@ -98,7 +98,7 @@
     const pf = pr.data || {};
     let profile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
     if (typeof c.profile_data === 'string') { try { profile = JSON.parse(c.profile_data); } catch (_) {} }
-    const docs = CRMResponsibility.latest(dr.data || []);
+    const docs = CRMResponsibility.latest(dr.data || []).filter(d=>CRMCandidateConditions.documentCondition(d.document_type,c)!==false);
     CRMWorkspace.setContext(candidateId,c.name_nominative||c.full_name);
     const activeCardSection=window.crmActiveCardSection||'personal';
     const relatives = Array.isArray(profile.relatives) ? profile.relatives : [];
@@ -158,10 +158,10 @@
           select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+input('Цивільна професія','civilian_profession',c.civilian_profession)+textarea('Трудова діяльність','work_history',pf.work_history || pf.civilian_experience,'cc-wide')
         )}
         ${section('7. Військова служба','Відомості про попередню та поточну службу',
-          select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+input('Військове звання','military_rank',c.military_rank)+input('ВОС','military_specialty',c.military_specialty || profile.military_specialty)+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')
+          select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')
         )}
         ${section('8. Військовий облік','Дані військового обліку',
-          input('ТЦК та СП','tcc',c.tcc)+input('Номер військово-облікового документа','military_document_number',profile.military_document_number)+input('Дата взяття на облік','military_registration_date',profile.military_registration_date,'date')+input('Категорія обліку','military_registration_category',profile.military_registration_category)+input('Стан обліку','military_registration_status',profile.military_registration_status)+input('Військовий документ','military_document_type',profile.military_document_type)
+          input('Військове звання','military_rank',c.military_rank)+input('ВОС','military_specialty',c.military_specialty || profile.military_specialty)+input('ТЦК та СП','tcc',c.tcc)+input('Номер військово-облікового документа','military_document_number',profile.military_document_number)+input('Номер у реєстрі Оберіг','military_registry_number',profile.military_registry_number)+input('Витяг Резерв+ дійсний до','military_document_expiry_date',profile.military_document_expiry_date,'date')+input('Дата уточнення даних','military_data_updated_at',profile.military_data_updated_at,'date')+input('Тип відстрочки','military_deferment_type',profile.military_deferment_type)+input('Відстрочка до','military_deferment_until',profile.military_deferment_until,'date')+input('Підстава зняття / виключення','military_registration_removal_reason',profile.military_registration_removal_reason)+input('Військова підготовка','military_training_status',profile.military_training_status)+input('Дата взяття на облік','military_registration_date',profile.military_registration_date,'date')+input('Категорія обліку','military_registration_category',profile.military_registration_category)+input('Стан обліку','military_registration_status',profile.military_registration_status)+input('Військовий документ','military_document_type',profile.military_document_type)
         )}
         ${section('9. ВЛК','Військово-лікарська комісія',
           input('Номер довідки ВЛК','vlk_certificate_number',profile.vlk_certificate_number)+input('Дата проходження ВЛК','vlk_date',profile.vlk_date,'date')+input('Висновок','vlk_conclusion',profile.vlk_conclusion)+input('Категорія придатності','vlk_category',profile.vlk_category)+input('Дата наступного огляду','vlk_next_date',profile.vlk_next_date,'date')+input('Статус ВЛК','vlk_status',c.vlk_status)+textarea('Примітки ВЛК','vlk_notes',profile.vlk_notes,'cc-wide')
@@ -189,6 +189,7 @@
     await CRMResponsibility.mountCard(c,content);
     const formForNavigation=content.querySelector('#candidateCardV2');
     CRMCandidateName.bind(formForNavigation);
+    CRMCandidateConditions.bind(formForNavigation);
     const groups=[
       ['personal','Картка',[1,2,3,4]],['family','Рідні та близькі',[13]],['education','Освіта',[5]],
       ['work','Трудовий стаж',[6]],['service','Військова служба',[7]],['military','Військовий облік',[8]],
@@ -264,7 +265,7 @@
       const profileKeys = [
         'citizenship','unzr','birth_certificate','phone_secondary','messenger','registered_address','region','locality','street','house','apartment','postal_code',
         'identity_document_type','passport_series','passport_number','passport_issuer','passport_issue_date','passport_expiry_date','education_level','education_institution','education_specialty','education_qualification','education_year',
-        'military_specialty','military_unit','military_position','service_start_date','service_end_date','combat_days','military_document_number','military_registration_date','military_registration_category','military_registration_status','military_document_type',
+        'military_specialty','military_unit','military_position','service_start_date','service_end_date','combat_days','military_document_number','military_registration_date','military_registration_category','military_registration_status','military_document_type','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status',
         'vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
       profileKeys.forEach(k => { if (fd.has(k)) oldProfile[k] = fd.get(k); });

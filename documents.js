@@ -25,17 +25,7 @@ return data||[]
 async function getCandidateDocuments(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('candidate_id',id).order('created_at',{ascending:true});if(error){console.error(error);return[]}return data||[]}
 function documentStatusHtml(r,docs){const m=docs.filter(d=>d.requirement_id===r.id||d.document_type===r.document_type);if(!m.length)return`<span class="status status-doc">${r.is_required?'Не завантажено':'Не додано'}</span>`;if(m.some(d=>d.verification_status==='Підтверджено'))return'<span class="status status-done">Підтверджено</span>';if(m.some(d=>d.processing_status==='AI оброблено'))return'<span class="status status-work">AI розпізнано · перевірити</span>';return'<span class="status status-work">Завантажено · перевірити</span>'}
 
-function requirementCondition(r,c){
-  if(!r.condition_field)return true;
-  const value=c[r.condition_field];
-  if(value===null||value===undefined||value==='')return null;
-  if(r.condition_field==='marital_status'){
-    const text=String(value).trim().toLocaleLowerCase('uk-UA');
-    const expected=String(r.condition_value).toLowerCase();
-    return expected==='married'?['married','одружений','одружена'].includes(text):expected==='divorced'?['divorced','розлучений','розлучена'].includes(text):text===expected;
-  }
-  return String(value)===String(r.condition_value);
-}
+function requirementCondition(r,c){return CRMCandidateConditions.requirement(r,c);}
 function documentsForRequirement(r,docs){return docs.filter(d=>d.requirement_id===r.id||d.document_type===r.document_type)}
 function documentDisplayState(d,aiEnabled=true){
   if(d.verification_status==='Підтверджено')return 'Підтверджено';
@@ -53,10 +43,11 @@ async function showDocuments(id){
   CRMWorkspace.setContext(id,c.name_nominative||c.full_name);CRMWorkspace.markMenu('documents');
   let profile=c.profile_data||{};if(typeof profile==='string'){try{profile=JSON.parse(profile)}catch(_){profile={}}}
   const children=Number(c.children_count)||((profile.relatives||[]).filter(r=>/син|доньк|дитин/i.test(r.relationship||r.relation||'')).length);
+  const excludedDocs=docs.filter(d=>{const r=reqs.find(r=>r.id===d.requirement_id||r.document_type===d.document_type);return (r?requirementCondition(r,c):CRMCandidateConditions.documentCondition(d.document_type,c))===false;});
   const rows=[];
   reqs.forEach(r=>{
     const files=documentsForRequirement(r,docs),condition=requirementCondition(r,c);
-    if(condition===false&&!files.length)return;
+    if(condition===false)return;
     const count=r.condition_field==='has_children'&&condition===true?Math.max(1,children):1;
     for(let i=0;i<count;i++){
       const child=r.condition_field==='has_children',rowFiles=child?(i===count-1?files.slice(i):files.slice(i,i+1)):files;
@@ -64,7 +55,7 @@ async function showDocuments(id){
     }
   });
   const knownIds=new Set(reqs.map(r=>r.id)),knownTypes=new Set(reqs.map(r=>r.document_type));
-  docs.filter(d=>!knownIds.has(d.requirement_id)&&!knownTypes.has(d.document_type)).forEach(d=>rows.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true}));
+  docs.filter(d=>CRMCandidateConditions.documentCondition(d.document_type,c)!==false&&!knownIds.has(d.requirement_id)&&!knownTypes.has(d.document_type)).forEach(d=>rows.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true}));
   content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docDeletedFiles">Видалені ('+allDocs.filter(d=>d.deleted_at).length+')</button><button id="docCaseHistory">Історія дій</button><button id="docCameraFiles">📷 Сканувати камерою</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
   content.querySelector('#docBackCard').onclick=()=>crmNavigate('card',id);
   content.querySelector('#docDeletedFiles').onclick=()=>showDeletedDocuments(id,allDocs);
@@ -79,6 +70,11 @@ async function showDocuments(id){
   content.querySelector('#docProgressText').textContent='Завантажено '+uploaded+' із '+mandatory.length+' · Підтверджено '+verified+' із '+mandatory.length+(unknown?' · Уточніть умови для '+unknown+' пунктів':'');
   content.querySelector('#docProgress > div').style.width=(mandatory.length?Math.round(verified/mandatory.length*100):0)+'%';
   content.querySelector('#docBatchStatus').textContent='Комплектність враховує лише обов’язкові документи, які потрібні цьому кандидату.';
+  if(excludedDocs.length){
+    const details=document.createElement('details');details.className='card';details.style.marginBottom='18px';
+    details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button></p>').join('');
+    details.addEventListener('click',e=>{const id=e.target.closest('[data-excluded-open]')?.dataset.excludedOpen;if(id)openDocument(id)});content.querySelector('#docFilters').before(details);
+  }
   const body=content.querySelector('#documentRows');
   body.innerHTML=rows.map(row=>{
     const {r,files,condition,childIndex}=row;
@@ -119,7 +115,9 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
   const old=document.getElementById('documentModal');if(old)old.remove();
   const modal=document.createElement('dialog');modal.id='documentModal';modal.className='crm-dialog';modal.dataset.candidateId=id;modal.dataset.replacementId=replacementId;
   document.body.append(modal);
-  return getDocumentRequirements().then(reqs=>{
+  return Promise.all([getDocumentRequirements(),supabaseClient.from('candidates').select('*').eq('id',id).single()]).then(([allReqs,cr])=>{
+    if(cr.error)throw cr.error;
+    const reqs=allReqs.filter(r=>requirementCondition(r,cr.data)!==false);
     const options='<option value="">Оберіть тип документа</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
     modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · виберіть тип для кожного файла до обробки.</p><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
     if(replacementId)modal.querySelector('#docFileInput').removeAttribute('multiple');
@@ -261,7 +259,7 @@ async function reviewDocumentData(id){
   await CRMResponsibility.ready();
   const c=cr.data,pf=pr.data||{},esc=docEscape,e=d.ai_extracted||{};
   let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
-  const labels={full_name:'ПІБ',name_nominative:'ПІБ у називному відмінку',name_genitive:'ПІБ у родовому відмінку',name_gender:'Стать за ПІБ',name_cases:'Відмінки ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',passport_data:'Дані паспорта',phone:'Телефон',email:'Email',sex:'Стать',marital_status:'Сімейний стан',has_children:'Є діти',children_info:'Відомості про дітей',relatives:'Рідні та близькі',education:'Освіта',civilian_profession:'Цивільна професія',worked_before:'Працював / працювала',work_history:'Трудовий стаж',served_before:'Служив / служила',military_rank:'Військове звання',military_unit:'Військова частина',military_specialty:'ВОС',military_service_history:'Військовий стаж',desired_position:'Бажана посада',desired_unit:'Бажаний напрям',tcc:'ТЦК та СП',address:'Адреса з документа',registered_address:'Адреса реєстрації',citizenship:'Громадянство',unzr:'УНЗР',document_type:'Тип документа',document_number:'Номер документа',document_series:'Серія документа',document_date:'Дата видачі',document_issuer:'Ким виданий',passport_number:'Номер паспорта',passport_series:'Серія паспорта',passport_issuer:'Ким виданий паспорт',passport_issue_date:'Дата видачі паспорта',passport_expiry_date:'Дійсний до',birth_certificate:'Номер свідоцтва про народження',confidence:'Впевненість AI',warnings:'Попередження',meta:'Додаткові відомості',relationship:'Спорідненість',workplace:'Місце роботи',position:'Посада',notes:'Примітки',signatory:'Підписант',recommender_unit:'Організація рекомендації',recruiter_name:'Рекрутер'};
+  const labels={military_registry_number:'Номер у реєстрі Оберіг',military_document_expiry_date:'Витяг Резерв+ дійсний до',military_data_updated_at:'Дата уточнення даних',military_deferment_type:'Тип відстрочки',military_deferment_until:'Відстрочка до',military_registration_removal_reason:'Підстава зняття / виключення',military_training_status:'Військова підготовка',military_document_number:'Номер військово-облікового документа',military_document_type:'Тип військового документа',military_registration_date:'Дата взяття на облік',military_registration_category:'Категорія військового обліку',military_registration_status:'Стан військового обліку',vlk_certificate_number:'Номер довідки ВЛК',vlk_date:'Дата ВЛК',vlk_conclusion:'Висновок ВЛК',vlk_category:'Категорія придатності',vlk_next_date:'Дата наступного огляду',full_name:'ПІБ',name_nominative:'ПІБ у називному відмінку',name_genitive:'ПІБ у родовому відмінку',name_gender:'Стать за ПІБ',name_cases:'Відмінки ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',passport_data:'Дані паспорта',phone:'Телефон',email:'Email',sex:'Стать',marital_status:'Сімейний стан',has_children:'Є діти',children_info:'Відомості про дітей',relatives:'Рідні та близькі',education:'Освіта',civilian_profession:'Цивільна професія',worked_before:'Працював / працювала',work_history:'Трудовий стаж',served_before:'Служив / служила',military_rank:'Військове звання',military_unit:'Військова частина',military_specialty:'ВОС',military_service_history:'Військовий стаж',desired_position:'Бажана посада',desired_unit:'Бажаний напрям',tcc:'ТЦК та СП',address:'Адреса з документа',registered_address:'Адреса реєстрації',citizenship:'Громадянство',unzr:'УНЗР',document_type:'Тип документа',document_number:'Номер документа',document_series:'Серія документа',document_date:'Дата видачі',document_issuer:'Ким виданий',passport_number:'Номер паспорта',passport_series:'Серія паспорта',passport_issuer:'Ким виданий паспорт',passport_issue_date:'Дата видачі паспорта',passport_expiry_date:'Дійсний до',birth_certificate:'Номер свідоцтва про народження',confidence:'Впевненість AI',warnings:'Попередження',meta:'Додаткові відомості',relationship:'Спорідненість',workplace:'Місце роботи',position:'Посада',notes:'Примітки',signatory:'Підписант',recommender_unit:'Організація рекомендації',recruiter_name:'Рекрутер'};
   const display=v=>v===true?'Так':v===false?'Ні':v==null||v===''?'Не вказано':typeof v==='object'?JSON.stringify(v,null,2):String(v);
   const renderValue=v=>Array.isArray(v)?v.map(renderValue).join('<hr>'):v&&typeof v==='object'?Object.entries(v).map(([k,value])=>'<div><b>'+esc(labels[k]||k)+':</b> '+renderValue(value)+'</div>').join(''):esc(display(v));
   const type=identityDocumentTypeValue(d.ai_document_type||d.document_type),changes=[];
@@ -283,6 +281,10 @@ async function reviewDocumentData(id){
     add('candidate','name_genitive',e.name_genitive||e.name_cases?.genitive||e.name_cases?.['Родовий']);
     for(const key of ['education','work_history','military_service_history','children_info'])add('file',key,e[key]);
     add('profile','relatives',e.relatives);
+  }
+  if(/резерв\s*\+/iu.test(d.document_type||d.ai_document_type||'')){
+    for(const key of ['full_name','birth_date','rnokpp','tcc','military_rank','military_specialty'])add('candidate',key,e[key]);
+    for(const key of ['military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status','military_document_number','military_document_type','military_registration_date','military_registration_category','military_registration_status','vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date'])add('profile',key,e[key]);
   }
   if(ownIdentity){
     add('profile','identity_document_type',type,'Тип документа у картці');
