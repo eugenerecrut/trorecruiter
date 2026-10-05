@@ -12,13 +12,13 @@
   async function generate(values, photo) {
     await loadExternalScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js', 'PDFLib');
     await loadExternalScript('https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js', 'fontkit');
-    const pdf = await PDFLib.PDFDocument.load(await bytes('templates/card13-blank.pdf?v=1.1.0.402'));
+    const pdf = await PDFLib.PDFDocument.load(await bytes('templates/card13-blank.pdf?v=1.1.0.403'));
     pdf.registerFontkit(window.fontkit);
-    const font = await pdf.embedFont(await bytes('templates/fonts/DejaVuSans.ttf'), { subset: true });
+    const font = await pdf.embedFont(await bytes('templates/fonts/Tinos-Regular.ttf'), { subset: true });
     const form = pdf.getForm();
     for (const [key, value] of Object.entries(values)) {
       const field = form.getTextField(key), rect = field.acroField.getWidgets()[0].getRectangle();
-      let size = 10;
+      let size = 10.5;
       const lines = String(value).split('\n');
       if (lines.length > (field.isMultiline() ? 2 : 1)) throw Error('Забагато рядків для поля: ' + key);
       while (size > 7 && lines.some(s => font.widthOfTextAtSize(s, size) > rect.width - 6)) size -= .5;
@@ -33,7 +33,7 @@
       const image = /png/i.test(r.headers.get('content-type') || photo.slice(0,40)) ? await pdf.embedPng(data) : await pdf.embedJpg(data);
       const page = pdf.getPages()[0], mm = 72 / 25.4;
       const box = { x: 17 * mm, y: 247 * mm, width: 30 * mm, height: 40 * mm };
-      page.drawRectangle({ ...box, color: PDFLib.rgb(1,1,1) });
+      page.drawRectangle({ x:box.x, y:245*mm, width:69*mm, height:20*mm, color:PDFLib.rgb(1,1,1) });
       const dims = image.scale(Math.min(box.width / image.width, box.height / image.height));
       page.drawImage(image, { x: box.x + (box.width-dims.width)/2, y: box.y+(box.height-dims.height)/2, ...dims });
     }
