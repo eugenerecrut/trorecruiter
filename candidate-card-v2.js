@@ -146,6 +146,7 @@
       </style>
       <div class="dashboard-top cc-wrap"><div><div class="page-title">Картка кандидата</div><p class="page-subtitle">Усі дані кандидата в одному місці. Усі поля редагуються рекрутером.</p></div><div class="quick-actions"><span class="cc-badge">${esc(c.name_nominative||c.full_name)}</span><button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи</button><button type="button" onclick="crmNavigate('information','${candidateId}')">Обов’язкова інформація</button><button onclick="crmNavigate('candidates')">← До кандидатів</button></div></div>
       <section class="crm-responsibility" data-responsibility></section>
+      <section class="cc-section cc-wrap crm-workflow" data-workflow></section>
       <nav class="crm-card-nav cc-wrap" id="crmCardNav" aria-label="Розділи картки"></nav>
       <form id="candidateCardV2" class="cc-wrap">
         <div class="crm-case-mode"><label for="cardCaseMode">Хто збирає документи</label><select id="cardCaseMode" name="case_mode"><option value="full" ${profile.case_mode!=='unit'?'selected':''}>Документи збираємо ми</option><option value="unit" ${profile.case_mode==='unit'?'selected':''}>Документи збирає ВЧ</option></select><p>У режимі ВЧ: РЛ, припис про направлення та реєстр кандидата.</p></div>
@@ -202,7 +203,7 @@
         ${section('11. Контракт / оформлення','Етап оформлення',
           select('Вид контракту','contract_type',profile.contract_type || '',[['','Не визначено'],['мотиваційний','Мотиваційний контракт'],['звичайний','Звичайний контракт'],['інший','Інший']])+input('Дата підписання','contract_date',profile.contract_date,'date')+input('Строк, місяців','contract_term_months',profile.contract_term_months,'number')+select('Статус оформлення','contract_status',profile.contract_status || '',[['','Не визначено'],['підготовка','Підготовка'],['подано','Подано'],['погодження','На погодженні'],['підписано','Підписано'],['відмова','Відмова']])+textarea('Примітки щодо контракту','contract_notes',profile.contract_notes,'cc-wide')
         )}
-        ${section('12. Статус кандидата','Поточний етап руху кандидата',select('Статус','recruitment_status',c.recruitment_status || 'Новий',statusOptions.map(x=>[x,x]),'cc-wide')+textarea('Примітки рекрутера','notes',c.notes,'cc-wide'))}
+        ${section('12. Примітки рекрутера','Додаткова інформація щодо роботи зі справою',textarea('Примітки рекрутера','notes',c.notes,'cc-wide'))}
         <section class="cc-section" data-section="13"><div class="cc-section-head"><div><h3>13. Близькі родичі</h3><small>Батько, мати, чоловік/дружина, діти, брати, сестри та інші близькі родичі.</small></div><span class="cc-badge">${relatives.length} запис(ів)</span></div>
           <div id="ccRelatives">${(relatives.length ? relatives : [{},{}]).map((r,i)=>relativeRow(r,i)).join('')}</div>
           <button type="button" id="ccAddRelative" class="cc-relative-add">＋ Додати родича</button>
@@ -321,7 +322,7 @@
       if (!nom) { status.textContent = 'Потрібно вказати ПІБ у називному відмінку.'; return; }
       status.textContent = 'Зберігаємо дані...';
       const parseBool = v => v === '' ? null : v === 'true';
-      const oldProfile = { ...profile };
+      const oldProfile = { ...profile, workflow: CRMWorkflow.wf(c) };
       const profileKeys = [
         'citizenship','unzr','birth_certificate','phone_secondary','messenger','registered_address','region','locality','street','house','apartment','postal_code',
         'identity_document_type','passport_series','passport_number','passport_issuer','passport_issue_date','passport_expiry_date','education_level','education_institution','education_specialty','education_qualification','education_year',
@@ -377,7 +378,7 @@
         military_specialty: String(fd.get('military_specialty') || '').trim() || null,
         tcc: String(fd.get('tcc') || '').trim() || null,
         vlk_status: String(fd.get('vlk_status') || '').trim() || null,
-        recruitment_status: String(fd.get('recruitment_status') || 'Новий'),
+        recruitment_status: c.recruitment_status || 'Новий',
         civilian_profession: fd.has('civilian_profession')?(String(fd.get('civilian_profession')||'').trim()||null):(c.civilian_profession??null),
         notes: String(fd.get('notes') || '').trim() || null,
         profile_data: { ...oldProfile, case_mode: unit?'unit':'full', military_unit: militaryUnit, updated_from_candidate_card: true },
@@ -402,7 +403,7 @@
       const { error: pe } = unit?{error:null}:await supabaseClient.from('personal_files').upsert(pfPatch, { onConflict:'candidate_id' });
       if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return; }
       status.textContent = 'Готово. Дані кандидата оновлено.';
-      Object.assign(c,candidatePatch);if(!unit)Object.assign(pf,pfPatch);profile=candidatePatch.profile_data;cardState.dirty=false;
+      Object.assign(c,candidatePatch);if(!unit)Object.assign(pf,pfPatch);profile=candidatePatch.profile_data;cardState.dirty=false;await CRMWorkflow.mount(c,content);
       return true;
     };
     cardState.save=()=>{
@@ -412,6 +413,7 @@
       return cardState.saving;
     };
     formForNavigation.addEventListener('submit',event=>{event.preventDefault();cardState.save()});
+    await CRMWorkflow.mount(c,content);
   }
 
 

@@ -35,6 +35,7 @@ window.CRMWorkspace = {
       else if(key==='card'&&target)await openCandidateCard(target);
       else if(key==='documents'){if(target)await showDocuments(target);else await this.pickCandidate('documents')}
       else if(key==='information'){if(target)await this.showInformation(target);else await this.pickCandidate('information')}
+      else if(key==='archive')await CRMWorkflow.showArchive();
       else if(key==='blanks')this.showBlanks();
       else if(key==='settings')location.href='scanner-settings.html';
       else if(key==='home'){this.candidateId=null;this.candidateName='';document.querySelector('.content').innerHTML=this.homeHTML;await updateDashboard();await this.loadHome()}
@@ -121,7 +122,7 @@ CRMWorkspace.loadHome=async function(){
   if(!document.querySelector('.cards'))return;
   const docs=CRMResponsibility.latest(result.data||[]),esc=this.escape;
   const recent=document.querySelector('.dashboard-grid tbody');
-  if(recent)recent.innerHTML=candidates.slice(0,6).map(c=>'<tr><td><button class="crm-button" onclick="crmNavigate(\'card\',\''+esc(c.id)+'\')">'+esc(c.name_nominative||c.full_name)+'</button></td><td>'+esc(c.desired_position||'—')+'</td><td>'+esc(c.recruitment_status||'Новий')+'</td><td>'+esc(c.profile_data?.recruiter_name||'—')+'</td></tr>').join('')||'<tr><td colspan="4">Кандидатів поки немає.</td></tr>';
+  if(recent)recent.innerHTML=candidates.slice(0,6).map(c=>'<tr><td><button class="crm-button" onclick="crmNavigate(\'card\',\''+esc(c.id)+'\')">'+esc(c.name_nominative||c.full_name)+'</button></td><td>'+esc(c.desired_position||'—')+'</td><td>'+esc(CRMWorkflow.label(c))+'</td><td>'+esc(c.profile_data?.recruiter_name||'—')+'</td></tr>').join('')||'<tr><td colspan="4">Кандидатів поки немає.</td></tr>';
   const tasks=document.querySelector('.lower-grid .card');
   if(tasks){
     const missing=candidates.filter(c=>reqs.some(r=>r.is_required&&requirementCondition(r,c)===true&&!docs.some(d=>d.candidate_id===c.id&&(d.requirement_id===r.id||d.document_type===r.document_type))));

@@ -20,7 +20,7 @@
  }
  function documentCondition(type,c){
   if(isUnit(c))return unitDocument(type);
-  if(unitTypes.includes(type))return false;
+  if(unitTypes.includes(type))return true;
   const t=String(type||'').toLocaleLowerCase('uk-UA');
   if(/резерв\s*\+|припис|військовий облік/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}
   if(/убд|військового квитка|витягу? з наказу|нагород/.test(t))return bool(value(c,'served_before'));

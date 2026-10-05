@@ -33,3 +33,7 @@
 .crm-new-entry{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:18px;align-items:center}.crm-new-entry label{cursor:pointer}.crm-manual-entry{text-align:center}.crm-manual-entry button{padding:12px 18px;background:#18232d;color:white;border-radius:9px;border:0;font-weight:700}.crm-manual-entry p{font-size:12px;line-height:1.5;color:#7d8a93}
 .crm-new-case [hidden],#candidateForm [hidden]{display:none!important}
 @media(max-width:640px){.crm-new-entry{grid-template-columns:1fr}.crm-manual-entry{text-align:left}.crm-manual-entry button{width:100%}.crm-case-mode select{width:100%}}
+
+.crm-workflow-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.crm-workflow-grid label{display:grid;gap:6px;font-weight:600}.crm-workflow-grid input:not([type=checkbox]),.crm-workflow-grid select,.crm-workflow-grid textarea{width:100%;padding:10px;border:1px solid #cfd8dc;border-radius:8px;background:white;color:#18232d}.crm-workflow-current{font-weight:700;color:#5d741f}.crm-archive-row{padding:16px;border-bottom:1px solid #e0e6e8}.crm-archive-row button{margin-right:8px}.crm-workflow [hidden]{display:none!important}.crm-workflow .crm-actions{margin-top:14px}
+@media(max-width:640px){.crm-workflow-grid{grid-template-columns:1fr}}
+@media print{body:has(.crm-workflow-dialog[open]) #crmScreen{display:none!important}body:has(.crm-workflow-dialog[open]) .crm-workflow-dialog{position:static;width:100%;max-width:none;border:0} .crm-workflow-dialog button,.crm-workflow-dialog>h2{display:none!important}.crm-workflow-print{color:black}}

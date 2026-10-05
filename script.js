@@ -75,17 +75,8 @@ function showCandidates() {
       <input id="candidateSearch" placeholder="Пошук за ПІБ, телефоном, посадою" style="flex:1;min-width:260px;padding:12px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a">
       <select id="candidateRecruiter" class="crm-owner-select" aria-label="Фільтр за рекрутером"><option value="">Усі рекрутери</option><option value="mine">Мої кандидати</option><option value="unassigned">Не призначено</option></select>
       <select id="candidateStatus" style="padding:12px;border-radius:8px;border:1px solid #cfd8dc;background:#fff;color:#24313a">
-        <option value="">Всі статуси</option>
-        <option>Новий</option>
-        <option>Первинний контакт</option>
-        <option>Співбесіда</option>
-        <option>Перевірка документів</option>
-        <option>ВЛК</option>
-        <option>Рішення</option>
-        <option>Призначений</option>
-        <option>Відмова</option>
-        <option>Втрачено контакт</option>
-        <option>Відкладено</option>
+        <option value="">Усі етапи / результати</option>
+        ${[...CRMWorkflow.stages,...CRMWorkflow.outcomes,'На паузі','Оформлює ВЧ'].map(s=>'<option>'+escapeHtml(s)+'</option>').join('')}
       </select>
     </div>
 
@@ -98,7 +89,7 @@ function showCandidates() {
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Телефон</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Бажана посада</th>
             <th style="padding:14px;border-bottom:1px solid #e0e6e8">Напрям</th>
-            <th style="padding:14px;border-bottom:1px solid #e0e6e8">Статус</th>
+            <th style="padding:14px;border-bottom:1px solid #e0e6e8">Етап / стан справи</th>
             <th style="padding:14px">Відповідальний рекрутер</th>
             <th data-delete-column="1" style="padding:14px;border-bottom:1px solid #e0e6e8">Дії</th>
           </tr>
@@ -123,7 +114,7 @@ function showCandidates() {
       ].join(' ').toLowerCase();
 
       return (!q || text.includes(q)) &&
-        (!status || c.recruitment_status === status) && (!recruiter || (recruiter==='mine'?c.responsible_recruiter_id===CRMResponsibility.userId:recruiter==='unassigned'?!c.responsible_recruiter_id:c.responsible_recruiter_id===recruiter));
+        (!status || (status==='На паузі'?CRMWorkflow.wf(c).paused:status==='Оформлює ВЧ'?CRMCandidateConditions.isUnit(c):CRMWorkflow.wf(c).outcome===status||(!CRMCandidateConditions.isUnit(c)&&CRMWorkflow.stage(c)===status))) && (!recruiter || (recruiter==='mine'?c.responsible_recruiter_id===CRMResponsibility.userId:recruiter==='unassigned'?!c.responsible_recruiter_id:c.responsible_recruiter_id===recruiter));
     });
 
     const rows = content.querySelector('#candidateRows');
@@ -134,7 +125,7 @@ function showCandidates() {
         <td style="padding:14px">${escapeHtml(window.CRMPhone.normalize(c.phone) || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.desired_position || '—')}</td>
         <td style="padding:14px">${escapeHtml(c.direction || '—')}</td>
-        <td style="padding:14px"><span class="status status-new">${escapeHtml(c.recruitment_status || 'Новий')}</span></td>
+        <td style="padding:14px"><span class="status status-new">${escapeHtml(CRMWorkflow.label(c))}</span></td>
         <td style="padding:14px">${CRMResponsibility.control(c)}</td>
         <td class="candidate-actions-cell"><div class="candidate-actions">
           <button type="button" class="candidate-documents-button" onclick="crmNavigate('documents','${c.id}')" aria-label="Документи кандидата">▣ Документи</button>
