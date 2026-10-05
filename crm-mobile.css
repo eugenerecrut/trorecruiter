@@ -157,3 +157,5 @@ html[data-crm-layout="mobile"] .crm-extra-actions>summary{text-align:center}
 html[data-crm-layout="mobile"] .crm-extra-actions>div{position:static;min-width:0;margin-top:8px}
 html[data-crm-layout="mobile"] #documentRows td:empty{display:none!important}
 }
+
+html[data-crm-layout="mobile"] [data-settings-link][href="#scanner"],html[data-crm-layout="mobile"] [data-settings-panel]#scanner{display:none!important}

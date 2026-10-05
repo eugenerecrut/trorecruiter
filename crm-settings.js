@@ -6,7 +6,9 @@
   let allowed = false, busy = false, page = 1, currentUsers = [], hasMore = false, scannerChecked = false, authGeneration = 0;
   const notice = text => {byId('users-status').textContent = text;};
   function route() {
-    const group = ['general', 'scanner', 'users', 'about'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'general';
+    const requested = location.hash.slice(1);
+    const groups = window.CRMInterface?.mode === 'mobile' ? ['general', 'users', 'about'] : ['general', 'scanner', 'users', 'about'];
+    const group = groups.includes(requested) ? requested : 'general';
     document.querySelectorAll('[data-settings-panel]').forEach(panel => {panel.hidden = panel.id !== group;});
     document.querySelectorAll('[data-settings-link]').forEach(link => {
       link.classList.toggle('active', link.hash === '#' + group);
@@ -119,6 +121,8 @@
       await loadUsers();
     } catch (error) {if (generation === authGeneration) notice(error.message);}
   }
-  window.addEventListener('hashchange', route); route();
+  window.addEventListener('hashchange', route);
+  new MutationObserver(route).observe(document.documentElement,{attributes:true,attributeFilter:['data-crm-layout']});
+  route();
   client.auth.onAuthStateChange(() => {setTimeout(checkAccess, 0);});
 })();
