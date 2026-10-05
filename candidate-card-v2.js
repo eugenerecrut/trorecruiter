@@ -198,7 +198,7 @@
           input('Номер довідки ВЛК','vlk_certificate_number',profile.vlk_certificate_number)+input('Дата проходження ВЛК','vlk_date',profile.vlk_date,'date')+input('Комісія / установа ВЛК','vlk_commission',profile.vlk_commission,'text','cc-wide')+input('Висновок','vlk_conclusion',profile.vlk_conclusion)+input('Категорія придатності','vlk_category',profile.vlk_category)+input('Дата наступного огляду','vlk_next_date',profile.vlk_next_date,'date')+input('Статус ВЛК','vlk_status',c.vlk_status)+textarea('Примітки ВЛК','vlk_notes',profile.vlk_notes,'cc-wide')
         )}
         ${section('10. Рекрутингові дані','Внутрішня робота рекрутера',
-          input('Джерело кандидата','candidate_source',profile.candidate_source)+input('Хто прийняв кандидата','recruiter_name',profile.recruiter_name)+input('Напрям','desired_unit',c.direction)+input('Бажана посада','desired_position',c.desired_position)+textarea('Мотивація кандидата','motivation',profile.motivation)+textarea('Додаткова інформація','recruitment_notes',profile.recruitment_notes,'cc-wide')+input('Відомості про судимість','criminal_record_info',profile.criminal_record_info)+input('Відомості про психіатричний облік','psychiatric_record_info',profile.psychiatric_record_info)+textarea('Організаторські здібності','organizational_skills',profile.organizational_skills,'cc-wide')
+          input('Джерело кандидата','candidate_source',profile.candidate_source)+input('Хто прийняв кандидата','recruiter_name',profile.recruiter_name)+input('Напрям','desired_unit',c.direction)+input('Бажана посада','desired_position',c.desired_position)+textarea('Мотивація кандидата','motivation',profile.motivation)+textarea('Додаткова інформація','recruitment_notes',profile.recruitment_notes,'cc-wide')+input('Відомості про судимість','criminal_record_info',profile.criminal_record_info)+input('Відомості про психіатричний облік','psychiatric_record_info',profile.psychiatric_record_info)+select('Займав / займала керівну посаду','has_management_experience',boolValue(profile.has_management_experience),[['','Не визначено'],['true','Так'],['false','Ні']])+textarea('Організаторські здібності','organizational_skills',profile.organizational_skills,'cc-wide')
         )}
         ${section('11. Контракт / оформлення','Етап оформлення',
           select('Вид контракту','contract_type',profile.contract_type || '',[['','Не визначено'],['мотиваційний','Мотиваційний контракт'],['звичайний','Звичайний контракт'],['інший','Інший']])+input('Дата підписання','contract_date',profile.contract_date,'date')+input('Строк, місяців','contract_term_months',profile.contract_term_months,'number')+select('Статус оформлення','contract_status',profile.contract_status || '',[['','Не визначено'],['підготовка','Підготовка'],['подано','Подано'],['погодження','На погодженні'],['підписано','Підписано'],['відмова','Відмова']])+textarea('Примітки щодо контракту','contract_notes',profile.contract_notes,'cc-wide')
@@ -221,6 +221,8 @@
     const formForNavigation=content.querySelector('#candidateCardV2');
     CRMCandidateName.bind(formForNavigation);
     const updateConditions=CRMCandidateConditions.bind(formForNavigation);
+    const updateManagement=()=>{const field=formForNavigation.querySelector('[name=organizational_skills]')?.closest('.cc-field');if(field)field.hidden=formForNavigation.querySelector('[name=has_management_experience]')?.value!=='true';};
+    formForNavigation.querySelector('[name=has_management_experience]')?.addEventListener('change',updateManagement);updateManagement();
     const updateWorkVisibility=()=>{formForNavigation.querySelector('[data-work-editor]').hidden=formForNavigation.querySelector('[name="worked_before"]').value==='false';};
     formForNavigation.addEventListener('change',updateWorkVisibility);updateWorkVisibility();
     const fullGroups=[
@@ -253,7 +255,7 @@
       if(unit)originalFields.forEach(({field,unitAllowed})=>{if(unitAllowed)primaryGrid.append(field)});
       else [...originalFields].reverse().forEach(({field,parent,next})=>parent.insertBefore(field,next?.parentNode===parent?next:null));
       formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&(!allowed.has(el.name)||el.closest('.cc-field')?.hidden!==false)});
-      if(!unit)updateConditions();
+      if(!unit){updateConditions();updateManagement();}
       content.querySelector('[onclick*="information"]')?.classList.toggle('hidden',unit);
       selectSection(window.crmActiveCardSection||activeCardSection);
     };
@@ -327,7 +329,7 @@
         'citizenship','unzr','birth_certificate','phone_secondary','messenger','registered_address','region','locality','street','house','apartment','postal_code',
         'identity_document_type','passport_series','passport_number','passport_issuer','passport_issue_date','passport_expiry_date','education_level','education_institution','education_specialty','education_qualification','education_year',
         'service_type','military_specialty','military_unit','military_position','service_start_date','service_end_date','combat_days','military_document_number','military_registration_date','military_registration_category','military_registration_status','military_document_type','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status',
-        'vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
+        'vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','has_management_experience','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
       profileKeys.forEach(k => { if ((!unit||k==='military_unit')&&fd.has(k)) oldProfile[k] = fd.get(k); });
 

@@ -17,16 +17,11 @@ function historyText(records){
  const rows=(Array.isArray(records)?records:[]).filter(r=>r&&[r.employer,r.position,r.start_date,r.end_date].some(v=>String(v||'').trim()));
  if(!rows.length)return '';
  const displayDate=v=>date(v)?v.split('-').reverse().join('.'):String(v||'Не вказано');
- const kinds={employment:'Робота',military_service:'Військова служба',unemployment:'Облік безробітного'};
  const lines=rows.map((r,i)=>[
-  (i+1)+'. '+(kinds[r.kind]||'Робота')+': '+(r.employer||'Організацію не вказано'),
-  r.position?'Посада: '+r.position:null,
-  'Період: '+displayDate(r.start_date)+' — '+displayDate(r.end_date),
-  ...(Array.isArray(r.position_changes)?r.position_changes:[]).map(x=>'Зміна посади: '+displayDate(x.date)+' — '+(x.position||'Не вказано')),
-  r.termination_reason?'Причина завершення: '+r.termination_reason:null
+  (i+1)+'. Період: '+displayDate(r.start_date)+' — '+displayDate(r.end_date),
+  'Підприємство: '+(r.employer||'Не вказано'),
+  'Посада: '+(r.position||'Не вказано')
  ].filter(Boolean).join('\n'));
- const total=summary(rows);
- lines.push('Підтверджені завершені періоди роботи: '+total.days+' календарних днів. Неповних періодів: '+total.incomplete+'. Це не розрахунок страхового стажу.');
  return lines.join('\n\n');
 }
 function review(e,c,p={},documentId){
