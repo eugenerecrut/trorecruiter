@@ -240,18 +240,18 @@
     };
     nav.addEventListener('click',e=>{const key=e.target.closest('[data-card-section]')?.dataset.cardSection;if(key)selectSection(key)});
     formForNavigation.addEventListener('invalid',e=>{const number=Number(e.target.closest('[data-section]')?.dataset.section);const group=groups.find(g=>g[2].includes(number));if(group)selectSection(group[0])},true);
-    const originalFields=[...formForNavigation.querySelectorAll('.cc-field')].map(field=>({field,parent:field.parentNode,next:field.nextSibling}));
+    const unitFieldSections={name_nominative:1,phone:3,military_unit:7,desired_position:10,recruitment_status:12,notes:12};
+    const originalFields=[...formForNavigation.querySelectorAll('.cc-field')].map(field=>({field,parent:field.parentNode,next:field.nextSibling,unitAllowed:!field.closest('[data-relative-row]')&&[...field.querySelectorAll('[name]')].some(el=>unitFieldSections[el.name]===Number(field.closest('[data-section]')?.dataset.section))}));
     const primaryGrid=formForNavigation.querySelector('[data-section="1"] .cc-grid');
     const applyCaseLayout=()=>{
       const unit=caseMode.value==='unit';
       groups=unit?[['personal','Картка',[1]]]:fullGroups;
       nav.innerHTML=groups.map(([key,title])=>'<button type="button" data-card-section="'+key+'">'+esc(title)+'</button>').join('');
       const allowed=new Set(['name_nominative','phone','military_unit','desired_position','recruitment_status','notes']);
-      formForNavigation.querySelectorAll('.cc-field').forEach(field=>{
-        field.hidden=unit&&![...field.querySelectorAll('[name]')].some(el=>allowed.has(el.name));
-      });
-      [...originalFields].reverse().forEach(({field,parent,next})=>{if(!unit)parent.insertBefore(field,next?.parentNode===parent?next:null);else if(!field.hidden)primaryGrid.append(field)});
-      formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&!allowed.has(el.name)});
+      originalFields.forEach(({field,unitAllowed})=>field.hidden=unit&&!unitAllowed);
+      if(unit)originalFields.forEach(({field,unitAllowed})=>{if(unitAllowed)primaryGrid.append(field)});
+      else [...originalFields].reverse().forEach(({field,parent,next})=>parent.insertBefore(field,next?.parentNode===parent?next:null));
+      formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&(!allowed.has(el.name)||el.closest('.cc-field')?.hidden!==false)});
       if(!unit)updateConditions();
       content.querySelector('[onclick*="information"]')?.classList.toggle('hidden',unit);
       selectSection(window.crmActiveCardSection||activeCardSection);
