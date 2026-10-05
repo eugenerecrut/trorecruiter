@@ -111,9 +111,32 @@ async function mount(c,root){
  generate('[data-inventory]','Перелік документів',[name,...docs.map((d,i)=>(i+1)+'. '+d.document_type+' — '+d.file_name)]);
  host.querySelector('[data-service]').onclick=()=>run(async()=>{const pf=await supabaseClient.from('personal_files').select('*').eq('candidate_id',c.id).maybeSingle();if(pf.error)throw pf.error;await generated(c,'Послужний список',[name,'Дата народження: '+(c.birth_date||'Не вказано'),'Звання: '+(c.military_rank||'Не вказано'),'ВОС: '+(c.military_specialty||p.military_specialty||'Не вказано'),'Військова служба: '+(pf.data?.military_service_history||pf.data?.military_experience||'Не вказано'),'Освіта: '+(pf.data?.education||'Не вказано'),'Трудова діяльність: '+(pf.data?.work_history||'Не вказано'),...CRMHistoryFormat.changes({profile_data:{before:null,after:Object.fromEntries(Object.entries(profile(c)).filter(([k])=>/education|military|service|work|award|combat/.test(k)))}}).map(r=>r.label+': '+r.after)],reqs)});
  host.querySelector('[data-anketa]').onclick=()=>run(async()=>{
-  const groups=[['Анкета',/анкета на контракт/iu],['Паспорт або ID-картка',/паспорт|(?:^|[\s/])ID[\s‑–—-]*карт|^ID$/iu],['ІПН',/ідентифікаційного коду|РНОКПП/iu],['ВЛК',/^Довідка ВЛК$/iu],['ВОД',/військового квитка|приписного|військовий облік|посвідчення офіцера/iu],['Довідка про несудимість',/несудимість/iu],['УБД',/УБД/iu]];
+  const groups=[
+   ['Анкета',/анкета на контракт/iu],
+   ['Паспорт або ID-картка',/паспорт|(?:^|[\s/])ID[\s‑–—-]*карт|^ID$/iu],
+   ['ІПН / РНОКПП',/ідентифікаційн.*код|РНОКПП|платника податк/iu],
+   ['Довідка ВЛК',/^Довідка ВЛК$/iu],
+   ['Форма 13',/(?:додаток|картка|форма)\s*13|картка обстеження та медичного огляду/iu],
+   ['Військово-обліковий документ',/військов.*квит|приписн|резерв\s*\+/iu],
+   ['Повна довідка про несудимість',/несудимість/iu],
+   ['УБД',/УБД/iu,true],
+   ['Посвідчення водія',/посвідчення водія/iu,true]
+  ];
   docs=latest(await getCandidateDocuments(c.id));const packageDocs=[];
-  for(const [title,re] of groups){const found=docs.filter(d=>re.test(d.document_type));if(title!=='УБД'&&!found.length)throw Error('Для PDF «Анкета» бракує: '+title);if(found.some(d=>d.verification_status!=='Підтверджено'))throw Error('Перевірте документи: '+title);packageDocs.push(...found)}
+  for(const [title,re,optional] of groups){
+   let found=docs.filter(d=>re.test(d.document_type));
+   if(title==='Військово-обліковий документ'){
+    const tickets=found.filter(d=>/військов.*квит/iu.test(d.document_type));
+    if(tickets.length)found=tickets;
+    else{
+     const prescriptions=found.filter(d=>/приписн/iu.test(d.document_type));
+     found=prescriptions.length?prescriptions:found.filter(d=>/резерв\s*\+/iu.test(d.document_type));
+    }
+   }
+   if(!optional&&!found.length)throw Error('Для PDF «Анкета» бракує: '+title);
+   if(found.some(d=>d.verification_status!=='Підтверджено'))throw Error('Перевірте документи: '+title);
+   packageDocs.push(...found);
+  }
   const d=modal('Пакет PDF «Анкета»','<ol>'+packageDocs.map(d=>'<li>'+esc(d.document_type)+' · '+esc(d.file_name)+'</li>').join('')+'</ol><button data-build>Сформувати цей пакет</button>');
   d.querySelector('[data-build]').onclick=()=>{d.close();d.remove();run(async()=>{const pkg=await storePackage(c,'anketa',await mergedPDF(packageDocs,t=>status.textContent=t),packageDocs);await persist(c,{anketa_package:pkg});await download(pkg.path,'Анкета.pdf');await refresh()})};
  });
