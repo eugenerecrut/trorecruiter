@@ -137,3 +137,16 @@ html[data-crm-layout="mobile"] .scan-dialog{width:100%;max-width:none;height:100
 html[data-crm-layout="desktop"] :is(#docCameraFiles,#docModalCamera,[data-scan-recommendation]){display:none!important}
 
 html[data-crm-layout="mobile"] .crm-document-summary,html[data-crm-layout="mobile"] .crm-document-details{grid-column:1/-1}html[data-crm-layout="mobile"] .crm-document-details{display:grid;grid-template-columns:1fr 1fr}html[data-crm-layout="mobile"] .crm-document-details>.crm-doc-accountability,html[data-crm-layout="mobile"] .crm-document-details>.crm-ai-container{grid-column:1/-1}
+
+@media screen{
+html[data-crm-layout="mobile"] .cc-wrap.dashboard-top{gap:8px;margin-bottom:12px}
+html[data-crm-layout="mobile"] .cc-wrap.dashboard-top .page-title{font-size:21px;margin:0;line-height:1.25}
+html[data-crm-layout="mobile"] .cc-wrap.dashboard-top .page-subtitle{margin:4px 0}
+html[data-crm-layout="mobile"] .cc-wrap.dashboard-top .quick-actions{display:grid;grid-template-columns:1fr 1fr}
+html[data-crm-layout="mobile"] .cc-wrap.dashboard-top .quick-actions button:last-child{grid-column:1/-1}
+html[data-crm-layout="mobile"] .candidate-filters select{flex:1 1 150px;width:auto!important;min-width:0}
+html[data-crm-layout="mobile"] .crm-dialog .crm-actions{bottom:calc(-18px - env(safe-area-inset-bottom));padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+html[data-crm-layout="mobile"] .cc-actions{padding:8px;box-shadow:0 -3px 12px #17232c0a}
+html[data-crm-layout="mobile"] .crm-template-grid .card{padding:18px}
+html[data-crm-layout="mobile"] #docSearch{margin-bottom:10px}
+}

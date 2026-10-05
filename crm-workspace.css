@@ -52,3 +52,17 @@
 
 /* Mobile starts with a compact stage summary; desktop keeps controls open. */
 .wf-panel-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;min-height:44px}.wf-panel-summary::-webkit-details-marker{display:none}.wf-panel-summary::after{content:'⌄';color:#6d7d65;font-size:20px}.wf-panel[open]>.wf-panel-summary::after{transform:rotate(180deg)}.wf-panel-summary strong{font-size:16px;margin-right:auto}.wf-panel-body{padding-top:14px}.wf-panel-summary:focus-visible{outline:3px solid #b7d957;outline-offset:3px}.wf-panel-summary .wf-stage-badge{font-size:12px;overflow-wrap:anywhere}
+
+/* Shared ergonomics: predictable focus, readable tools and compact forms. */
+@media screen{
+button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #78972f;outline-offset:3px}
+.quick-actions{align-items:center}.quick-actions button,.crm-button,.crm-actions button{min-height:44px}
+.dashboard-top>div:first-child{min-width:0}.page-title{overflow-wrap:anywhere}
+#candidateForm input,#candidateForm textarea{width:100%;min-height:44px;padding:10px 12px;border:1px solid #cfd8dc;border-radius:8px;font:inherit;box-sizing:border-box}
+#candidateForm label{display:block;margin-bottom:6px;font-size:13px;font-weight:700;color:#44515a}
+#candidateForm>div{min-width:0}#candidateForm #pskRelativesPanel{box-shadow:none}
+.crm-template-grid .card{display:flex;flex-direction:column}.crm-template-grid .card>div:last-child{margin-top:auto!important;padding-top:12px}
+.crm-dialog{box-sizing:border-box;overscroll-behavior:contain}.crm-dialog .crm-actions{position:sticky;bottom:-24px;background:#fff;padding:12px 0;border-top:1px solid #e0e6e8}
+.cc-status:empty{display:none}.crm-search:focus{outline:2px solid #78972f;outline-offset:1px}
+.candidate-filters{align-items:center}.candidate-filters select{min-height:44px;min-width:180px}
+}

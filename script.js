@@ -68,9 +68,9 @@ function showCandidates() {
     </div>
 
     <div class="candidate-filters" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
-      <input id="candidateSearch" placeholder="Пошук за ПІБ, телефоном, посадою" style="flex:1;min-width:260px;padding:12px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a">
+      <input id="candidateSearch" type="search" aria-label="Пошук кандидатів" placeholder="Пошук за ПІБ, телефоном, посадою" style="flex:1;min-width:260px;padding:12px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a">
       <select id="candidateRecruiter" class="crm-owner-select" aria-label="Фільтр за рекрутером"><option value="">Усі рекрутери</option><option value="mine">Мої кандидати</option><option value="unassigned">Не призначено</option></select>
-      <select id="candidateStatus" style="padding:12px;border-radius:8px;border:1px solid #cfd8dc;background:#fff;color:#24313a">
+      <select id="candidateStatus" aria-label="Фільтр за етапом або результатом" style="padding:12px;border-radius:8px;border:1px solid #cfd8dc;background:#fff;color:#24313a">
         <option value="">Усі етапи / результати</option>
         ${[...CRMWorkflow.stages,...CRMWorkflow.outcomes,'На паузі','Оформлює ВЧ'].map(s=>'<option>'+escapeHtml(s)+'</option>').join('')}
       </select>
@@ -241,12 +241,7 @@ function showNewCandidateForm() {
             <div style="font-size:11px;font-weight:900;color:#6f8b28;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Службова інформація CRM</div>
           </div>
 
-          <div><label>Рекомендуючий підрозділ</label><input name="recommender_unit"></div>
           <div><label>Рекрутер за рекомендаційним листом</label><input name="recruiter_name"></div>
-          <div><label>Підписант РЛ</label><input name="signatory"></div>
-          <div><label>Вид служби</label><input name="service_type"></div>
-          <div><label>ШПК</label><input name="shpk"></div>
-          <div><label>Тарифний розряд</label><input name="tariff_grade"></div>
 
           <div style="grid-column:1/-1">
             <label>Примітки рекрутера</label>
@@ -266,6 +261,11 @@ function showNewCandidateForm() {
   const uploadZone = document.getElementById('uploadZone');
   const mode = document.getElementById('newCaseMode');
   const newForm=document.getElementById('candidateForm');
+  newForm.querySelectorAll('input[name],textarea[name]').forEach(input=>{
+    input.id='newCandidate_'+input.name;
+    input.parentElement.querySelector('label')?.setAttribute('for',input.id);
+    if(input.name==='phone')input.type='tel';
+  });
   new MutationObserver(()=>CRMCandidateConditions.applyNewCaseMode(newForm)).observe(newForm,{childList:true,subtree:true});
   mode.addEventListener('change', () => {
     CRMCandidateConditions.applyNewCaseMode(document.getElementById('candidateForm'));

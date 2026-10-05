@@ -64,7 +64,7 @@ async function showDocuments(id){
   });
   const knownIds=new Set(reqs.map(r=>r.id)),knownTypes=new Set(reqs.map(r=>r.document_type));
   docs.filter(d=>CRMCandidateConditions.documentCondition(d.document_type,c)!==false&&!knownIds.has(d.requirement_id)&&!knownTypes.has(d.document_type)).forEach(d=>rows.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true}));
-  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docDeletedFiles">Видалені ('+allDocs.filter(d=>d.deleted_at).length+')</button><button id="docCaseHistory">Історія дій</button><button id="docCameraFiles">📷 Сканувати камерою</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
+  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docDeletedFiles">Видалені ('+allDocs.filter(d=>d.deleted_at).length+')</button><button id="docCaseHistory">Історія дій</button><button id="docCameraFiles">📷 Сканувати камерою</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><input type="search" id="docSearch" class="crm-search" placeholder="Знайти документ або файл" aria-label="Пошук документів"><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
   content.querySelector('#docBackCard').onclick=()=>crmNavigate('card',id);
   content.querySelector('#docDeletedFiles').onclick=()=>showDeletedDocuments(id,allDocs);
   content.querySelector('#docCaseHistory').onclick=()=>CRMResponsibility.history(id).catch(e=>alert(e.message));
@@ -104,11 +104,19 @@ async function showDocuments(id){
       if(b.dataset.docConfirm)await confirmDocument(b.dataset.docConfirm);
     }catch(error){alert(error.message)}finally{CRMWorkspace.busy=false;if(b.isConnected)b.disabled=false}
   });
+  let activeFilter='all';
   const filter=key=>{
-    body.querySelectorAll('tr').forEach(tr=>tr.hidden=key!=='all'&&tr.dataset[key]!=='true');
-    content.querySelectorAll('[data-doc-filter]').forEach(b=>b.classList.toggle('active',b.dataset.docFilter===key));
+    activeFilter=key;
+    const query=content.querySelector('#docSearch').value.trim().toLocaleLowerCase('uk');
+    body.querySelectorAll('tr').forEach(tr=>{
+      const title=tr.cells[0]?.textContent||'';
+      const files=[...tr.querySelectorAll('.crm-document-file small,.crm-document-verified summary')].map(el=>el.textContent).join(' ');
+      tr.hidden=(key!=='all'&&tr.dataset[key]!=='true')||!!query&&!((title+' '+files).toLocaleLowerCase('uk').includes(query));
+    });
+    content.querySelectorAll('[data-doc-filter]').forEach(b=>{b.classList.toggle('active',b.dataset.docFilter===key);b.setAttribute('aria-pressed',String(b.dataset.docFilter===key))});
     content.querySelector('#docEmpty').hidden=[...body.querySelectorAll('tr')].some(tr=>!tr.hidden);
   };
+  content.querySelector('#docSearch').addEventListener('input',()=>filter(activeFilter));
   content.querySelector('#docFilters').addEventListener('click',e=>{const key=e.target.closest('[data-doc-filter]')?.dataset.docFilter;if(key)filter(key)});filter('all');
 }
 async function confirmDocument(id){
