@@ -23,24 +23,23 @@ function escapeHtml(value) {
 }
 
 async function getCount(table) {
-  const { count, error } = await supabaseClient
-    .from(table)
-    .select('*', { count: 'exact', head: true });
-
-  if (error) {
-    console.error(`Помилка підрахунку ${table}:`, error);
-    return 0;
+  if(table==='documents'){
+    const result=await supabaseClient.from(table).select('id,version_group_id,version_number,deleted_at');
+    if(result.error)throw result.error;
+    return CRMResponsibility.latest(result.data||[]).length;
   }
-  return count || 0;
+  const {count,error}=await supabaseClient.from(table).select('*',{count:'exact',head:true});
+  if(error)throw error;
+  return count||0;
 }
 
 async function updateDashboard() {
-  const cards = document.querySelectorAll('.card-number');
-  if (cards.length < 3) return;
-
-  cards[0].textContent = await getCount('candidates');
-  cards[1].textContent = await getCount('personal_files');
-  cards[2].textContent = await getCount('documents');
+  const cards=document.querySelectorAll('.card-number');if(cards.length<3)return;
+  cards.forEach(card=>card.textContent='…');
+  try{
+    const counts=await Promise.all(['candidates','personal_files','documents'].map(getCount));
+    cards.forEach((card,i)=>{if(card.isConnected)card.textContent=counts[i]});
+  }catch(error){cards.forEach(card=>{if(card.isConnected)card.textContent='—'});throw error;}
 }
 
 async function getCandidates() {
@@ -888,7 +887,7 @@ async function startCRM() {
 }
 
 setupMenu();
-startCRM();
+startCRM().catch(console.error);
 
 /* PSK_NAME_CASES_INTEGRATION_V1 */
 (() => {

@@ -8,7 +8,7 @@
  const isUnit=c=>value(c,'case_mode')==='unit';
  const unitDocument=type=>/рекомендаційн.*лист/iu.test(String(type||''))||unitTypes.includes(type);
  const optionalDocument=type=>/УБД|нагород|витягу? з наказу/iu.test(String(type||''));
- const normalizeRequirement=r=>({...r,is_required:!!r.is_required&&!optionalDocument(r.document_type)});
+ const normalizeRequirement=r=>optionalDocument(r.document_type)?{...r,is_required:false,condition_field:null,condition_value:null,condition_note:'За наявності документа.'}:{...r};
  function applyNewCaseMode(form){
   if(!form)return;
   const unit=form.elements.case_mode?.value==='unit';
@@ -24,6 +24,7 @@
   if(isUnit(c))return unitDocument(type);
   if(unitTypes.includes(type))return true;
   const t=String(type||'').toLocaleLowerCase('uk-UA');
+  if(optionalDocument(type))return true;
   if(/резерв\s*\+|припис|військовий облік/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}
   if(/убд|військового квитка|витягу? з наказу|нагород/.test(t))return bool(value(c,'served_before'));
   if(/народження дітей/.test(t))return bool(value(c,'has_children'));

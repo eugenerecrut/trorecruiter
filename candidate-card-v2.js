@@ -320,6 +320,7 @@
       if(!form.reportValidity())return false;
       const status = document.getElementById('ccStatus');
       const fd = new FormData(form);
+      const workflowDraft=CRMWorkspace.workflow?.dirty?new FormData(CRMWorkspace.workflow.form):null;
       const unit=fd.get('case_mode')==='unit';
       const nom = nameNominative(fd.get('name_nominative'));
       if (!nom) { status.textContent = 'Потрібно вказати ПІБ у називному відмінку.'; return; }
@@ -411,6 +412,7 @@
       if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return; }
       status.textContent = 'Готово. Дані кандидата оновлено.';
       if(!unit)Object.assign(pf,pfPatch);profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;await CRMWorkflow.mount(c,content);
+      if(workflowDraft){const progress=CRMWorkspace.workflow.form;for(const input of progress.elements){if(!input.name)continue;if(input.type==='checkbox')input.checked=workflowDraft.has(input.name);else input.value=workflowDraft.get(input.name)||'';}progress.dispatchEvent(new Event('change',{bubbles:true}));}
       return true;
     };
     cardState.save=()=>{
