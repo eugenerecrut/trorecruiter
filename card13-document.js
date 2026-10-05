@@ -12,7 +12,7 @@
   async function generate(values, photo) {
     await loadExternalScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js', 'PDFLib');
     await loadExternalScript('https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js', 'fontkit');
-    const pdf = await PDFLib.PDFDocument.load(await bytes('templates/card13-blank.pdf?v=1.1.0.401'));
+    const pdf = await PDFLib.PDFDocument.load(await bytes('templates/card13-blank.pdf?v=1.1.0.402'));
     pdf.registerFontkit(window.fontkit);
     const font = await pdf.embedFont(await bytes('templates/fonts/DejaVuSans.ttf'), { subset: true });
     const form = pdf.getForm();
@@ -23,6 +23,7 @@
       if (lines.length > (field.isMultiline() ? 2 : 1)) throw Error('Забагато рядків для поля: ' + key);
       while (size > 7 && lines.some(s => font.widthOfTextAtSize(s, size) > rect.width - 6)) size -= .5;
       if (lines.some(s => font.widthOfTextAtSize(s, size) > rect.width - 6)) throw Error('Значення задовге для бланка. Скоротіть: ' + key);
+      field.acroField.setDefaultAppearance('/Helv 10 Tf 0 g');
       field.setText(String(value)); field.setFontSize(size);
     }
     form.updateFieldAppearances(font);
@@ -35,7 +36,6 @@
       page.drawRectangle({ ...box, color: PDFLib.rgb(1,1,1) });
       const dims = image.scale(Math.min(box.width / image.width, box.height / image.height));
       page.drawImage(image, { x: box.x + (box.width-dims.width)/2, y: box.y+(box.height-dims.height)/2, ...dims });
-      page.drawRectangle({ ...box, borderColor: PDFLib.rgb(0,0,0), borderWidth: .5 });
     }
     return pdf.save();
   }
