@@ -80,7 +80,7 @@
         button.disabled = true; status.textContent = 'Формуємо PDF…';
         try {
           const values = Object.fromEntries(new FormData(ev.target));
-          if (!values.category || !values.name_identifier || !values.military_service) throw Error('Уточніть категорію, ПІБ та вид служби.');
+          if (!values.category || !values.name_identifier) throw Error('Уточніть категорію та ПІБ.');
           const result = await generate(values, photo);
           if (!d.isConnected) return;
           if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(new Blob([result], { type:'application/pdf' }));
