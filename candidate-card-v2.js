@@ -210,7 +210,7 @@
         </section>
         <section class="cc-section" data-section="14"><div class="cc-section-head"><div><h3>14. Документи кандидата</h3><small>Завантажені документи та їхній поточний статус.</small></div><span class="cc-badge">${docs.length} документ(ів)</span></div><div class="cc-docs">${documentRows}</div></section>
         <section class="cc-section" data-section="15"><h3>Бланки для друку</h3><p>Затверджені чисті бланки для заповнення кандидатом.</p><button type="button" onclick="crmNavigate('blanks')">Відкрити каталог бланків</button></section>
-        <div class="cc-actions"><button type="submit" class="primary">Зберегти зміни</button><button type="button" onclick="crmNavigate('candidates')">Скасувати</button><span id="ccStatus" class="cc-status"></span></div>
+        <div class="cc-actions"><button type="submit" class="primary">Зберегти зміни</button><button type="button" onclick="crmNavigate('candidates')">Скасувати</button><span id="ccStatus" class="cc-status" role="status" aria-live="polite"></span></div>
       </form>`;
 
     content.querySelectorAll('[data-open-doc]').forEach(b => b.addEventListener('click', () => openDoc(b.dataset.openDoc)));
@@ -261,7 +261,7 @@
     };
     caseMode.addEventListener('change',applyCaseLayout);
     applyCaseLayout();
-    const photoDoc=[...docs].reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
+    const photoDoc=CRMResponsibility.latest(docs).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
     CRMWorkspace.photo(photoDoc).then(photo=>{
       if(!formForNavigation.isConnected)return;
       const image=content.querySelector('#crmCardPhoto'),status=content.querySelector('#crmCardPhotoStatus');
@@ -279,7 +279,7 @@
     identitySelect.addEventListener('change',updateIdentityFields);
     caseMode.addEventListener('change',()=>{if(caseMode.value!=='unit')updateIdentityFields()});updateIdentityFields();
     const childrenInput=formForNavigation.querySelector('[name=children_count]');childrenInput.min='0';childrenInput.step='1';
-    const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null};
+    const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null,expectedUpdatedAt:c.updated_at};
     CRMWorkspace.card=cardState;
     formForNavigation.addEventListener('input',()=>{cardState.dirty=true;content.querySelector('#ccStatus').textContent='Є незбережені зміни'});
     formForNavigation.addEventListener('change',()=>{cardState.dirty=true});
@@ -306,7 +306,8 @@
       const current = maritalEl.value;
       const newOptions = sexEl.value === 'female' ? ['','Одружена','Розлучена','Не одружена'] : sexEl.value === 'male' ? ['','Одружений','Розлучений','Не одружений'] : ['','Одружений','Одружена','Розлучений','Розлучена','Не одружений','Не одружена'];
       maritalEl.innerHTML = newOptions.map(x => `<option value="${esc(x)}">${x || 'Не визначено'}</option>`).join('');
-      if (newOptions.includes(current)) maritalEl.value = current;
+      const marital=CRMCandidateConditions.marital(current),index={married:1,divorced:2,single:3}[marital];
+      maritalEl.value=newOptions.includes(current)?current:index?newOptions[index]:'';
     });
 
     formForNavigation.addEventListener('click',event=>{
@@ -327,7 +328,7 @@
       const oldProfile = { ...profile, workflow: CRMWorkflow.wf(c) };
       const profileKeys = [
         'citizenship','unzr','birth_certificate','phone_secondary','messenger','registered_address','region','locality','street','house','apartment','postal_code',
-        'identity_document_type','passport_series','passport_number','passport_issuer','passport_issue_date','passport_expiry_date','education_level','education_institution','education_specialty','education_qualification','education_year',
+        'identity_document_type','passport_series','passport_number','passport_issuer','passport_issue_date','passport_expiry_date','education_level','education_institution','education_specialty','education_qualification','education_year','education_specialty_code','education_start_date','education_end_date','education_diploma_series','education_diploma_number','education_diploma_issue_date','education_supplement_number','education_supplement_issue_date',
         'service_type','military_specialty','military_unit','military_position','service_start_date','service_end_date','combat_days','military_document_number','military_registration_date','military_registration_category','military_registration_status','military_document_type','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status',
         'vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','has_management_experience','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
@@ -387,8 +388,12 @@
         updated_at: new Date().toISOString()
       };
       if(unit){const allowed=new Set(['full_name','name_nominative','phone','desired_position','recruitment_status','notes','profile_data','updated_at']);Object.keys(candidatePatch).forEach(key=>{if(!allowed.has(key))delete candidatePatch[key]});}
-      const { error: ce } = await supabaseClient.from('candidates').update(candidatePatch).eq('id', candidateId);
-      if (ce) { status.textContent = 'Помилка збереження кандидата: ' + ce.message; return; }
+      let candidateQuery=supabaseClient.from('candidates').update(candidatePatch).eq('id',candidateId);
+      candidateQuery=cardState.expectedUpdatedAt?candidateQuery.eq('updated_at',cardState.expectedUpdatedAt):candidateQuery.is('updated_at',null);
+      const {data:savedCandidate,error:ce}=await candidateQuery.select('*').maybeSingle();
+      if(ce){status.textContent='Помилка збереження кандидата: '+ce.message;return false;}
+      if(!savedCandidate){status.textContent='Картку вже змінив інший працівник. Ваші зміни залишені у формі. Оновіть справу після звірки.';return false;}
+      Object.assign(c,savedCandidate);profile=savedCandidate.profile_data||candidatePatch.profile_data;cardState.expectedUpdatedAt=savedCandidate.updated_at;
 
       const pfPatch = {
         candidate_id: candidateId,
@@ -399,13 +404,13 @@
         children_info: String(fd.get('children_info') || '').trim() || null,
         work_history: fd.has('work_history')?(String(fd.get('work_history')||'').trim()||null):(pf.work_history??null),
         military_service_history: String(fd.get('military_service_history') || '').trim() || null,
-        education: String(fd.get('education') || '').trim() || null,
+        education: fd.has('education')?(String(fd.get('education')||'').trim()||null):(pf.education??null),
         updated_at: new Date().toISOString()
       };
       const { error: pe } = unit?{error:null}:await supabaseClient.from('personal_files').upsert(pfPatch, { onConflict:'candidate_id' });
       if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return; }
       status.textContent = 'Готово. Дані кандидата оновлено.';
-      Object.assign(c,candidatePatch);if(!unit)Object.assign(pf,pfPatch);profile=candidatePatch.profile_data;cardState.dirty=false;await CRMWorkflow.mount(c,content);
+      if(!unit)Object.assign(pf,pfPatch);profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;await CRMWorkflow.mount(c,content);
       return true;
     };
     cardState.save=()=>{

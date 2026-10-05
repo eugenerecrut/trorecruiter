@@ -49,10 +49,7 @@ async function getCandidates() {
     .select('*')
     .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('Помилка завантаження кандидатів:', error);
-    return [];
-  }
+  if(error)throw error;
   return data || [];
 }
 

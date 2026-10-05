@@ -9,20 +9,20 @@ function formatDocSize(b){const n=Number(b||0);if(!n)return'—';if(n<1024*1024)
 async function getDocumentRequirements(candidateId=null){
 if(candidateId){
   const{data,error}=await supabaseClient.from('candidate_document_requirements').select('requirement_id,child_index,status,document_requirements(*)').eq('candidate_id',candidateId).order('requirement_id',{ascending:true}).order('child_index',{ascending:true});
-  if(error){console.error(error);return[]}
+  if(error)throw error;
   const seen=new Set(),result=[];
   for(const row of (data||[])){
     const r=row.document_requirements;
     if(!r||r.active===false||seen.has(r.id))continue;
     seen.add(r.id);result.push(r);
   }
-  return result;
+  return result.map(CRMCandidateConditions.normalizeRequirement);
 }
 const{data,error}=await supabaseClient.from('document_requirements').select('*').eq('active',true).order('sort_order',{ascending:true});
-if(error){console.error(error);return[]}
-return data||[]
+if(error)throw error;
+return (data||[]).map(CRMCandidateConditions.normalizeRequirement)
 }
-async function getCandidateDocuments(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('candidate_id',id).order('created_at',{ascending:true});if(error){console.error(error);return[]}return data||[]}
+async function getCandidateDocuments(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('candidate_id',id).order('created_at',{ascending:true});if(error)throw error;return data||[]}
 function documentStatusHtml(r,docs){const m=docs.filter(d=>d.requirement_id===r.id||d.document_type===r.document_type);if(!m.length)return`<span class="status status-doc">${r.is_required?'Не завантажено':'Не додано'}</span>`;if(m.some(d=>d.verification_status==='Підтверджено'))return'<span class="status status-done">Підтверджено</span>';if(m.some(d=>d.processing_status==='AI оброблено'))return'<span class="status status-work">AI розпізнано · перевірити</span>';return'<span class="status status-work">Завантажено · перевірити</span>'}
 
 function requirementCondition(r,c){return CRMCandidateConditions.requirement(r,c);}

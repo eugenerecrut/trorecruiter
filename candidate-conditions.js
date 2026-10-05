@@ -7,6 +7,8 @@
  const unitTypes=['Припис про направлення','Реєстр кандидата'];
  const isUnit=c=>value(c,'case_mode')==='unit';
  const unitDocument=type=>/рекомендаційн.*лист/iu.test(String(type||''))||unitTypes.includes(type);
+ const optionalDocument=type=>/УБД|нагород|витягу? з наказу/iu.test(String(type||''));
+ const normalizeRequirement=r=>({...r,is_required:!!r.is_required&&!optionalDocument(r.document_type)});
  function applyNewCaseMode(form){
   if(!form)return;
   const unit=form.elements.case_mode?.value==='unit';
@@ -68,5 +70,5 @@
   };
   form.addEventListener('change',update);form.addEventListener('click',()=>queueMicrotask(update));update();return update;
  }
- window.CRMCandidateConditions={value,bool,marital,documentCondition,requirement,bind,isUnit,unitDocument,applyNewCaseMode};
+ window.CRMCandidateConditions={value,bool,marital,documentCondition,requirement,bind,isUnit,unitDocument,applyNewCaseMode,normalizeRequirement};
 })();

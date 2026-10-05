@@ -27,7 +27,8 @@ window.CRMWorkspace = {
     if(this.busy||this.navigating)return false;
     this.navigating=true;
     if(!await this.guard()){this.navigating=false;return false}
-    this.card=null; const target=id||this.candidateId;
+    if(this.workflow?.form?.isConnected&&this.workflow.dirty&&!confirm('Є незбережені зміни етапу. Перейти без їх збереження?')){this.navigating=false;return false;}
+    this.workflow=null;this.card=null; const target=id||this.candidateId;
     try{
       this.markMenu(['card','information'].includes(key)?'candidates':key);
       if(key==='candidates'){this.candidateId=null;this.candidateName='';await showCandidates()}
@@ -82,7 +83,7 @@ window.CRMWorkspace = {
     if(cr.error)throw cr.error;if(pr.error)throw pr.error;const c=cr.data,pf=pr.data||{};
     let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
     this.setContext(id,c.name_nominative||c.full_name);
-    const photoDoc=[...dr].reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
+    const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
     const education=pf.education||p.education||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ');
     const work=CRMWork.historyText(p.work_records)||pf.work_history||pf.civilian_experience||p.work_history||'';
     const servedValue=c.served_before??p.served_before;
@@ -130,21 +131,23 @@ window.CRMWorkspace = {
 };
 CRMWorkspace.homeHTML=document.querySelector('.content').innerHTML;
 window.crmNavigate=(key,id)=>CRMWorkspace.navigate(key,id);
-window.addEventListener('beforeunload',event=>{if(CRMWorkspace.card?.dirty||CRMWorkspace.busy){event.preventDefault();event.returnValue=''}});
+window.addEventListener('beforeunload',event=>{if(CRMWorkspace.card?.dirty||CRMWorkspace.workflow?.dirty||CRMWorkspace.busy){event.preventDefault();event.returnValue=''}});
 
 CRMWorkspace.loadHome=async function(){
   if(!document.querySelector('.cards'))return;
+  const home=document.querySelector('.cards');
   const candidates=await getCandidates();
+  await CRMResponsibility.ready();
   const reqs=await getDocumentRequirements();
   const result=await supabaseClient.from('documents').select('id,candidate_id,requirement_id,document_type,verification_status,processing_status,version_group_id,version_number,deleted_at');
   if(result.error)throw result.error;
-  if(!document.querySelector('.cards'))return;
+  if(document.querySelector('.cards')!==home)return;
   const docs=CRMResponsibility.latest(result.data||[]),esc=this.escape;
   const recent=document.querySelector('.dashboard-grid tbody');
-  if(recent)recent.innerHTML=candidates.slice(0,6).map(c=>'<tr><td><button class="crm-button" onclick="crmNavigate(\'card\',\''+esc(c.id)+'\')">'+esc(c.name_nominative||c.full_name)+'</button></td><td>'+esc(c.desired_position||'—')+'</td><td>'+esc(CRMWorkflow.label(c))+'</td><td>'+esc(c.profile_data?.recruiter_name||'—')+'</td></tr>').join('')||'<tr><td colspan="4">Кандидатів поки немає.</td></tr>';
+  if(recent)recent.innerHTML=candidates.slice(0,6).map(c=>'<tr><td><button class="crm-button" onclick="crmNavigate(\'card\',\''+esc(c.id)+'\')">'+esc(c.name_nominative||c.full_name)+'</button></td><td>'+esc(c.desired_position||'—')+'</td><td>'+esc(CRMWorkflow.label(c))+'</td><td>'+esc(CRMResponsibility.name(c.responsible_recruiter_id))+'</td></tr>').join('')||'<tr><td colspan="4">Кандидатів поки немає.</td></tr>';
   const tasks=document.querySelector('.lower-grid .card');
   if(tasks){
-    const missing=candidates.filter(c=>reqs.some(r=>r.is_required&&requirementCondition(r,c)===true&&!docs.some(d=>d.candidate_id===c.id&&(d.requirement_id===r.id||d.document_type===r.document_type))));
+    const missing=candidates.filter(c=>reqs.some(r=>r.is_required&&requirementCondition(r,c)===true&&!docs.some(d=>d.candidate_id===c.id&&(d.requirement_id===r.id||d.document_type===r.document_type)&&d.verification_status==='Підтверджено')));
     const review=docs.filter(d=>d.verification_status!=='Підтверджено');
     const errors=docs.filter(d=>d.processing_status==='AI помилка');
     tasks.querySelectorAll('.task').forEach(el=>el.remove());
@@ -157,7 +160,7 @@ supabaseClient.auth.onAuthStateChange((event,session)=>{
   if(!session?.user)return;
   const refresh=()=>setTimeout(()=>{
     if(typeof updateDashboard!=='function'||typeof getDocumentRequirements!=='function')return;
-    updateDashboard();CRMWorkspace.loadHome().catch(console.error);
+    Promise.all([updateDashboard(),CRMWorkspace.loadHome()]).catch(error=>{console.error(error);const content=document.querySelector('.content');if(content?.querySelector('.cards')){const notice=document.createElement('p');notice.className='crm-notice';notice.setAttribute('role','alert');notice.textContent='Не вдалося завантажити огляд: '+error.message;content.prepend(notice)}});
   },0);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refresh,{once:true});
   else refresh();
