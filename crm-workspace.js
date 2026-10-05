@@ -92,6 +92,7 @@ window.CRMWorkspace = {
     const service=served?(pf.military_service_history||pf.military_experience||p.military_service_history||''):noService?(sex==='male'?'Військову службу не проходив.':sex==='female'?'Військову службу не проходила.':'Немає попередньої військової служби.'):'';
     const settlement=r=>r.locality||r.city||String(r.address||'').match(/(?:^|[,;])\s*((?:місто\s+|м\.\s*|село\s+|с\.\s*|смт\s+)[^,;]+)/i)?.[1]||'';
     const displayDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('.'):value;
+    const mother=r=>/^(мати|матір|мать)$/i.test(String(r.relationship||r.relation||'').trim());
     const criminalValue=value=>value===true?'Присутні':value===false?'Відсутні':typeof value==='string'&&value.trim()?value.trim():null;
     const certificates=CRMResponsibility.latest(dr).filter(d=>/несудим|судим|кримінальн/i.test(d.document_type||'')&&d.verification_status==='Підтверджено').sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
     let criminal=p.criminal_record_info||'';
@@ -108,7 +109,7 @@ window.CRMWorkspace = {
       ['ПІБ',c.name_nominative||c.full_name],['Дата народження',c.birth_date?c.birth_date.split('-').reverse().join('.'):null],['Місце народження',c.birth_place||pf.birth_place||p.birth_place],
       ['Освіта',education],['Трудовий стаж',work||((c.worked_before===false||c.worked_before==='false')?'Не працював / не працювала.':'')],
       ['Військова служба',service],['Сімейний стан',c.marital_status||pf.family_status||p.marital_status],
-      ['Рідні та близькі',(p.relatives||[]).map(r=>[r.relationship||r.relation,r.full_name,displayDate(r.birth_date||r.birth_date_partial?.value),(r.deceased===true||r.deceased==='true')?null:'Телефон: '+(r.phone||'Не вказано'),settlement(r)].filter(Boolean).join(', ')).join('\n')],['Відомості про мотивацію',p.motivation],
+      ['Рідні та близькі',(p.relatives||[]).map(r=>[r.relationship||r.relation,r.full_name,displayDate(r.birth_date||r.birth_date_partial?.value),(mother(r)||r.deceased===true||r.deceased==='true')?null:'Телефон: '+(r.phone||'Не вказано'),mother(r)?null:settlement(r)].filter(Boolean).join(', ')).join('\n')],['Відомості про мотивацію',p.motivation],
       ...(p.recruitment_notes?[['Додаткові відомості',p.recruitment_notes]]:[]),
       ['Відомості про судимість',criminal],['Відомості про психіатричний облік',p.psychiatric_record_info],
       ...((p.has_management_experience===true||p.has_management_experience==='true')?[['Організаторські здібності',p.organizational_skills]]:[])
