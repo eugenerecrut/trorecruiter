@@ -28,12 +28,20 @@ function documentStatusHtml(r,docs){const m=docs.filter(d=>d.requirement_id===r.
 function requirementCondition(r,c){return CRMCandidateConditions.requirement(r,c);}
 function documentsForRequirement(r,docs){return docs.filter(d=>d.requirement_id===r.id||d.document_type===r.document_type)}
 function documentDisplayState(d,aiEnabled=true){
-  if(d.verification_status==='Підтверджено')return 'Підтверджено';
+  if(d.verification_status==='Підтверджено')return 'Перевірений';
   if(d.verification_status==='Потребує перевірки')return 'Є розбіжності';
   if(aiEnabled&&d.processing_status==='AI помилка')return 'Помилка розпізнавання';
   if(aiEnabled&&d.processing_status==='AI обробка')return 'Розпізнавання…';
   if(aiEnabled&&d.ai_extracted&&Object.keys(d.ai_extracted).length)return 'Розпізнано — перевірте дані';
   return 'Завантажено — перевірте документ';
+}
+function documentFileHtml(d,r,allDocs,esc=docEscape){
+  const verified=d.verification_status==='Підтверджено';
+  const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
+  const actions=CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
+  if(!verified)return '<div class="crm-document-file">'+info+actions+'</div>';
+  const detailId='doc-details-'+d.id;
+  return '<div class="crm-document-file crm-document-verified">'+info+'<label class="crm-document-toggle"><input type="checkbox" data-doc-toggle="'+esc(d.id)+'" aria-controls="'+esc(detailId)+'"> <span class="crm-document-toggle-text">Розгорнути</span></label><div class="crm-document-details" id="'+esc(detailId)+'" hidden>'+actions+'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></div></div>';
 }
 async function showDocuments(id){
   const content=document.querySelector('.content');if(!content)return;
@@ -80,8 +88,14 @@ async function showDocuments(id){
     const {r,files,condition,childIndex}=row;
     const required=r.is_required&&condition===true,missing=required&&!files.length,errors=files.some(d=>r.ai_enabled!==false&&d.processing_status==='AI помилка'),review=files.some(d=>d.verification_status!=='Підтверджено');
     const label=condition===null?'Уточніть у картці':condition===false?'Додатковий':required?'Обов’язковий':'За наявності';
-    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>'<div class="crm-document-file"><small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(d.verification_status==='Підтверджено'?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>'+CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(d.verification_status!=='Підтверджено'?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'')+'</div>').join(''):required?'Не завантажено':'Не додано')+'</td><td><button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></td></tr>';
+    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(files.length?files.map(d=>documentFileHtml(d,r,allDocs,esc)).join(''):required?'Не завантажено':'Не додано')+'</td><td>'+(files.length&&files.every(d=>d.verification_status==='Підтверджено')?'':'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button>')+'</td></tr>';
   }).join('');
+  body.addEventListener('change',e=>{
+    const toggle=e.target.closest('[data-doc-toggle]');if(!toggle)return;
+    const file=toggle.closest('.crm-document-file');
+    file.querySelector('.crm-document-details').hidden=!toggle.checked;
+    file.querySelector('.crm-document-toggle-text').textContent=toggle.checked?'Згорнути':'Розгорнути';
+  });
   body.addEventListener('click',async e=>{
     const b=e.target.closest('button');if(!b)return;
     if(b.dataset.aiHistory)return CRMResponsibility.aiHistory(b.dataset.aiHistory).catch(error=>alert(error.message));
@@ -108,8 +122,7 @@ async function confirmDocument(id){
   const {data,error}=await supabaseClient.from('documents').update({verification_status:'Підтверджено',verified_by:user.id,verified_at:new Date().toISOString()}).eq('id',id).select('id,candidate_id,ai_extracted');
   if(error)throw error;if(!data?.length)throw new Error('Документ не підтверджено. Перевірте права доступу до цього файла.');
   await showDocuments(data[0].candidate_id);
-  if(data[0].ai_extracted&&Object.values(data[0].ai_extracted).some(v=>v!==null&&v!==undefined&&v!==''&&(!Array.isArray(v)||v.length)))await reviewDocumentData(id);
-  else document.querySelector('#docBatchStatus').textContent='Документ підтверджено. Даних AI для перенесення немає; заповніть картку вручну або повторіть розпізнавання.';
+  document.querySelector('#docBatchStatus').textContent='Документ перевірений. Щоб переглянути деталі або перенести дані AI, позначте «Розгорнути» біля документа.';
 }
 async function makeDocumentInput(id,reqId='',replacementId=''){
   const old=document.getElementById('documentModal');if(old)old.remove();

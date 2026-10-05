@@ -135,3 +135,5 @@ html[data-crm-layout="mobile"] .scan-dialog{width:100%;max-width:none;height:100
 
 /* Camera capture belongs to the mobile interface, including upload and recommendation dialogs. */
 html[data-crm-layout="desktop"] :is(#docCameraFiles,#docModalCamera,[data-scan-recommendation]){display:none!important}
+
+html[data-crm-layout="mobile"] .crm-document-toggle,html[data-crm-layout="mobile"] .crm-document-details{grid-column:1/-1}html[data-crm-layout="mobile"] .crm-document-details{display:grid;grid-template-columns:1fr 1fr}html[data-crm-layout="mobile"] .crm-document-details>.crm-doc-accountability,html[data-crm-layout="mobile"] .crm-document-details>.crm-ai-container{grid-column:1/-1}

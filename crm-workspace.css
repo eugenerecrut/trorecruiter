@@ -24,3 +24,5 @@
 .header,.sidebar,.crm-no-print{display:none!important}.layout,.content,#crmScreen{display:block!important;padding:0!important;margin:0!important;min-height:0!important}
 .crm-information{max-width:none;padding:0;border:0}.crm-information img{max-height:none;width:45mm;height:60mm;max-width:45mm}.crm-information p{break-inside:avoid}
 }
+
+.crm-document-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;white-space:nowrap}.crm-document-toggle input{width:auto;margin:0}.crm-document-details{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%}.crm-document-details[hidden]{display:none!important}
