@@ -200,7 +200,7 @@ let documentText='';try{if(mime==='application/pdf'||/\.pdf$/i.test(name)){docum
 let ai=null;
 try{ai=await classifyStoredDocument(document.id,path,file.name,documentText)}catch(e){await supabaseClient.from('documents').update({processing_status:'AI помилка',notes:e.message}).eq('id',document.id);throw new Error('Файл збережено. Розпізнавання не завершено: '+e.message)}
 const extracted=ai?.extracted||{},aiType=ai?.document_type||tempType,matchedReq=forced||reqs.find(r=>r.document_type===aiType),matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
-const{error:updateError}=await supabaseClient.from('documents').update({requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,status:'Завантажено',verification_status:'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,notes:ai?.model?`AI OK model=${ai.model}`:'AI OK'}).eq('id',document.id);if(updateError)throw new Error('Оновлення документа: '+updateError.message);return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
+const{error:updateError}=await supabaseClient.from('documents').update({requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,status:'Завантажено',verification_status:ai?.review_required?'Потребує перевірки':'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,notes:ai?.review_required?`AI REVIEW REQUIRED model=${ai.model||''}`:ai?.model?`AI OK model=${ai.model}`:'AI OK'}).eq('id',document.id);if(updateError)throw new Error('Оновлення документа: '+updateError.message);return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
 }
 async function uploadSelectedDocuments(){
   const modal=document.getElementById('documentModal');if(!modal||CRMWorkspace.busy)return;
@@ -268,9 +268,10 @@ async function reviewDocumentData(id){
   const education=CRMEducation.isDocument(d.document_type)||CRMEducation.isDocument(d.ai_document_type),educationCheck=education?CRMEducation.review({...e,education_records:Array.isArray(e.education_records)?e.education_records.map(r=>({...r,source_document_id:d.id})):[]},c,p):null;
   const residence=CRMResidence.isDocument(d.document_type)||CRMResidence.isDocument(d.ai_document_type),residenceCheck=residence?CRMResidence.review(e,c,p):null;
   const type=identityDocumentTypeValue(d.ai_document_type||d.document_type),changes=[];
+  const idCheck=type==='ID'?(window.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:d.ai_candidate_name,confidence:d.ai_confidence},c)||{blocked:true,issues:['Перевірка ID-картки ще не завантажилась. Оновіть сторінку.']}):null;
   // Restrict editable mapping to candidate identity documents and the established
   // recommendation/autobiography flow. Other people's certificates stay in their container.
-  const ownIdentity=!biography&&!residence&&(type==='ID'||type==='passport'||type==='birth')&&!/дітей/i.test(d.document_type||'');
+  const ownIdentity=!idCheck?.blocked&&!biography&&!residence&&(type==='ID'||type==='passport'||type==='birth')&&!/дітей/i.test(d.document_type||'');
   const personalSource=!biography&&!residence&&(ownIdentity||/рекомендац|ідентифікаційн/i.test(d.document_type||''));
   const add=(target,key,incoming,label)=>{
     if(key==='phone'||key==='phone_secondary')incoming=window.CRMPhone.normalize(incoming);
@@ -316,6 +317,7 @@ async function reviewDocumentData(id){
       for(const key of ['citizenship','unzr','registered_address'])add('profile',key,e[key]||e.meta?.[key]);
     }
   }
+  if(idCheck?.blocked)changes.splice(0);
   const currentVersion=await supabaseClient.from('documents').select('id').eq('version_group_id',d.version_group_id).gt('version_number',d.version_number).limit(1);if(currentVersion.error)throw currentVersion.error;const archived=!!currentVersion.data?.length;if(archived)changes.splice(0);
   const dialog=document.createElement('dialog');dialog.className='crm-dialog';
   dialog.innerHTML='<h2>Розпізнані дані документа</h2><p>'+esc(c.name_nominative||c.full_name)+' · '+esc(d.file_name)+'</p><div class="crm-actions"><button data-original>Відкрити оригінал</button><button data-close>Закрити</button></div>'+(changes.length?'<h3>Перенесення даних у картку</h3><p>Підтвердження документа фіксує перевірку файла. Щоб зберегти його дані в картці, позначте поля та натисніть «Перенести позначені поля». Непозначені значення залишаться без змін.</p><button type="button" data-select-empty>Позначити порожні поля картки</button><div class="crm-review-grid">'+changes.map((change,i)=>'<label class="crm-review-field"><input type="checkbox" data-change="'+i+'"> <strong>'+esc(change.label)+'</strong><div class="crm-review-values"><span>У картці:<br>'+esc(display(change.current))+'</span><span>З документа:<br>'+esc(display(change.incoming))+'</span></div></label>').join('')+'</div><div class="crm-actions"><button data-apply disabled>Перенести позначені поля (0)</button></div>':'<p>'+(archived?'Це архівна версія: її дані доступні лише для перегляду.':Object.values(e).some(v=>v!==null&&v!==undefined&&v!=='')?'Доступні для перенесення дані вже збігаються з карткою або цей тип документа не підтримує перенесення.':'AI не повернув даних для перенесення. Повторіть розпізнавання або заповніть картку вручну.')+'</p>')+'<p role="status"></p><h3>Контейнер документа</h3><div class="crm-review-grid">'+Object.entries(e).map(([key,value])=>'<section class="crm-review-field"><strong>'+esc(labels[key]||key)+'</strong><div>'+renderValue(value)+'</div></section>').join('')+'</div>'+(d.ai_warnings?.length?'<h3>Попередження</h3><p>'+renderValue(d.ai_warnings)+'</p>':'');
@@ -329,6 +331,7 @@ async function reviewDocumentData(id){
     const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=residenceCheck.issues.length?residenceCheck.issues.join(' '):'Власника документа звірено. Переноситься лише зареєстрована адреса; фактичне місце проживання залишається без змін.';dialog.prepend(notice);
   }
   dialog.innerHTML+=CRMResponsibility.documentInfo(d);CRMResponsibility.bindHistory(dialog);
+  if(idCheck?.blocked){const notice=document.createElement('div');notice.className='cc-hint';notice.setAttribute('role','alert');notice.textContent='Перенесення даних ID-картки заблоковано: '+idCheck.issues.join(' ')+' Звірте оригінал; повторіть AI або виправте дані вручну в картці кандидата.';dialog.prepend(notice);}
   document.body.append(dialog);dialog.showModal();
   const close=()=>{dialog.close();dialog.remove()};
   dialog.querySelector('[data-close]').onclick=close;
