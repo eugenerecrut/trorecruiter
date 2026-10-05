@@ -84,7 +84,7 @@ window.CRMWorkspace = {
     this.setContext(id,c.name_nominative||c.full_name);
     const photoDoc=[...dr].reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
     const education=pf.education||p.education||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ');
-    const work=pf.work_history||pf.civilian_experience||p.work_history||'';
+    const work=CRMWork.historyText(p.work_records)||pf.work_history||pf.civilian_experience||p.work_history||'';
     const served=c.served_before===true||c.served_before==='true';
     const noService=c.served_before===false||c.served_before==='false';
     const service=served?(pf.military_service_history||pf.military_experience||p.military_service_history||''):noService?'Військову службу не проходив / не проходила.':'';

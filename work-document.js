@@ -13,6 +13,22 @@ function summary(records){
  if(last)days+=last[1]-last[0]+1;
  return {days,closed:spans.length,incomplete:records.filter(r=>r.kind==='employment'&&(!date(r.start_date)||!date(r.end_date))).length};
 }
+function historyText(records){
+ const rows=(Array.isArray(records)?records:[]).filter(r=>r&&[r.employer,r.position,r.start_date,r.end_date].some(v=>String(v||'').trim()));
+ if(!rows.length)return '';
+ const displayDate=v=>date(v)?v.split('-').reverse().join('.'):String(v||'Не вказано');
+ const kinds={employment:'Робота',military_service:'Військова служба',unemployment:'Облік безробітного'};
+ const lines=rows.map((r,i)=>[
+  (i+1)+'. '+(kinds[r.kind]||'Робота')+': '+(r.employer||'Організацію не вказано'),
+  r.position?'Посада: '+r.position:null,
+  'Період: '+displayDate(r.start_date)+' — '+displayDate(r.end_date),
+  ...(Array.isArray(r.position_changes)?r.position_changes:[]).map(x=>'Зміна посади: '+displayDate(x.date)+' — '+(x.position||'Не вказано')),
+  r.termination_reason?'Причина завершення: '+r.termination_reason:null
+ ].filter(Boolean).join('\n'));
+ const total=summary(rows);
+ lines.push('Підтверджені завершені періоди роботи: '+total.days+' календарних днів. Неповних періодів: '+total.incomplete+'. Це не розрахунок страхового стажу.');
+ return lines.join('\n\n');
+}
 function review(e,c,p={},documentId){
  const issues=[],pairs=[[e.full_name||e.name_nominative,c.name_nominative||c.full_name,'ПІБ'],[e.rnokpp,c.rnokpp,'РНОКПП'],[e.birth_date,c.birth_date,'дата народження']].filter(([a,b])=>a&&b);
  if(!pairs.length)issues.push('Немає достатніх реквізитів для звірки власника документа.');
@@ -42,5 +58,5 @@ function review(e,c,p={},documentId){
  for(const r of built){const same=records.find(x=>recordKey(x)===recordKey(r));if(!same)records.push(r);}
  return {records,events,accepted,issues,summary:summary(records)};
 }
-window.CRMWork={isDocument,review,summary,date,eventKey,recordKey};
+window.CRMWork={isDocument,review,summary,historyText,date,eventKey,recordKey};
 })();
