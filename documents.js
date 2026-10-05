@@ -78,7 +78,7 @@ async function showDocuments(id){
   content.querySelector('#docProgressText').textContent='Завантажено '+uploaded+' із '+mandatory.length+' · Підтверджено '+verified+' із '+mandatory.length+(unknown?' · Уточніть умови для '+unknown+' пунктів':'');
   content.querySelector('#docProgress > div').style.width=(mandatory.length?Math.round(verified/mandatory.length*100):0)+'%';
   content.querySelector('#docBatchStatus').textContent='Комплектність враховує лише обов’язкові документи, які потрібні цьому кандидату.';
-  if(excludedDocs.length){
+  if(excludedDocs.length&&!CRMCandidateConditions.isUnit(c)){
     const details=document.createElement('details');details.className='card';details.style.marginBottom='18px';
     details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button></p>').join('');
     details.addEventListener('click',e=>{const id=e.target.closest('[data-excluded-open]')?.dataset.excludedOpen;if(id)openDocument(id)});content.querySelector('#docFilters').before(details);

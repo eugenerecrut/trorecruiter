@@ -136,7 +136,8 @@
     const statusOptions = ['Новий','Первинний контакт','Співбесіда','Перевірка документів','ВЛК','Рішення','Призначений','Відмова','Втрачено контакт','Відкладено'];
     const docTypeOptions = ['Паспорт громадянина України (ID-картка)','Паспорт громадянина України (книжечка)','РНОКПП','Військово-обліковий документ','Анкета','Згода на обробку персональних даних','Згода на збір та обробку даних','Заява на контракт','Розписка кандидата','Освіта','Трудова діяльність','ВЛК','Інше'];
 
-    const documentRows = docs.length ? docs.map(d => `<div class="cc-doc"><div><b>${esc(documentLabel(d))}</b><small>${esc(d.file_name || '')} · ${d.required ? 'Обов’язковий' : 'Додатковий'} · ${esc(d.status || 'Завантажено')}</small></div><button type="button" data-open-doc="${esc(d.storage_path || '')}">Відкрити</button></div>`).join('') : '<div class="cc-empty">Документи ще не завантажені.</div>';
+    const visibleDocs=CRMCandidateConditions.isUnit(c)?docs.filter(d=>CRMCandidateConditions.unitDocument(d.document_type)):docs;
+    const documentRows = visibleDocs.length ? visibleDocs.map(d => `<div class="cc-doc"><div><b>${esc(documentLabel(d))}</b><small>${esc(d.file_name || '')} · ${d.required ? 'Обов’язковий' : 'Додатковий'} · ${esc(d.status || 'Завантажено')}</small></div><button type="button" data-open-doc="${esc(d.storage_path || '')}">Відкрити</button></div>`).join('') : '<div class="cc-empty">Документи ще не завантажені.</div>';
 
     content.innerHTML = `
       <style>
@@ -147,6 +148,7 @@
       <section class="crm-responsibility" data-responsibility></section>
       <nav class="crm-card-nav cc-wrap" id="crmCardNav" aria-label="Розділи картки"></nav>
       <form id="candidateCardV2" class="cc-wrap">
+        <div class="crm-case-mode"><label for="cardCaseMode">Хто збирає документи</label><select id="cardCaseMode" name="case_mode"><option value="full" ${profile.case_mode!=='unit'?'selected':''}>Документи збираємо ми</option><option value="unit" ${profile.case_mode==='unit'?'selected':''}>Документи збирає ВЧ</option></select><p>У режимі ВЧ: РЛ, припис про направлення та реєстр кандидата.</p></div>
         <div class="crm-photo" data-card-photo><img id="crmCardPhoto" alt="Фото кандидата 9×12" hidden><div><strong>Фото кандидата 9×12</strong><p id="crmCardPhotoStatus" class="muted">Завантажуємо фото…</p><button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи та фото</button></div></div>
         ${section('1. Персональні дані','Основні ідентифікаційні відомості',
           input('ПІБ у називному відмінку','name_nominative',c.name_nominative || c.full_name,'text')+
@@ -217,26 +219,45 @@
     await CRMResponsibility.mountCard(c,content);
     const formForNavigation=content.querySelector('#candidateCardV2');
     CRMCandidateName.bind(formForNavigation);
-    CRMCandidateConditions.bind(formForNavigation);
+    const updateConditions=CRMCandidateConditions.bind(formForNavigation);
     const updateWorkVisibility=()=>{formForNavigation.querySelector('[data-work-editor]').hidden=formForNavigation.querySelector('[name="worked_before"]').value==='false';};
     formForNavigation.addEventListener('change',updateWorkVisibility);updateWorkVisibility();
-    const groups=[
+    const fullGroups=[
       ['personal','Картка',[1,2,3,4]],['family','Рідні та близькі',[13]],['education','Освіта',[5]],
       ['work','Трудовий стаж',[6]],['service','Військова служба',[7]],['military','Військовий облік',[8]],
       ['vlk','ВЛК',[9]],['documents','Документи',[14]],['processing','Оформлення',[10,11,12]],['blanks','Бланки',[15]]
     ];
     const nav=content.querySelector('#crmCardNav');
+    let groups=fullGroups;
     nav.innerHTML=groups.map(([key,title])=>'<button type="button" data-card-section="'+key+'">'+esc(title)+'</button>').join('');
+    const caseMode=formForNavigation.elements.case_mode;
     const selectSection=key=>{
       const group=groups.find(g=>g[0]===key)||groups[0];
       window.crmActiveCardSection=group[0];
       formForNavigation.querySelectorAll('[data-section]').forEach(section=>section.hidden=!group[2].includes(Number(section.dataset.section)));
-      formForNavigation.querySelector('[data-card-photo]').hidden=group[0]!=='personal';
+      formForNavigation.querySelector('[data-card-photo]').hidden=caseMode.value==='unit'||group[0]!=='personal';
       nav.querySelectorAll('button').forEach(button=>{button.classList.toggle('active',button.dataset.cardSection===group[0]);button.setAttribute('aria-pressed',button.dataset.cardSection===group[0]?'true':'false')});
     };
     nav.addEventListener('click',e=>{const key=e.target.closest('[data-card-section]')?.dataset.cardSection;if(key)selectSection(key)});
     formForNavigation.addEventListener('invalid',e=>{const number=Number(e.target.closest('[data-section]')?.dataset.section);const group=groups.find(g=>g[2].includes(number));if(group)selectSection(group[0])},true);
-    selectSection(activeCardSection);
+    const originalFields=[...formForNavigation.querySelectorAll('.cc-field')].map(field=>({field,parent:field.parentNode,next:field.nextSibling}));
+    const primaryGrid=formForNavigation.querySelector('[data-section="1"] .cc-grid');
+    const applyCaseLayout=()=>{
+      const unit=caseMode.value==='unit';
+      groups=unit?[['personal','Картка',[1]]]:fullGroups;
+      nav.innerHTML=groups.map(([key,title])=>'<button type="button" data-card-section="'+key+'">'+esc(title)+'</button>').join('');
+      const allowed=new Set(['name_nominative','phone','military_unit','desired_position','recruitment_status','notes']);
+      formForNavigation.querySelectorAll('.cc-field').forEach(field=>{
+        field.hidden=unit&&![...field.querySelectorAll('[name]')].some(el=>allowed.has(el.name));
+      });
+      [...originalFields].reverse().forEach(({field,parent,next})=>{if(!unit)parent.insertBefore(field,next?.parentNode===parent?next:null);else if(!field.hidden)primaryGrid.append(field)});
+      formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&!allowed.has(el.name)});
+      if(!unit)updateConditions();
+      content.querySelector('[onclick*="information"]')?.classList.toggle('hidden',unit);
+      selectSection(window.crmActiveCardSection||activeCardSection);
+    };
+    caseMode.addEventListener('change',applyCaseLayout);
+    applyCaseLayout();
     const photoDoc=[...docs].reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
     CRMWorkspace.photo(photoDoc).then(photo=>{
       if(!formForNavigation.isConnected)return;
@@ -294,6 +315,7 @@
       if(!form.reportValidity())return false;
       const status = document.getElementById('ccStatus');
       const fd = new FormData(form);
+      const unit=fd.get('case_mode')==='unit';
       const nom = nameNominative(fd.get('name_nominative'));
       if (!nom) { status.textContent = 'Потрібно вказати ПІБ у називному відмінку.'; return; }
       status.textContent = 'Зберігаємо дані...';
@@ -305,7 +327,7 @@
         'military_specialty','military_unit','military_position','service_start_date','service_end_date','combat_days','military_document_number','military_registration_date','military_registration_category','military_registration_status','military_document_type','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status',
         'vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
-      profileKeys.forEach(k => { if (fd.has(k)) oldProfile[k] = fd.get(k); });
+      profileKeys.forEach(k => { if ((!unit||k==='military_unit')&&fd.has(k)) oldProfile[k] = fd.get(k); });
 
       const savedRelatives = [...form.querySelectorAll('[data-relative-row]')].map(row => {
         const get = key => row.querySelector(`[name="${key}"]`)?.value?.trim() || '';
@@ -317,19 +339,19 @@
           phone: window.CRMPhone.normalize(get('phone')), workplace: get('workplace'), position: get('position'), notes: get('notes')
         };
       }).filter(r => r.full_name||r.relationship);
-      if(savedRelatives.some(r=>r.deceased!==false&&r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
-      oldProfile.relatives = savedRelatives;
+      if(!unit&&savedRelatives.some(r=>r.deceased!==false&&r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
+      if(!unit)oldProfile.relatives = savedRelatives;
       const existingWork=Array.isArray(oldProfile.work_records)?oldProfile.work_records:[];
       const workRows=[...form.querySelectorAll('[data-work-row]')].map(row=>{
         const get=k=>row.querySelector('[name="work_'+k+'"]')?.value?.trim()||null;
         const base=row.dataset.workIndex!==undefined?existingWork[Number(row.dataset.workIndex)]||{}:{};
         return {...base,kind:get('kind'),employer:get('employer'),employer_code:get('employer_code'),position:get('position'),start_date:get('start_date'),end_date:get('end_date'),termination_reason:get('termination_reason'),order_number:get('order_number'),order_date:get('order_date'),end_order_number:get('end_order_number'),end_order_date:get('end_order_date')};
       });
-      if(workRows.some(r=>!r.employer||!r.start_date||(r.end_date&&r.end_date<r.start_date))){status.textContent='У періодах діяльності вкажіть організацію й початок; завершення не може бути раніше початку.';return false;}
-      if(form.querySelector('[data-work-rows]'))oldProfile.work_records=workRows;
+      if(!unit&&workRows.some(r=>!r.employer||!r.start_date||(r.end_date&&r.end_date<r.start_date))){status.textContent='У періодах діяльності вкажіть організацію й початок; завершення не може бути раніше початку.';return false;}
+      if(!unit&&form.querySelector('[data-work-rows]'))oldProfile.work_records=workRows;
       const workSummary=CRMWork.summary(workRows);
       form.querySelector('[data-work-summary]').textContent='Підтверджені завершені періоди роботи: '+workSummary.days+' календарних днів. Неповних періодів: '+workSummary.incomplete+'. Це не розрахунок страхового стажу.';
-      oldProfile.phone_secondary=window.CRMPhone.normalize(oldProfile.phone_secondary);
+      if(!unit)oldProfile.phone_secondary=window.CRMPhone.normalize(oldProfile.phone_secondary);
 
       const militaryUnit = String(fd.get('military_unit') || '').trim();
       const candidatePatch = {
@@ -357,9 +379,10 @@
         recruitment_status: String(fd.get('recruitment_status') || 'Новий'),
         civilian_profession: fd.has('civilian_profession')?(String(fd.get('civilian_profession')||'').trim()||null):(c.civilian_profession??null),
         notes: String(fd.get('notes') || '').trim() || null,
-        profile_data: { ...oldProfile, military_unit: militaryUnit, updated_from_candidate_card: true },
+        profile_data: { ...oldProfile, case_mode: unit?'unit':'full', military_unit: militaryUnit, updated_from_candidate_card: true },
         updated_at: new Date().toISOString()
       };
+      if(unit){const allowed=new Set(['full_name','name_nominative','phone','desired_position','recruitment_status','notes','profile_data','updated_at']);Object.keys(candidatePatch).forEach(key=>{if(!allowed.has(key))delete candidatePatch[key]});}
       const { error: ce } = await supabaseClient.from('candidates').update(candidatePatch).eq('id', candidateId);
       if (ce) { status.textContent = 'Помилка збереження кандидата: ' + ce.message; return; }
 
@@ -375,10 +398,10 @@
         education: String(fd.get('education') || '').trim() || null,
         updated_at: new Date().toISOString()
       };
-      const { error: pe } = await supabaseClient.from('personal_files').upsert(pfPatch, { onConflict:'candidate_id' });
+      const { error: pe } = unit?{error:null}:await supabaseClient.from('personal_files').upsert(pfPatch, { onConflict:'candidate_id' });
       if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return; }
       status.textContent = 'Готово. Дані кандидата оновлено.';
-      Object.assign(c,candidatePatch);Object.assign(pf,pfPatch);profile=candidatePatch.profile_data;cardState.dirty=false;
+      Object.assign(c,candidatePatch);if(!unit)Object.assign(pf,pfPatch);profile=candidatePatch.profile_data;cardState.dirty=false;
       return true;
     };
     cardState.save=()=>{

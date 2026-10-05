@@ -158,6 +158,7 @@ function showCandidates() {
 function showNewCandidateForm() {
   pendingRecommendationFile = null;
   pendingRecommendationText = '';
+  window.__PSK_PENDING_RELATIVES = [];
 
   const content = document.querySelector('.content');
   if (!content) return;
@@ -166,14 +167,15 @@ function showNewCandidateForm() {
     <div class="dashboard-top">
       <div>
         <div class="page-title">Нова особова справа</div>
-        <div class="page-subtitle">Вихідна точка — рекомендаційний лист. Система робить виборку, а рекрутер підтверджує дані.</div>
+        <div class="page-subtitle">Завантажте рекомендаційний лист або внесіть кандидата вручну.</div>
       </div>
       <div class="quick-actions">
         <button onclick="crmNavigate('candidates')">← Назад до кандидатів</button>
       </div>
     </div>
 
-    <section class="card" style="max-width:1120px">
+    <section class="card crm-new-case" style="max-width:960px">
+      <div class="crm-case-mode"><label for="newCaseMode">Хто збирає документи</label><select id="newCaseMode" name="case_mode" form="candidateForm"><option value="full">Документи збираємо ми</option><option value="unit">Документи збирає ВЧ</option></select><p id="newCaseModeHint">Повна особова справа.</p></div>
       <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px">
         <div style="width:42px;height:42px;border-radius:11px;background:#e8f2cc;color:#5d741f;display:grid;place-items:center;font-weight:900;font-size:18px">1</div>
         <div>
@@ -182,14 +184,14 @@ function showNewCandidateForm() {
         </div>
       </div>
 
-      <label for="recommendationFile" style="display:block">
-        <div id="uploadZone" style="border:2px dashed #c6d1d6;border-radius:12px;padding:34px 22px;text-align:center;background:#fbfcfc;transition:.15s">
+      <div class="crm-new-entry"><label for="recommendationFile" style="display:block">
+        <div id="uploadZone" style="border:2px dashed #c6d1d6;border-radius:12px;padding:18px 16px;text-align:center;background:#fbfcfc;transition:.15s">
           <div style="font-size:30px;margin-bottom:8px">⇧</div>
           <div style="font-weight:800;color:#34414a">Натисніть, щоб вибрати файл</div>
           <div style="color:#8a969d;font-size:11px;margin-top:5px">або перетягніть документ сюди</div>
           <div id="selectedFile" style="margin-top:13px;color:#5d741f;font-weight:700"></div>
         </div>
-      </label>
+      </label><div class="crm-manual-entry"><button type="button" class="crm-button" id="createCandidateManually">＋ Створити вручну</button><p>Без розпізнавання. РЛ можна додати пізніше.</p></div></div>
       <input id="recommendationFile" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" style="display:none">
       <div class="crm-actions"><button type="button" class="crm-button" data-scan-recommendation>📷 Сканувати рекомендаційний лист</button></div>
 
@@ -275,6 +277,19 @@ function showNewCandidateForm() {
 
   const fileInput = document.getElementById('recommendationFile');
   const uploadZone = document.getElementById('uploadZone');
+  const mode = document.getElementById('newCaseMode');
+  const newForm=document.getElementById('candidateForm');
+  new MutationObserver(()=>CRMCandidateConditions.applyNewCaseMode(newForm)).observe(newForm,{childList:true,subtree:true});
+  mode.addEventListener('change', () => {
+    CRMCandidateConditions.applyNewCaseMode(document.getElementById('candidateForm'));
+    document.getElementById('newCaseModeHint').textContent = mode.value === 'unit' ? 'ВЧ оформлює справу. Тут тільки РЛ, припис про направлення та реєстр кандидата.' : 'Повна особова справа.';
+  });
+  document.getElementById('createCandidateManually').onclick = () => {
+    document.getElementById('candidateStage').classList.remove('hidden');
+    document.querySelector('#candidateStage h3').textContent = 'Дані кандидата';
+    CRMCandidateConditions.applyNewCaseMode(document.getElementById('candidateForm'));
+    document.querySelector('#candidateForm [name="full_name"]').focus();
+  };
 
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
@@ -788,6 +803,7 @@ async function saveCandidateFromRecommendation(event) {
     tcc: String(fd.get('tcc') || '').trim() || null,
     vlk_status: String(fd.get('vlk_status') || '').trim() || null,
     notes: String(fd.get('notes') || '').trim() || null,
+    profile_data: { case_mode: fd.get('case_mode') === 'unit' ? 'unit' : 'full', military_unit: String(fd.get('military_unit') || '').trim() || null, candidate_source: pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення' },
     recruitment_status: 'Новий',
     recruiter_id: user.id
   };
@@ -821,7 +837,7 @@ async function saveCandidateFromRecommendation(event) {
     ['Рекомендуючий підрозділ', fd.get('recommender_unit')],
     ['Рекрутер за РЛ', fd.get('recruiter_name')],
     ['Підписант РЛ', fd.get('signatory')],
-    ['Джерело', 'Рекомендаційний лист']
+    ['Джерело', pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення']
   ]
     .filter(([, value]) => String(value || '').trim())
     .map(([label, value]) => label + ': ' + String(value).trim())

@@ -26,3 +26,10 @@
 }
 
 .crm-document-file.crm-document-verified{display:block;width:100%}.crm-document-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px;border-radius:8px;cursor:pointer;list-style:none}.crm-document-summary::-webkit-details-marker{display:none}.crm-document-summary::after{content:'⌄';font-size:20px;color:#6d7d65;flex-shrink:0}.crm-document-verified[open]>.crm-document-summary::after{transform:rotate(180deg)}.crm-document-summary:hover{background:#f3f7ed}.crm-document-summary:focus-visible{outline:2px solid #8ca85c;outline-offset:2px}.crm-document-details{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%;margin-top:8px}
+
+/* Compact case creation, shared by desktop and mobile. */
+.crm-case-mode{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid #e0e6e8}
+.crm-case-mode label{font-weight:700}.crm-case-mode select{padding:10px;border:1px solid #cfd8dc;border-radius:8px;background:#fff;color:#24313a}.crm-case-mode p{flex-basis:100%;margin:0;color:#7d8a93;font-size:12px}
+.crm-new-entry{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:18px;align-items:center}.crm-new-entry label{cursor:pointer}.crm-manual-entry{text-align:center}.crm-manual-entry button{padding:12px 18px;background:#18232d;color:white;border-radius:9px;border:0;font-weight:700}.crm-manual-entry p{font-size:12px;line-height:1.5;color:#7d8a93}
+.crm-new-case [hidden],#candidateForm [hidden]{display:none!important}
+@media(max-width:640px){.crm-new-entry{grid-template-columns:1fr}.crm-manual-entry{text-align:left}.crm-manual-entry button{width:100%}.crm-case-mode select{width:100%}}

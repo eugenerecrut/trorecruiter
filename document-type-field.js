@@ -130,6 +130,7 @@
   const originalSave = window.saveCandidateFromRecommendation;
   if (typeof originalSave === 'function') {
     window.saveCandidateFromRecommendation = async function(event) {
+      if (!document.getElementById('recommendationFile')?.files?.[0]) return originalSave(event);
       ensureDocumentTypeField();
       const form = event?.target;
       const selectedFile = document.getElementById('recommendationFile')?.files?.[0] || null;

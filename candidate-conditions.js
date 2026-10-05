@@ -4,7 +4,23 @@
  const value=(c,key)=>c[key]??profile(c)[key]??null;
  const bool=v=>v===true||v==='true'?true:v===false||v==='false'?false:null;
  const marital=v=>{const t=String(v||'').trim().toLocaleLowerCase('uk-UA');return ['одружений','одружена','married'].includes(t)?'married':['розлучений','розлучена','divorced'].includes(t)?'divorced':['не одружений','не одружена','неодружений','неодружена','single'].includes(t)?'single':null};
+ const unitTypes=['Припис про направлення','Реєстр кандидата'];
+ const isUnit=c=>value(c,'case_mode')==='unit';
+ const unitDocument=type=>/рекомендаційн.*лист/iu.test(String(type||''))||unitTypes.includes(type);
+ function applyNewCaseMode(form){
+  if(!form)return;
+  const unit=form.elements.case_mode?.value==='unit';
+  const allowed=new Set(['full_name','phone','military_unit','desired_position','notes','case_mode']);
+  [...form.children].forEach(el=>{
+    if(el.querySelector('[type="submit"]'))return;
+    const inputs=[...el.querySelectorAll('input,select,textarea')];
+    el.hidden=unit&&(inputs.length?!inputs.some(i=>allowed.has(i.name)):true);
+    inputs.forEach(i=>i.disabled=unit&&!allowed.has(i.name));
+  });
+ }
  function documentCondition(type,c){
+  if(isUnit(c))return unitDocument(type);
+  if(unitTypes.includes(type))return false;
   const t=String(type||'').toLocaleLowerCase('uk-UA');
   if(/резерв\s*\+|припис|військовий облік/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}
   if(/убд|військового квитка|витягу? з наказу|нагород/.test(t))return bool(value(c,'served_before'));
@@ -14,6 +30,7 @@
   return true;
  }
  function requirement(r,c){
+  if(isUnit(c))return unitDocument(r.document_type);
   const special=documentCondition(r.document_type,c);if(special!==true)return special;
   if(!r.condition_field)return true;
   const v=value(c,r.condition_field);if(v===null||v==='')return null;
@@ -23,6 +40,7 @@
  function bind(form){
   const fields=(keys,hidden)=>keys.forEach(k=>{const el=form.querySelector('[name="'+k+'"]');if(el?.closest('.cc-field'))el.closest('.cc-field').hidden=hidden;});
   const update=()=>{
+   if(form.elements.case_mode?.value==='unit')return;
    const get=k=>form.querySelector('[name="'+k+'"]')?.value;
    const worked=form.querySelector('[name="worked_before"]');
    if(worked){
@@ -48,7 +66,7 @@
     row.hidden=(bool(get('has_children'))===false&&/син|доньк|дочк|дитин/i.test(relation))||(marital(get('marital_status'))==='single'&&/дружин|чоловік/i.test(relation));
    });
   };
-  form.addEventListener('change',update);form.addEventListener('click',()=>queueMicrotask(update));update();
+  form.addEventListener('change',update);form.addEventListener('click',()=>queueMicrotask(update));update();return update;
  }
- window.CRMCandidateConditions={value,bool,marital,documentCondition,requirement,bind};
+ window.CRMCandidateConditions={value,bool,marital,documentCondition,requirement,bind,isUnit,unitDocument,applyNewCaseMode};
 })();
