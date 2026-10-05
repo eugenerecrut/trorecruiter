@@ -117,7 +117,7 @@ async function mount(c,root){
    ['ІПН / РНОКПП',/ідентифікаційн.*код|РНОКПП|платника податк/iu],
    ['Довідка ВЛК',/^Довідка ВЛК$/iu],
    ['Форма 13',/(?:додаток|картка|форма)\s*13|картка обстеження та медичного огляду/iu],
-   ['Військово-обліковий документ',/військов.*квит|приписн|резерв\s*\+/iu],
+   ['Військово-обліковий документ',/військов.*квит|припис[нк]|резерв\s*\+/iu],
    ['Повна довідка про несудимість',/несудимість/iu],
    ['УБД',/УБД/iu,true],
    ['Посвідчення водія',/посвідчення водія/iu,true]
@@ -129,7 +129,7 @@ async function mount(c,root){
     const tickets=found.filter(d=>/військов.*квит/iu.test(d.document_type));
     if(tickets.length)found=tickets;
     else{
-     const prescriptions=found.filter(d=>/приписн/iu.test(d.document_type));
+     const prescriptions=found.filter(d=>/припис[нк]/iu.test(d.document_type));
      found=prescriptions.length?prescriptions:found.filter(d=>/резерв\s*\+/iu.test(d.document_type));
     }
    }
