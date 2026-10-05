@@ -273,7 +273,8 @@
         if(field)field.hidden=type==='birth'||(key==='passport_series'&&type==='ID')||(key==='passport_expiry_date'&&type==='passport');
       });
     };
-    identitySelect.addEventListener('change',updateIdentityFields);updateIdentityFields();
+    identitySelect.addEventListener('change',updateIdentityFields);
+    caseMode.addEventListener('change',()=>{if(caseMode.value!=='unit')updateIdentityFields()});updateIdentityFields();
     const childrenInput=formForNavigation.querySelector('[name=children_count]');childrenInput.min='0';childrenInput.step='1';
     const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null};
     CRMWorkspace.card=cardState;
