@@ -66,3 +66,8 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #78
 .cc-status:empty{display:none}.crm-search:focus{outline:2px solid #78972f;outline-offset:1px}
 .candidate-filters{align-items:center}.candidate-filters select{min-height:44px;min-width:180px}
 }
+
+@media screen{
+.crm-extra-actions{position:relative}.crm-extra-actions>summary{padding:11px 14px;min-height:44px;border:1px solid #d8e0e3;border-radius:8px;background:white;font-size:13px;font-weight:700;cursor:pointer;box-sizing:border-box}
+.crm-extra-actions>div{position:absolute;right:0;top:calc(100% + 6px);z-index:9;display:grid;gap:8px;padding:12px;border:1px solid #d8e0e3;border-radius:10px;background:white;box-shadow:0 8px 24px #17232c20;min-width:220px}
+}

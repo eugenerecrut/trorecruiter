@@ -150,3 +150,10 @@ html[data-crm-layout="mobile"] .cc-actions{padding:8px;box-shadow:0 -3px 12px #1
 html[data-crm-layout="mobile"] .crm-template-grid .card{padding:18px}
 html[data-crm-layout="mobile"] #docSearch{margin-bottom:10px}
 }
+
+@media screen{
+html[data-crm-layout="mobile"] .quick-actions .crm-extra-actions{flex:1 1 140px}
+html[data-crm-layout="mobile"] .crm-extra-actions>summary{text-align:center}
+html[data-crm-layout="mobile"] .crm-extra-actions>div{position:static;min-width:0;margin-top:8px}
+html[data-crm-layout="mobile"] #documentRows td:empty{display:none!important}
+}
