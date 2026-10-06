@@ -17,7 +17,7 @@ const issues=[],records=Array.isArray(p.education_records)?p.education_records.m
 const incoming=Array.isArray(e.education_records)?e.education_records:[];
 let accepted=0;
 for(const r of incoming){
-if(!r||r.requires_review||r.diploma_present!==true||!ranks[r.degree]||!r.diploma_number||!ownerMatches(r,c)){issues.push('Запис освіти потребує перевірки власника, диплома або реквізитів.');continue;}
+if(!r||r.requires_review||r.diploma_present!==true||!ranks[r.degree]||(!r.diploma_number&&!(e.source_verified===true&&r.institution&&(r.graduation_year||r.study_end_date||r.diploma_issue_date)))||!ownerMatches(r,c)){issues.push('Запис освіти потребує перевірки власника, диплома або реквізитів.');continue;}
 const entry={...r};const i=records.findIndex(x=>key(x)===key(entry));if(i<0)records.push(entry);else records[i]={...records[i],...Object.fromEntries(Object.entries(entry).filter(([k,v])=>v!==null&&v!==undefined&&v!==''))};accepted++;
 }
 const highest=records.reduce((best,r)=>(ranks[r.degree]||0)>(ranks[best?.degree]||0)?r:best,null);

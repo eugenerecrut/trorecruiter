@@ -281,7 +281,7 @@ async function reviewDocumentData(id){
   const biography=CRMBiography.isDocument(d.document_type)||CRMBiography.isDocument(d.ai_document_type),biographyCheck=biography?CRMBiography.review(e,c,p,pf,d.id):null;
   const vlk=CRMVLK.isDocument(d.document_type)||CRMVLK.isDocument(d.ai_document_type),vlkCheck=vlk?CRMVLK.review(e,c):null;
   const work=CRMWork.isDocument(d.document_type)||CRMWork.isDocument(d.ai_document_type),workCheck=work?CRMWork.review(e,c,p,d.id):null;
-  const education=CRMEducation.isDocument(d.document_type)||CRMEducation.isDocument(d.ai_document_type),educationCheck=education?CRMEducation.review({...e,education_records:Array.isArray(e.education_records)?e.education_records.map(r=>({...r,source_document_id:d.id})):[]},c,p):null;
+  const education=CRMEducation.isDocument(d.document_type)||CRMEducation.isDocument(d.ai_document_type),educationCheck=education?CRMEducation.review({...e,source_verified:d.verification_status==='Підтверджено',education_records:Array.isArray(e.education_records)?e.education_records.map(r=>({...r,source_document_id:d.id})):[]},c,p):null;
   const residence=CRMResidence.isDocument(d.document_type)||CRMResidence.isDocument(d.ai_document_type),residenceCheck=residence?CRMResidence.review(e,c,p):null;
   const type=identityDocumentTypeValue(d.ai_document_type||d.document_type),changes=[];
   const idCheck=type==='ID'?(window.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:d.ai_candidate_name,confidence:d.ai_confidence},c)||{blocked:true,issues:['Перевірка ID-картки ще не завантажилась. Оновіть сторінку.']}):null;
