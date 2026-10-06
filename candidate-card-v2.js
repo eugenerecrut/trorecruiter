@@ -226,6 +226,12 @@
     const formForNavigation=content.querySelector('#candidateCardV2');
     CRMCandidateName.bind(formForNavigation);
     const updateConditions=CRMCandidateConditions.bind(formForNavigation);
+    const updateEducation=()=>{
+      const secondary=formForNavigation.elements.education_level?.value==='середня';
+      ['education_specialty','education_qualification','education_specialty_code'].forEach(name=>{
+        const field=formForNavigation.elements[name]?.closest('.cc-field');if(field)field.hidden=secondary;
+      });
+    };
     const updateManagement=()=>{const field=formForNavigation.querySelector('[name=organizational_skills]')?.closest('.cc-field');if(field)field.hidden=formForNavigation.querySelector('[name=has_management_experience]')?.value!=='true';};
     formForNavigation.querySelector('[name=has_management_experience]')?.addEventListener('change',updateManagement);updateManagement();
     const updateWorkVisibility=()=>{formForNavigation.querySelector('[data-work-editor]').hidden=formForNavigation.querySelector('[name="worked_before"]').value==='false';};
@@ -260,7 +266,7 @@
       if(unit)originalFields.forEach(({field,unitAllowed})=>{if(unitAllowed)primaryGrid.append(field)});
       else [...originalFields].reverse().forEach(({field,parent,next})=>parent.insertBefore(field,next?.parentNode===parent?next:null));
       formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&el.name!=='service_type'&&(!allowed.has(el.name)||el.closest('.cc-field')?.hidden!==false)});
-      if(!unit){updateConditions();updateManagement();}
+      if(!unit){updateConditions();updateManagement();updateEducation();}
       content.querySelector('[onclick*="information"]')?.classList.toggle('hidden',unit);
       const mobilization=!unit&&formForNavigation.elements.service_type.value==='За мобілізацією';
       if(mobilization){
