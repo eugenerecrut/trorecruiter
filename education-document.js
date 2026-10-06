@@ -23,5 +23,15 @@ const entry={...r};const i=records.findIndex(x=>key(x)===key(entry));if(i<0)reco
 const highest=records.reduce((best,r)=>(ranks[r.degree]||0)>(ranks[best?.degree]||0)?r:best,null);
 return {records,highest,accepted,issues};
 }
-window.CRMEducation={isDocument,review,ranks};
+function historyText(records){
+return (Array.isArray(records)?records:[]).filter(r=>r&&!r.requires_review).map(r=>{
+ const date=v=>typeof v==='object'&&v?v.value:v;
+ const period=[date(r.study_start_date||r.start_date),date(r.study_end_date||r.end_date)||r.graduation_year].filter(Boolean).join(' — ');
+ return [period,r.institution,r.degree,r.specialty,r.qualification].filter(Boolean).join(', ');
+}).filter(Boolean).join('\n');
+}
+function summary(p={},pf={}){
+return pf.education||p.education||historyText(p.education_records)||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ')||historyText(p.bio_education_claims);
+}
+window.CRMEducation={isDocument,review,ranks,historyText,summary};
 })();

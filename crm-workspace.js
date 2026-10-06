@@ -84,7 +84,7 @@ window.CRMWorkspace = {
     let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
     this.setContext(id,c.name_nominative||c.full_name);
     const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
-    const education=pf.education||p.education||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ');
+    const education=CRMEducation.summary(p,pf);
     const work=CRMWork.historyText(p.work_records)||pf.work_history||pf.civilian_experience||p.work_history||'';
     const servedValue=c.served_before??p.served_before;
     const served=servedValue===true||servedValue==='true';
