@@ -159,6 +159,7 @@ async function showArchive(){
  const render=()=>{const q=content.querySelector('[data-archive-search]').value.trim().toLocaleLowerCase('uk-UA');content.querySelector('[data-archive-rows]').innerHTML=(r.data||[]).filter(a=>[a.full_name,a.destination,a.outcome].join(' ').toLocaleLowerCase('uk-UA').includes(q)).map(a=>'<article class="crm-archive-row"><strong>'+esc(a.full_name)+'</strong><p>'+esc([a.outcome,a.incomplete?'Неповний комплект':'',a.completion_date,a.destination].filter(Boolean).join(' · '))+'</p><p>'+esc(a.state==='Готово'?'Архівовано':'Очищення не завершено: '+(a.error||'триває перенесення'))+'</p><button data-archive-download="'+esc(a.id)+'">Завантажити PDF</button>'+(a.state!=='Готово'?'<button data-archive-resume="'+esc(a.candidate_id)+'">Продовжити очищення</button>':'')+'</article>').join('')||'<p>Архівних справ за цим пошуком немає.</p>'};render();content.querySelector('[data-archive-search]').oninput=render;
  content.querySelector('[data-archive-rows]').onclick=async e=>{const b=e.target.closest('button');if(!b||CRMWorkspace.busy)return;try{if(b.dataset.archiveDownload){const a=r.data.find(x=>x.id===b.dataset.archiveDownload);await download(a.pdf_path,'Особова_справа.pdf')}else if(b.dataset.archiveResume){if(!confirm('Продовжити видалення окремих оригіналів? У журналі залишиться один PDF.'))return;CRMWorkspace.busy=true;const a=r.data.find(x=>x.candidate_id===b.dataset.archiveResume),response=await supabaseClient.functions.invoke('archive-candidate',{body:{candidate_id:a.candidate_id,confirm_delete_originals:true}});if(response.error||response.data?.state!=='Готово')throw Error(response.data?.error||response.error?.message||'Очищення не завершено');CRMWorkspace.busy=false;await showArchive()}}catch(err){alert(err.message)}finally{CRMWorkspace.busy=false}};
 }
+let planningRecruiter='all';
 async function showPlanning(id=null){
  const content=document.querySelector('.content');CRMWorkspace.markMenu('planning');
  const result=await supabaseClient.from('candidates').select('*').order('created_at',{ascending:false});if(result.error)throw result.error;
@@ -170,13 +171,17 @@ async function showPlanning(id=null){
   header.querySelector('[data-back]').onclick=()=>crmNavigate('planning');header.querySelector('[data-card]').onclick=()=>crmNavigate('card',c.id);
   const host=document.createElement('section');host.dataset.workflow='';content.append(host);await mount(c,content);return;
  }
- CRMWorkspace.setContext(null,'');content.insertAdjacentHTML('beforeend','<input class="crm-search" data-planning-search type="search" placeholder="Пошук кандидата" aria-label="Пошук кандидата"><div class="crm-planning-list" data-planning-list></div>');
+ const staff=await CRMResponsibility.ready();
+ const recruiterIds=[...new Set([...staff.filter(s=>s.active&&['lead','recruiter'].includes(s.role)).map(s=>s.user_id),...candidates.map(c=>c.responsible_recruiter_id).filter(Boolean)])];
+ const recruiterOptions='<option value="all">Усі рекрутери</option><option value="unassigned">Не призначено</option>'+recruiterIds.map(id=>'<option value="'+esc(id)+'">'+esc(CRMResponsibility.name(id))+'</option>').join('');
+ CRMWorkspace.setContext(null,'');content.insertAdjacentHTML('beforeend','<div class="crm-planning-filters"><label>Рекрутер<select class="crm-search" data-planning-recruiter>'+recruiterOptions+'</select></label><input class="crm-search" data-planning-search type="search" placeholder="Пошук кандидата" aria-label="Пошук кандидата"></div><div class="crm-planning-list" data-planning-list></div>');
+ const filter=content.querySelector('[data-planning-recruiter]');filter.value=planningRecruiter;if(!filter.value){filter.value='all';planningRecruiter='all';}
  const render=()=>{
   const q=content.querySelector('[data-planning-search]').value.trim().toLocaleLowerCase('uk-UA');
-  content.querySelector('[data-planning-list]').innerHTML=candidates.filter(c=>String(c.name_nominative||c.full_name).toLocaleLowerCase('uk-UA').includes(q)).map(c=>{
+  content.querySelector('[data-planning-list]').innerHTML=candidates.filter(c=>(planningRecruiter==='all'||(planningRecruiter==='unassigned'?!c.responsible_recruiter_id:c.responsible_recruiter_id===planningRecruiter))&&String(c.name_nominative||c.full_name).toLocaleLowerCase('uk-UA').includes(q)).map(c=>{
    const w=wf(c);return '<button type="button" class="crm-planning-row" data-planning-id="'+esc(c.id)+'"><strong>'+esc(c.name_nominative||c.full_name)+'</strong><span>'+esc(CRMCandidateConditions.isUnit(c)?'Оформлює ВЧ':stage(c))+(w.paused?' · На паузі':'')+'</span><small>'+esc([w.next_action,w.next_contact_date||w.exams_date].filter(Boolean).join(' · '))+'</small></button>';
   }).join('')||'<p class="muted">Кандидатів не знайдено.</p>';
- };render();content.querySelector('[data-planning-search]').oninput=render;
+ };render();content.querySelector('[data-planning-search]').oninput=render;filter.onchange=()=>{planningRecruiter=filter.value;render()};
  content.querySelector('[data-planning-list]').onclick=e=>{const id=e.target.closest('[data-planning-id]')?.dataset.planningId;if(id)crmNavigate('planning',id)};
 }
 window.CRMWorkflow={showPlanning,showArchive,stages,outcomes,profile,wf,stage,label,isArchived,mount};
