@@ -315,7 +315,9 @@ async function reviewDocumentData(id){
     const statuses=[...details.matchAll(/(?:незнятої\s+чи\s+непогашеної\s+судимості|наявність\s+судимості|відомості\s+про\s+судимість)\s*[:—-]\s*(ВІДСУТНІ|ПРИСУТНІ)/giu)].map(m=>m[1].toLocaleUpperCase('uk-UA'));
     const unique=[...new Set(statuses)];
     const fromDetails=unique.length===1?(unique[0]==='ВІДСУТНІ'?'Відсутні':'Присутні'):null;
-    const record=unique.length>1?null:e.criminal_record_info||fromDetails;
+    const rawRecord=String(e.criminal_record_info||'').trim().toLocaleUpperCase('uk-UA');
+    const normalizedRecord=rawRecord==='ВІДСУТНІ'?'Відсутні':rawRecord==='ПРИСУТНІ'?'Присутні':null;
+    const record=unique.length>1?null:normalizedRecord||fromDetails;
 
     if(record==='Відсутні'||record==='Присутні'){
       const owner=String(e.full_name||e.name_nominative||d.ai_candidate_name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
