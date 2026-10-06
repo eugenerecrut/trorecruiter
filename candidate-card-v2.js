@@ -228,7 +228,7 @@
     const updateConditions=CRMCandidateConditions.bind(formForNavigation);
     const updateEducation=()=>{
       const secondary=formForNavigation.elements.education_level?.value==='середня';
-      ['education_specialty','education_qualification','education_specialty_code'].forEach(name=>{
+      ['education_specialty','education_qualification','education_specialty_code','education'].forEach(name=>{
         const field=formForNavigation.elements[name]?.closest('.cc-field');if(field)field.hidden=secondary;
       });
     };
