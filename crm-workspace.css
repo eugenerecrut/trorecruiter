@@ -72,6 +72,12 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #78
 .crm-extra-actions>div{position:absolute;right:0;top:calc(100% + 6px);z-index:9;display:grid;gap:8px;padding:12px;border:1px solid #d8e0e3;border-radius:10px;background:white;box-shadow:0 8px 24px #17232c20;min-width:220px}
 }
 
-.crm-card-overview{align-items:flex-start;gap:24px}.crm-card-overview-fields{flex:1;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.crm-card-overview .crm-case-mode{display:flex;flex-direction:column;align-items:stretch;gap:8px;margin:0;padding:0;border:0}.crm-card-overview .crm-case-mode p{flex-basis:auto}.crm-card-overview-fields>button{justify-self:start}@media(max-width:640px){.crm-card-overview-fields{grid-template-columns:1fr}.crm-card-overview{gap:16px}}
-
-.crm-card-overview{display:grid;grid-template-columns:144px minmax(0,1fr);column-gap:32px}.crm-card-photo-slot{width:144px;min-height:192px;display:flex;align-items:center;justify-content:center}.crm-card-photo-slot img{width:144px;height:192px;flex-shrink:0;object-fit:contain}.crm-card-overview-fields{align-self:center;max-width:850px}@media(max-width:640px){.crm-card-overview{grid-template-columns:108px minmax(0,1fr);column-gap:16px}.crm-card-photo-slot{width:108px;min-height:144px}.crm-card-photo-slot img{width:108px;height:144px}}@media(max-width:380px){.crm-card-overview{grid-template-columns:1fr}.crm-card-photo-slot{justify-self:start}.crm-card-overview-fields{width:100%}}
+.crm-card-overview{display:flex;align-items:center;justify-content:flex-start;gap:18px;padding:12px 16px;min-height:0}
+.crm-card-photo-slot{flex:0 0 90px;width:90px;height:120px;display:flex;align-items:center;justify-content:center}
+.crm-card-photo-slot img{width:90px;height:120px;object-fit:contain;flex-shrink:0}
+.crm-card-overview-fields{flex:0 1 340px;min-width:0;display:grid;grid-template-columns:1fr;gap:8px}
+.crm-card-overview .crm-case-mode{display:grid;grid-template-columns:1fr;gap:4px;padding:0;margin:0;border:0}
+.crm-card-overview .crm-case-mode label{font-size:12px;line-height:1.2}
+.crm-card-overview .crm-case-mode select{width:100%;padding:7px 10px;min-height:34px;box-sizing:border-box}
+.crm-card-overview-fields>button{justify-self:start;font-size:12px;padding:5px 9px}
+@media(max-width:640px){.crm-card-overview{gap:12px;padding:10px}.crm-card-photo-slot{flex-basis:75px;width:75px;height:100px}.crm-card-photo-slot img{width:75px;height:100px}.crm-card-overview-fields{flex:1}.crm-card-overview .crm-case-mode select{min-height:44px}}
