@@ -11,7 +11,7 @@
  const normalizeRequirement=r=>optionalDocument(r.document_type)?{...r,is_required:false,condition_field:null,condition_value:null,condition_note:'За наявності документа.'}:{...r};
  const isMobilization=c=>/мобілізац/iu.test(String(profile(c).service_type||c.service_type||String(profile(c).form_data?.additional_notes||'').match(/Вид служби:\s*([^\n]+)/iu)?.[1]||''));
  const militaryDocument=t=>/військового квитка|військовий облік|резерв\s*\+|тимчасов.*посвідч|приписне/iu.test(t||'');
- const mobilizationDocument=t=>unitDocument(t)||militaryDocument(t)||/паспорта|ID Картки|ідентифікаційного коду|Фото |посвідчення водія|Довідка ВЛК|Додаток 13|групи крові|місце проживання|Довідка з МВС|гінеколога|УБД/iu.test(t||'');
+ const mobilizationDocument=t=>unitDocument(t)||militaryDocument(t)||/паспорта|ID Картки|ідентифікаційного коду|Фото |посвідчення водія|Довідка ВЛК|Додаток 13|групи крові|місце проживання|Довідка з МВС|гінеколога|Сертифікат психологічного тестування|УБД|диплом|атестат|документи про освіту|трудов|трудову діяльність/iu.test(t||'');
  const forCandidate=(r,c)=>{
   if(!isMobilization(c)||isUnit(c))return r;
   const out={...r};
@@ -37,7 +37,7 @@
   if(isUnit(c))return unitDocument(type);
   if(unitTypes.includes(type))return true;
   if(/гінеколога/iu.test(type)){if(!isMobilization(c))return false;const sex=value(c,'sex');return sex==='female'?true:sex==='male'?false:null;}
-  if(isMobilization(c)){if(!mobilizationDocument(type))return false;if(/групи крові/iu.test(type))return bool(value(c,'blood_data_in_passport'))!==true;return true;}
+  if(isMobilization(c)){if(!mobilizationDocument(type))return false;if(/трудов|трудову діяльність/iu.test(type))return bool(value(c,'worked_before'));if(/групи крові/iu.test(type))return bool(value(c,'blood_data_in_passport'))!==true;return true;}
   const t=String(type||'').toLocaleLowerCase('uk-UA');
   if(optionalDocument(type))return true;
   if(/резерв\s*\+|припис|військовий облік/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}

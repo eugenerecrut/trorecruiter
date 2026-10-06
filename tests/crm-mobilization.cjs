@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');const ctx={window:{}};vm.runInNewContext(fs.readFileSync('candidate-conditions.js','utf8'),ctx);const C=ctx.window.CRMCandidateConditions;
 const m={profile_data:{service_type:'За мобілізацією',sex:'male',served_before:false}},f={profile_data:{service_type:'За мобілізацією',sex:'female'}},contract={profile_data:{service_type:'За контрактом',sex:'female'}};
 const r=t=>({id:t,document_type:t,is_required:true});
-for(const t of ['Заява на контракт','Анкета на контракт','Сертифікат психологічного тестування (перша сторінка)','Автобіографія друкована'])assert.equal(C.requirement(r(t),m),false,t);
+for(const t of ['Заява на контракт','Анкета на контракт','Автобіографія друкована'])assert.equal(C.requirement(r(t),m),false,t);
 for(const t of ['Припис про направлення','Реєстр кандидата','Довідка ВЛК','Додаток 13 (Картка обстеження та медичного огляду)','Копія паспорта/ID Картки','Копія ідентифікаційного коду'])assert.equal(C.requirement(r(t),m),true,t);
 assert.equal(C.requirement(r('Довідка гінеколога'),m),false);assert.equal(C.requirement(r('Довідка гінеколога'),f),true);assert.equal(C.requirement(r('Довідка гінеколога'),contract),false);
 assert.equal(C.requirement(r('Сертифікат психологічного тестування (перша сторінка)'),contract),true);
@@ -10,3 +10,11 @@ assert.equal(C.requirement({...r('Копія військового квитка
 assert(C.covered(r('Копія військового квитка'),[{document_type:'Військовий облік (витяг Резерв+ / приписне)',verification_status:'Підтверджено'}],m));
 assert.equal(C.requirement(r('Довідка ВЛК'),{profile_data:{...m.profile_data,case_mode:'unit'}}),false);
 assert(C.isMobilization({profile_data:JSON.stringify(m.profile_data)}));console.log('PASS: mobilization, contract, unit, sex, blood evidence and military alternatives.');
+
+assert.equal(C.requirement(r('Копія диплома та атестата з додатками'),m),true);
+assert.equal(C.requirement(r('Документи про освіту'),m),true);
+assert.equal(C.requirement(r('Документи про трудову діяльність'),{profile_data:{...m.profile_data,worked_before:true}}),true);
+assert.equal(C.requirement(r('Документи про трудову діяльність'),{profile_data:{...m.profile_data,worked_before:false}}),false);
+assert.equal(C.requirement(r('Документи про трудову діяльність'),m),null);
+assert.equal(C.requirement(r('Сертифікат психологічного тестування (перша сторінка)'),m),true);
+console.log('PASS: mobilization education required, work conditional, psychology certificate required.');
