@@ -36,6 +36,7 @@ window.CRMWorkspace = {
       else if(key==='card'&&target)await openCandidateCard(target);
       else if(key==='documents'){if(target)await showDocuments(target);else await this.pickCandidate('documents')}
       else if(key==='information'){if(target)await this.showInformation(target);else await this.pickCandidate('information')}
+      else if(key==='planning')await CRMWorkflow.showPlanning(id);
       else if(key==='archive')await CRMWorkflow.showArchive();
       else if(key==='blanks')this.showBlanks();
       else if(key==='settings')location.href='scanner-settings.html';

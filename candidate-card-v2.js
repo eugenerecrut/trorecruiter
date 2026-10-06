@@ -150,7 +150,7 @@
       </style>
       <div class="dashboard-top cc-wrap"><div><h1 class="page-title">${esc(c.name_nominative||c.full_name)}</h1><p class="page-subtitle">Картка кандидата</p></div><div class="quick-actions"><button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи</button><button type="button" onclick="crmNavigate('information','${candidateId}')">Обов’язкова інформація</button><button onclick="crmNavigate('candidates')">← До кандидатів</button></div></div>
       <section class="crm-responsibility" data-responsibility></section>
-      <section class="cc-section cc-wrap crm-workflow" data-workflow></section>
+
       <nav class="crm-card-nav cc-wrap" id="crmCardNav" aria-label="Розділи картки"></nav>
       <form id="candidateCardV2" class="cc-wrap">
         <div class="crm-photo crm-card-overview" data-card-photo><div class="crm-card-photo-slot"><img id="crmCardPhoto" alt="Фото кандидата 9×12" hidden></div><div class="crm-card-overview-fields">        <div class="crm-case-mode"><label for="cardServiceType">Вид оформлення</label><select id="cardServiceType" name="service_type" required><option value="">Оберіть вид оформлення</option><option value="За контрактом" ${serviceType==='За контрактом'?'selected':''}>За контрактом</option><option value="За мобілізацією" ${serviceType==='За мобілізацією'?'selected':''}>За мобілізацією</option></select></div>
@@ -428,7 +428,7 @@
       const { error: pe } = unit?{error:null}:await supabaseClient.from('personal_files').upsert(pfPatch, { onConflict:'candidate_id' });
       if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return; }
       status.textContent = 'Готово. Дані кандидата оновлено.';
-      if(!unit)Object.assign(pf,pfPatch);profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;await CRMWorkflow.mount(c,content);
+      if(!unit)Object.assign(pf,pfPatch);profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;
       if(workflowDraft){const progress=CRMWorkspace.workflow.form;for(const input of progress.elements){if(!input.name)continue;if(input.type==='checkbox')input.checked=workflowDraft.has(input.name);else input.value=workflowDraft.get(input.name)||'';}progress.dispatchEvent(new Event('change',{bubbles:true}));}
       return true;
     };
@@ -439,7 +439,7 @@
       return cardState.saving;
     };
     formForNavigation.addEventListener('submit',event=>{event.preventDefault();cardState.save()});
-    await CRMWorkflow.mount(c,content);
+
   }
 
 
