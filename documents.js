@@ -53,7 +53,8 @@ async function showDocuments(id){
   const children=Number(c.children_count)||((profile.relatives||[]).filter(r=>/син|доньк|дитин/i.test(r.relationship||r.relation||'')).length);
   const excludedDocs=docs.filter(d=>{const r=reqs.find(r=>r.id===d.requirement_id||r.document_type===d.document_type);return (r?requirementCondition(r,c):CRMCandidateConditions.documentCondition(d.document_type,c))===false;});
   const rows=[];
-  reqs.forEach(r=>{
+  reqs.forEach(original=>{
+    const r=CRMCandidateConditions.forCandidate(original,c);
     const files=documentsForRequirement(r,docs),condition=requirementCondition(r,c);
     if(condition===false)return;
     const count=r.condition_field==='has_children'&&condition===true?Math.max(1,children):1;
@@ -71,9 +72,9 @@ async function showDocuments(id){
   content.querySelector('#docAddFiles').onclick=()=>openAddDocumentModal(id);
   content.querySelector('#docScanFiles').onclick=()=>openScannerImport(id);
   content.querySelector('#docCameraFiles').onclick=()=>openCameraDocument(id);
-  const mandatory=rows.filter(row=>row.r.is_required&&row.condition===true);
+  const mandatory=rows.filter(row=>row.r.is_required&&row.condition===true).filter((row,i,all)=>!CRMCandidateConditions.isMobilization(c)||!CRMCandidateConditions.militaryDocument(row.r.document_type)||all.findIndex(x=>CRMCandidateConditions.militaryDocument(x.r.document_type))===i);
   const uploaded=mandatory.filter(row=>row.files.length).length;
-  const verified=mandatory.filter(row=>row.files.some(d=>d.verification_status==='Підтверджено')).length;
+  const verified=mandatory.filter(row=>CRMCandidateConditions.covered(row.r,docs,c)).length;
   const unknown=rows.filter(row=>row.r.is_required&&row.condition===null).length;
   content.querySelector('#docProgressText').textContent='Завантажено '+uploaded+' із '+mandatory.length+' · Підтверджено '+verified+' із '+mandatory.length+(unknown?' · Уточніть умови для '+unknown+' пунктів':'');
   content.querySelector('#docProgress > div').style.width=(mandatory.length?Math.round(verified/mandatory.length*100):0)+'%';

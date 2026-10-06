@@ -147,7 +147,7 @@ CRMWorkspace.loadHome=async function(){
   if(recent)recent.innerHTML=candidates.slice(0,6).map(c=>'<tr><td><button class="crm-button" onclick="crmNavigate(\'card\',\''+esc(c.id)+'\')">'+esc(c.name_nominative||c.full_name)+'</button></td><td>'+esc(c.desired_position||'—')+'</td><td>'+esc(CRMWorkflow.label(c))+'</td><td>'+esc(CRMResponsibility.name(c.responsible_recruiter_id))+'</td></tr>').join('')||'<tr><td colspan="4">Кандидатів поки немає.</td></tr>';
   const tasks=document.querySelector('.lower-grid .card');
   if(tasks){
-    const missing=candidates.filter(c=>reqs.some(r=>r.is_required&&requirementCondition(r,c)===true&&!docs.some(d=>d.candidate_id===c.id&&(d.requirement_id===r.id||d.document_type===r.document_type)&&d.verification_status==='Підтверджено')));
+    const missing=candidates.filter(c=>reqs.some(r=>r.is_required&&requirementCondition(r,c)===true&&!CRMCandidateConditions.covered(r,docs.filter(d=>d.candidate_id===c.id),c)));
     const review=docs.filter(d=>d.verification_status!=='Підтверджено');
     const errors=docs.filter(d=>d.processing_status==='AI помилка');
     tasks.querySelectorAll('.task').forEach(el=>el.remove());

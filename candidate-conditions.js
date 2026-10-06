@@ -9,6 +9,19 @@
  const unitDocument=type=>/рекомендаційн.*лист/iu.test(String(type||''))||unitTypes.includes(type);
  const optionalDocument=type=>/УБД|нагород|витягу? з наказу/iu.test(String(type||''));
  const normalizeRequirement=r=>optionalDocument(r.document_type)?{...r,is_required:false,condition_field:null,condition_value:null,condition_note:'За наявності документа.'}:{...r};
+ const isMobilization=c=>/мобілізац/iu.test(String(profile(c).service_type||c.service_type||String(profile(c).form_data?.additional_notes||'').match(/Вид служби:\s*([^\n]+)/iu)?.[1]||''));
+ const militaryDocument=t=>/військового квитка|військовий облік|резерв\s*\+|тимчасов.*посвідч|приписне/iu.test(t||'');
+ const mobilizationDocument=t=>unitDocument(t)||militaryDocument(t)||/паспорта|ID Картки|ідентифікаційного коду|Фото |посвідчення водія|Довідка ВЛК|Додаток 13|групи крові|місце проживання|Довідка з МВС|гінеколога|УБД/iu.test(t||'');
+ const forCandidate=(r,c)=>{
+  if(!isMobilization(c)||isUnit(c))return r;
+  const out={...r};
+  if(militaryDocument(r.document_type)){out.condition_field=null;out.condition_value=null;out.condition_note='Достатньо одного: військовий квиток, приписне / тимчасове посвідчення або Резерв+.';}
+  if(/Фото 3/.test(r.document_type))out.condition_note='6 фото 3×4, матові, без головного убору й окулярів. До CRM достатньо одного файла.';
+  if(/Фото 9/.test(r.document_type))out.condition_note='2 фото 9×12, матові, без головного убору й окулярів. До CRM достатньо одного файла.';
+  if(/групи крові/.test(r.document_type))out.condition_note='Потрібна, якщо група крові та резус не зазначені в паспорті.';
+  return out;
+ };
+ const covered=(r,docs,c)=>docs.some(d=>d.verification_status==='Підтверджено'&&(d.requirement_id===r.id||d.document_type===r.document_type||(isMobilization(c)&&militaryDocument(r.document_type)&&militaryDocument(d.document_type))));
  function applyNewCaseMode(form){
   if(!form)return;
   const unit=form.elements.case_mode?.value==='unit';
@@ -23,6 +36,8 @@
  function documentCondition(type,c){
   if(isUnit(c))return unitDocument(type);
   if(unitTypes.includes(type))return true;
+  if(/гінеколога/iu.test(type)){if(!isMobilization(c))return false;const sex=value(c,'sex');return sex==='female'?true:sex==='male'?false:null;}
+  if(isMobilization(c)){if(!mobilizationDocument(type))return false;if(/групи крові/iu.test(type))return bool(value(c,'blood_data_in_passport'))!==true;return true;}
   const t=String(type||'').toLocaleLowerCase('uk-UA');
   if(optionalDocument(type))return true;
   if(/резерв\s*\+|припис|військовий облік/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}
@@ -35,6 +50,7 @@
  function requirement(r,c){
   if(isUnit(c))return unitDocument(r.document_type);
   const special=documentCondition(r.document_type,c);if(special!==true)return special;
+  if(isMobilization(c))return true;
   if(!r.condition_field)return true;
   const v=value(c,r.condition_field);if(v===null||v==='')return null;
   if(r.condition_field==='marital_status'){const m=marital(v);return m===null?null:m===r.condition_value;}
@@ -71,5 +87,5 @@
   };
   form.addEventListener('change',update);form.addEventListener('click',()=>queueMicrotask(update));update();return update;
  }
- window.CRMCandidateConditions={value,bool,marital,documentCondition,requirement,bind,isUnit,unitDocument,applyNewCaseMode,normalizeRequirement};
+ window.CRMCandidateConditions={isMobilization,militaryDocument,forCandidate,covered,value,bool,marital,documentCondition,requirement,bind,isUnit,unitDocument,applyNewCaseMode,normalizeRequirement};
 })();
