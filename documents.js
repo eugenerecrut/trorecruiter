@@ -309,6 +309,7 @@ async function reviewDocumentData(id){
   }
   if(!biography&&residenceCheck?.unzr)add('profile','unzr',residenceCheck.unzr,'УНЗР');
   if(residenceCheck?.address)add('profile','registered_address',residenceCheck.address,'Зареєстроване місце проживання');
+  if(/рекомендац/iu.test(d.document_type||''))add('profile','service_type',CRMCard13.service({}, {service_type:e.service_type||e.service?.service_type}, {}),'Вид оформлення');
   if(personalSource){
     for(const key of ['birth_date','birth_place','rnokpp','phone','email','sex','marital_status','has_children','worked_before','served_before','military_rank','civilian_profession','desired_position','tcc'])add('candidate',key,e[key]);
     add('candidate','full_name',e.name_nominative||e.full_name);

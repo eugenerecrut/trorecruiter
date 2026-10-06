@@ -36,7 +36,7 @@ async function plan(types){let html='',button={addEventListener(){}},click={};co
  const saveEnd=cardSource.indexOf('    cardState.save=',saveStart);
  const saveFactory=new Function('context','with(context){return '+cardSource.slice(saveStart,saveEnd).trim().replace(/;$/,'')+'}');
  async function saveScenario(conflict){
-  let queryVersion,pfWrites=0,patch;const values={name_nominative:'Тестовий кандидат',case_mode:'full',education_diploma_number:'123',education_start_date:'2020-09-01'};
+  let queryVersion,pfWrites=0,patch;const values={name_nominative:'Тестовий кандидат',case_mode:'full',service_type:'За контрактом',education_diploma_number:'123',education_start_date:'2020-09-01'};
   const c={id:'test',updated_at:'refreshed-by-workflow',profile_data:{}},pf={education:'Освіта, збережена раніше'},state={expectedUpdatedAt:'loaded-version'},status={};
   const form={reportValidity:()=>true,querySelectorAll:()=>[],querySelector:()=>({textContent:''})};
   const context={CRMWorkspace:{},c,pf,profile:{},candidateId:'test',cardState:state,content:{querySelector:()=>status},document:{getElementById:()=>status},FormData:class{get(k){return values[k]??''}has(k){return Object.hasOwn(values,k)}},nameNominative:v=>v,CRMBiography:{partial:()=>null},CRMWork:{summary:()=>({days:0,incomplete:0})},window:{CRMPhone:{normalize:v=>v}},CRMWorkflow:{wf:()=>({}),mount:async()=>{}},supabaseClient:{from(table){return table==='candidates'?{update(p){patch=p;return{eq(k,v){if(k==='updated_at')queryVersion=v;return this},is(k,v){queryVersion=v;return this},select(){return this},async maybeSingle(){return{error:null,data:conflict?null:{...patch,updated_at:'saved-version'}}}}}}:{async upsert(p){pfWrites++;return{error:null}}}}}};

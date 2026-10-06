@@ -25,7 +25,7 @@
  function applyNewCaseMode(form){
   if(!form)return;
   const unit=form.elements.case_mode?.value==='unit';
-  const allowed=new Set(['full_name','phone','military_unit','desired_position','notes','case_mode']);
+  const allowed=new Set(['full_name','phone','military_unit','desired_position','notes','case_mode','service_type']);
   [...form.children].forEach(el=>{
     if(el.querySelector('[type="submit"]'))return;
     const inputs=[...el.querySelectorAll('input,select,textarea')];

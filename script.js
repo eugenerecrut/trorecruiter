@@ -225,7 +225,7 @@ function showNewCandidateForm() {
           <div><label>ВОС</label><input name="military_specialty"></div>
 
           <div><label>Тарифний розряд</label><input name="tariff_grade"></div>
-          <div><label>Вид служби</label><input name="service_type" placeholder="за контрактом"></div>
+          <div><label>Вид оформлення</label><select name="service_type" required><option value="">Оберіть вид оформлення</option><option>За контрактом</option><option>За мобілізацією</option></select></div>
 
           <div><label>Рекомендуючий підрозділ</label><input name="recommender_unit"></div>
           <div><label>Підписант</label><input name="signatory"></div>
@@ -589,7 +589,7 @@ function fillCandidateForm(parsed) {
 
   supported.forEach(name => {
     const input = form.elements[name];
-    if (input && parsed[name]) input.value = parsed[name];
+    if (input && parsed[name]) input.value = name==='service_type'?CRMCard13.service({}, {service_type:parsed[name]}, {}):parsed[name];
   });
 
   const text = document.getElementById('ocrText');
@@ -792,7 +792,7 @@ async function saveCandidateFromRecommendation(event) {
     tcc: String(fd.get('tcc') || '').trim() || null,
     vlk_status: String(fd.get('vlk_status') || '').trim() || null,
     notes: String(fd.get('notes') || '').trim() || null,
-    profile_data: { case_mode: fd.get('case_mode') === 'unit' ? 'unit' : 'full', military_unit: String(fd.get('military_unit') || '').trim() || null, candidate_source: pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення' },
+    profile_data: { service_type: CRMCard13.service({}, {service_type:fd.get('service_type')}, {}), case_mode: fd.get('case_mode') === 'unit' ? 'unit' : 'full', military_unit: String(fd.get('military_unit') || '').trim() || null, candidate_source: pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення' },
     recruitment_status: 'Новий',
     recruiter_id: user.id
   };

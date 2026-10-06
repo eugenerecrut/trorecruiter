@@ -126,6 +126,10 @@
     const pf = pr.data || {};
     let profile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
     if (typeof c.profile_data === 'string') { try { profile = JSON.parse(c.profile_data); } catch (_) {} }
+    const recommendation=CRMResponsibility.latest(dr.data||[]).filter(d=>/рекомендац/iu.test(d.document_type||'')).at(-1);
+    let recommendationData=recommendation?.ai_extracted||{};
+    if(typeof recommendationData==='string'){try{recommendationData=JSON.parse(recommendationData)}catch{recommendationData={}}}
+    const serviceType=CRMCard13.service(c,profile,pf)||CRMCard13.service({}, {service_type:recommendationData.service_type||recommendationData.service?.service_type}, {});
     const docs = CRMResponsibility.latest(dr.data || []).filter(d=>CRMCandidateConditions.documentCondition(d.document_type,c)!==false);
     CRMWorkspace.setContext(candidateId,c.name_nominative||c.full_name);
     const activeCardSection=window.crmActiveCardSection||'personal';
@@ -149,6 +153,7 @@
       <section class="cc-section cc-wrap crm-workflow" data-workflow></section>
       <nav class="crm-card-nav cc-wrap" id="crmCardNav" aria-label="Розділи картки"></nav>
       <form id="candidateCardV2" class="cc-wrap">
+        <div class="crm-case-mode"><label for="cardServiceType">Вид оформлення</label><select id="cardServiceType" name="service_type" required><option value="">Оберіть вид оформлення</option><option value="За контрактом" ${serviceType==='За контрактом'?'selected':''}>За контрактом</option><option value="За мобілізацією" ${serviceType==='За мобілізацією'?'selected':''}>За мобілізацією</option></select><p>Із рекомендаційного листа · визначає перелік документів.</p></div>
         <div class="crm-case-mode"><label for="cardCaseMode">Хто збирає документи</label><select id="cardCaseMode" name="case_mode"><option value="full" ${profile.case_mode!=='unit'?'selected':''}>Документи збираємо ми</option><option value="unit" ${profile.case_mode==='unit'?'selected':''}>Документи збирає ВЧ</option></select><p>У режимі ВЧ: РЛ, припис про направлення та реєстр кандидата.</p></div>
         <div class="crm-photo" data-card-photo><img id="crmCardPhoto" alt="Фото кандидата 9×12" hidden><div><strong>Фото кандидата 9×12</strong><p id="crmCardPhotoStatus" class="muted">Завантажуємо фото…</p><button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи та фото</button></div></div>
         ${section('1. Персональні дані','Основні ідентифікаційні відомості',
@@ -189,7 +194,7 @@
           select('Працював / Працювала','worked_before',boolValue(c.worked_before ?? profile.worked_before),[['','Не визначено'],['true','Працював / Працювала'],['false','Не працював / Не працювала']])+(String(c.civilian_profession||'').trim()?input('Цивільна професія','civilian_profession',c.civilian_profession):'')+(String(pf.work_history||pf.civilian_experience||'').trim()?textarea('Трудова діяльність','work_history',pf.work_history||pf.civilian_experience,'cc-wide'):'')+workEditor(profile)+biographyClaims(profile,'bio_work_claims','Трудова діяльність')
         )}
         ${section('7. Військова служба','Відомості про попередню та поточну службу',
-          select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+select('Вид служби','service_type',CRMCard13.service(c,profile,pf),[['','Не визначено'],['За контрактом','За контрактом'],['За мобілізацією','За мобілізацією']])+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')+biographyClaims(profile,'bio_service_claims','Служба')
+          select('Служив / Служила','served_before',boolValue(c.served_before ?? profile.served_before),[['','Не визначено'],['true','Служив / Служила'],['false','Не служив / Не служила']])+input('Військова частина','military_unit',profile.military_unit)+input('Посада','military_position',profile.military_position)+input('Дата початку служби','service_start_date',profile.service_start_date,'date')+input('Дата закінчення служби','service_end_date',profile.service_end_date,'date')+input('Кількість днів бойових','combat_days',profile.combat_days,'number')+textarea('Військова служба','military_service_history',pf.military_service_history || pf.military_experience,'cc-wide')+biographyClaims(profile,'bio_service_claims','Служба')
         )}
         ${section('8. Військовий облік','Дані військового обліку',
           input('Військове звання','military_rank',c.military_rank)+input('ВОС','military_specialty',c.military_specialty || profile.military_specialty)+input('ТЦК та СП','tcc',c.tcc)+input('Номер військово-облікового документа','military_document_number',profile.military_document_number)+input('Номер у реєстрі Оберіг','military_registry_number',profile.military_registry_number)+input('Витяг Резерв+ дійсний до','military_document_expiry_date',profile.military_document_expiry_date,'date')+input('Дата уточнення даних','military_data_updated_at',profile.military_data_updated_at,'date')+input('Тип відстрочки','military_deferment_type',profile.military_deferment_type)+input('Відстрочка до','military_deferment_until',profile.military_deferment_until,'date')+input('Підстава зняття / виключення','military_registration_removal_reason',profile.military_registration_removal_reason)+input('Військова підготовка','military_training_status',profile.military_training_status)+input('Дата взяття на облік','military_registration_date',profile.military_registration_date,'date')+input('Категорія обліку','military_registration_category',profile.military_registration_category)+input('Стан обліку','military_registration_status',profile.military_registration_status)+input('Військовий документ','military_document_type',profile.military_document_type)
@@ -254,7 +259,7 @@
       originalFields.forEach(({field,unitAllowed})=>field.hidden=unit&&!unitAllowed);
       if(unit)originalFields.forEach(({field,unitAllowed})=>{if(unitAllowed)primaryGrid.append(field)});
       else [...originalFields].reverse().forEach(({field,parent,next})=>parent.insertBefore(field,next?.parentNode===parent?next:null));
-      formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&(!allowed.has(el.name)||el.closest('.cc-field')?.hidden!==false)});
+      formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&el.name!=='service_type'&&(!allowed.has(el.name)||el.closest('.cc-field')?.hidden!==false)});
       if(!unit){updateConditions();updateManagement();}
       content.querySelector('[onclick*="information"]')?.classList.toggle('hidden',unit);
       selectSection(window.crmActiveCardSection||activeCardSection);
@@ -322,6 +327,7 @@
       const fd = new FormData(form);
       const workflowDraft=CRMWorkspace.workflow?.dirty?new FormData(CRMWorkspace.workflow.form):null;
       const unit=fd.get('case_mode')==='unit';
+      if(!['За контрактом','За мобілізацією'].includes(fd.get('service_type'))){status.textContent='Оберіть вид оформлення: за контрактом або за мобілізацією.';return;}
       const nom = nameNominative(fd.get('name_nominative'));
       if (!nom) { status.textContent = 'Потрібно вказати ПІБ у називному відмінку.'; return; }
       status.textContent = 'Зберігаємо дані...';
@@ -333,7 +339,7 @@
         'service_type','military_specialty','military_unit','military_position','service_start_date','service_end_date','combat_days','military_document_number','military_registration_date','military_registration_category','military_registration_status','military_document_type','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status',
         'blood_data_in_passport','vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','has_management_experience','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
-      profileKeys.forEach(k => { if ((!unit||k==='military_unit')&&fd.has(k)) oldProfile[k] = fd.get(k); });
+      profileKeys.forEach(k => { if ((!unit||k==='military_unit'||k==='service_type')&&fd.has(k)) oldProfile[k] = fd.get(k); });
 
       const savedRelatives = [...form.querySelectorAll('[data-relative-row]')].map(row => {
         const get = key => row.querySelector(`[name="${key}"]`)?.value?.trim() || '';
