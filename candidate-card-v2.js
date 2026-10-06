@@ -253,7 +253,7 @@
     const primaryGrid=formForNavigation.querySelector('[data-section="1"] .cc-grid');
     const applyCaseLayout=()=>{
       const unit=caseMode.value==='unit';
-      groups=unit?[['personal','Картка',[1]]]:fullGroups;
+      groups=unit?[['personal','Картка',[1]]]:formForNavigation.elements.service_type.value==='За мобілізацією'?fullGroups.filter(g=>!['family','education','work'].includes(g[0])).map(g=>[g[0],g[1],g[2].filter(n=>n!==11)]):fullGroups;
       nav.innerHTML=groups.map(([key,title])=>'<button type="button" data-card-section="'+key+'">'+esc(title)+'</button>').join('');
       const allowed=new Set(['name_nominative','phone','military_unit','desired_position','recruitment_status','notes']);
       originalFields.forEach(({field,unitAllowed})=>field.hidden=unit&&!unitAllowed);
@@ -262,9 +262,15 @@
       formForNavigation.querySelectorAll('input,select,textarea').forEach(el=>{el.disabled=unit&&el.name!=='case_mode'&&el.name!=='service_type'&&(!allowed.has(el.name)||el.closest('.cc-field')?.hidden!==false)});
       if(!unit){updateConditions();updateManagement();}
       content.querySelector('[onclick*="information"]')?.classList.toggle('hidden',unit);
+      const mobilization=!unit&&formForNavigation.elements.service_type.value==='За мобілізацією';
+      if(mobilization){
+        const excluded=new Set(['birth_certificate','marital_status','has_children','children_count','children_info','civilian_profession','psychiatric_record_info','has_management_experience','organizational_skills','motivation','worked_before','work_history','service_start_date','service_end_date','combat_days','military_service_history']);
+        originalFields.forEach(({field})=>{if([...field.querySelectorAll('[name]')].some(el=>excluded.has(el.name)))field.hidden=true;});
+      }
       selectSection(window.crmActiveCardSection||activeCardSection);
     };
     caseMode.addEventListener('change',applyCaseLayout);
+    formForNavigation.addEventListener('change',applyCaseLayout);
     applyCaseLayout();
     const photoDoc=CRMResponsibility.latest(docs).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
     CRMWorkspace.photo(photoDoc).then(photo=>{
