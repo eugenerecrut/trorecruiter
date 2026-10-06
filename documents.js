@@ -311,7 +311,12 @@ async function reviewDocumentData(id){
   if(residenceCheck?.address)add('profile','registered_address',residenceCheck.address,'Зареєстроване місце проживання');
   if(/рекомендац/iu.test(d.document_type||''))add('profile','service_type',CRMCard13.service({}, {service_type:e.service_type||e.service?.service_type}, {}),'Вид оформлення');
   if(/несудим|судим|кримінальн/iu.test(d.document_type||'')){
-    const record=e.criminal_record_info;
+    const details=typeof e.criminal_record_details==='string'?e.criminal_record_details:'';
+    const statuses=[...details.matchAll(/(?:незнятої\s+чи\s+непогашеної\s+судимості|наявність\s+судимості|відомості\s+про\s+судимість)\s*[:—-]\s*(ВІДСУТНІ|ПРИСУТНІ)/giu)].map(m=>m[1].toLocaleUpperCase('uk-UA'));
+    const unique=[...new Set(statuses)];
+    const fromDetails=unique.length===1?(unique[0]==='ВІДСУТНІ'?'Відсутні':'Присутні'):null;
+    const record=unique.length>1?null:e.criminal_record_info||fromDetails;
+
     if(record==='Відсутні'||record==='Присутні'){
       const owner=String(e.full_name||e.name_nominative||d.ai_candidate_name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
       const candidate=String(c.name_nominative||c.full_name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
