@@ -53,5 +53,5 @@ Deno.serve(async(req:Request)=>{
   paths.length=0;await list(candidateId!);if(paths.length)throw Error('З’явилися нові файли. Продовжіть очищення через журнал «Архів».');
   const done=await admin.rpc('crm_finalize_archive',{p_id:candidateId});if(done.error)throw done.error;
   return respond({archive_id:record.id,state:'Готово'});
- }catch(e){const message=e instanceof Error?e.message:String(e);if(candidateId)await admin.from('crm_archive').update({error:message}).eq('candidate_id',candidateId).eq('state','Очищення');return respond({error:message},400)}
+ }catch(e){const err=e as {message?:string;code?:string;details?:string};const message=err?.message||String(e);console.error('ARCHIVE_FAILED',JSON.stringify({message,code:err?.code,details:err?.details}));if(candidateId)await admin.from('crm_archive').update({error:message}).eq('candidate_id',candidateId).eq('state','Очищення');return respond({error:message},400)}
 });
