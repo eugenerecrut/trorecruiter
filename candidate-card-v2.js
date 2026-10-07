@@ -295,7 +295,7 @@
     identitySelect.addEventListener('change',updateIdentityFields);
     caseMode.addEventListener('change',()=>{if(caseMode.value!=='unit')updateIdentityFields()});updateIdentityFields();
     const childrenInput=formForNavigation.querySelector('[name=children_count]');childrenInput.min='0';childrenInput.step='1';
-    const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null,expectedUpdatedAt:c.updated_at};
+    const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null,expectedUpdatedAt:c.updated_at,candidate:c,documents:visibleDocs};
     CRMWorkspace.card=cardState;
     formForNavigation.addEventListener('input',()=>{cardState.dirty=true;content.querySelector('#ccStatus').textContent='Є незбережені зміни'});
     formForNavigation.addEventListener('change',()=>{cardState.dirty=true});
@@ -351,6 +351,9 @@
         'blood_data_in_passport','vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','has_management_experience','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
       profileKeys.forEach(k => { if ((!unit||k==='military_unit'||k==='service_type')&&fd.has(k)) oldProfile[k] = fd.get(k); });
+
+      // Optional V3 record editor shares the existing save; V2 has no hook.
+      if (!unit && typeof form.__crmEducationRecords === 'function') oldProfile.education_records = form.__crmEducationRecords();
 
       const savedRelatives = [...form.querySelectorAll('[data-relative-row]')].map(row => {
         const get = key => row.querySelector(`[name="${key}"]`)?.value?.trim() || '';
