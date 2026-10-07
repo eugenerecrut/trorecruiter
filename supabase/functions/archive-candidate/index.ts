@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8';
 import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1';
 const origin='https://eugenerecrut.github.io';
 const headers={'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info','Content-Type':'application/json'};
+const unsafePath=(path:string)=>path.includes('\\')||path.split('/').some(segment=>segment==='..'||segment==='.');
 const respond=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
 Deno.serve(async(req:Request)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers});
@@ -22,7 +23,7 @@ Deno.serve(async(req:Request)=>{
   let record=(await admin.from('crm_archive').select('*').eq('candidate_id',candidateId).maybeSingle()).data;
   if(record?.state==='Готово')return respond({archive_id:record.id,state:record.state});
   const path=record?.pdf_path||body.pdf_path;
-  if(typeof path!=='string'||!path.startsWith(candidateId+'/packages/archive-')||path.includes('..')||!path.endsWith('.pdf'))throw Error('Некоректний шлях PDF');
+  if(typeof path!=='string'||!path.startsWith(candidateId+'/packages/archive-')||unsafePath(path)||!path.endsWith('.pdf'))throw Error('Некоректний шлях PDF');
   const file=await admin.storage.from('candidate-documents').download(path);if(file.error)throw file.error;
   const bytes=new Uint8Array(await file.data.arrayBuffer());
   if(bytes.length<100||new TextDecoder().decode(bytes.slice(0,5))!=='%PDF-')throw Error('Архівний PDF відсутній або пошкоджений');
@@ -30,7 +31,7 @@ Deno.serve(async(req:Request)=>{
   const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
   if(digest!==(record?.pdf_sha256||body.pdf_sha256))throw Error('Контрольна сума PDF не збігається');
   if(!record){
-   if(!Array.isArray(body.manifest)||body.manifest.some((d:{path:string})=>typeof d.path!=='string'||!d.path.startsWith(candidateId+'/')||d.path.includes('..')))throw Error('Некоректний перелік оригіналів');
+   if(!Array.isArray(body.manifest)||body.manifest.some((d:{path:string})=>typeof d.path!=='string'||!d.path.startsWith(candidateId+'/')||unsafePath(d.path)))throw Error('Некоректний перелік оригіналів');
    const c=await admin.from('candidates').select('*').eq('id',candidateId).single();if(c.error)throw c.error;
    const w=c.data.profile_data?.workflow;
    if(w?.outcome==='Зарахований до ВЧ'){
