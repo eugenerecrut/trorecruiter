@@ -1,4 +1,4 @@
-// PSK_RECRUTER CRM — document AI + safe field reconciliation bridge v6
+// PSK_RECRUTER CRM — document AI + safe field reconciliation bridge v7
 (function(){
   const originalUpload=window.uploadSelectedDocuments;
   const originalClassify=window.classifyStoredDocument;
@@ -65,11 +65,25 @@
     if(error||!c)return{filled:[],same:[],conflicts:['Не вдалося відкрити картку кандидата']};
     const {data:pf}=await supabaseClient.from('personal_files').select('*').eq('candidate_id',candidateId).maybeSingle();
     const updates={},pfUpdates={},filled=[],same=[],conflicts=[];
-    const cm={full_name:extracted.name_nominative||extracted.full_name,name_nominative:extracted.name_nominative||extracted.full_name,name_genitive:extracted.name_genitive,name_gender:extracted.name_gender,birth_date:extracted.birth_date,birth_place:extracted.birth_place,rnokpp:extracted.rnokpp,passport_data:extracted.passport_data,phone:extracted.phone,email:extracted.email,sex:extracted.sex,marital_status:extracted.marital_status,military_rank:extracted.military_rank,civilian_profession:extracted.civilian_profession,desired_position:extracted.desired_position,direction:extracted.desired_unit,tcc:extracted.tcc};
+    const cm={full_name:extracted.name_nominative||extracted.full_name,name_nominative:extracted.name_nominative||extracted.full_name,name_genitive:extracted.name_genitive,name_gender:extracted.name_gender,birth_date:extracted.birth_date,birth_place:extracted.birth_place,rnokpp:extracted.rnokpp,passport_data:extracted.passport_data,phone:extracted.phone,email:extracted.email,sex:extracted.sex,marital_status:extracted.marital_status,military_rank:extracted.military_rank,civilian_profession:extracted.civilian_profession,desired_position:extracted.desired_position,direction:extracted.desired_unit,tcc:extracted.tcc,military_specialty:extracted.military_specialty};
     const pm={address:extracted.address,birth_place:extracted.birth_place,passport_data:extracted.passport_data,education:extracted.education,family_status:extracted.marital_status,children_info:extracted.children_info,military_service_history:extracted.military_service_history};
     for(const[k,v]of Object.entries(cm)){if(v===null||v===undefined||String(v).trim()==='')continue;const old=c[k];if(old===null||old===undefined||String(old).trim()===''){updates[k]=v;filled.push(k)}else if(norm(old)===norm(v))same.push(k);else conflicts.push(`${k}: у CRM «${old}», у документі «${v}»`)}
     for(const[k,v]of Object.entries(pm)){if(v===null||v===undefined||String(v).trim()==='')continue;const old=pf?.[k];if(old===null||old===undefined||String(old).trim()===''){pfUpdates[k]=v;filled.push('особова справа: '+k)}else if(norm(old)===norm(v))same.push('особова справа: '+k);else conflicts.push(`особова справа ${k}: у CRM «${old}», у документі «${v}»`)}
     if(extracted.has_children!==null&&extracted.has_children!==undefined){const old=c.has_children;if(old===null||old===undefined||old===''){updates.has_children=extracted.has_children;filled.push('has_children')}else if(String(old)===String(extracted.has_children))same.push('has_children');else conflicts.push(`has_children: у CRM «${old}», у документі «${extracted.has_children}»`)}
+    // Merge recommendation/service metadata into profile_data without overwriting confirmed/manual values.
+    const serviceProfileFields=['military_unit','desired_unit','shpk','tariff_grade','service_type','recommender_unit','recruiter_name','signatory'];
+    let nextProfile={...(c.profile_data||{})};
+    let profileChanged=false;
+    for(const k of serviceProfileFields){
+      const v=extracted[k];
+      if(v===null||v===undefined||String(v).trim()==='')continue;
+      const old=nextProfile[k];
+      if(old===null||old===undefined||String(old).trim()===''){nextProfile[k]=v;profileChanged=true;filled.push('profile_data.'+k)}
+      else if(norm(old)===norm(v))same.push('profile_data.'+k);
+      else conflicts.push(`profile_data.${k}: у CRM «${old}», у документі «${v}»`);
+    }
+    if(profileChanged)updates.profile_data=nextProfile;
+
     // Merge AI relatives into profile_data without deleting manually entered relatives.
     if(Array.isArray(extracted.relatives)&&extracted.relatives.length){
       const oldRel=Array.isArray(c.profile_data?.relatives)?c.profile_data.relatives:[];
@@ -80,7 +94,7 @@
         if(idx<0){merged.push(r);filled.push('родич: '+(r.relationship||r.full_name));}
         else { const m={...merged[idx]}; for(const[k,v] of Object.entries(r)) if(v&&(!m[k]||String(m[k]).trim()===''))m[k]=v; merged[idx]=m; }
       }
-      updates.profile_data={...(c.profile_data||{}),relatives:merged};
+      updates.profile_data={...(updates.profile_data||c.profile_data||{}),relatives:merged};
     }
     if(Object.keys(updates).length){updates.updated_at=new Date().toISOString();const{error:e}=await supabaseClient.from('candidates').update(updates).eq('id',candidateId);if(e)conflicts.push('Не вдалося зберегти поля кандидата: '+e.message)}
     if(Object.keys(pfUpdates).length){pfUpdates.candidate_id=candidateId;pfUpdates.updated_at=new Date().toISOString();const{error:e}=await supabaseClient.from('personal_files').upsert(pfUpdates,{onConflict:'candidate_id'});if(e)conflicts.push('Не вдалося зберегти поля особової справи: '+e.message)}
