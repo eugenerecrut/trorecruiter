@@ -11,7 +11,11 @@ Deno.serve(async(req:Request)=>{
  try{
   const token=(req.headers.get('Authorization')||'').replace(/^Bearer\s+/i,'');
   const user=await admin.auth.getUser(token);if(user.error||!user.data.user)return respond({error:'Увійдіть повторно'},401);
-  const staff=await admin.from('crm_staff').select('active,role').eq('user_id',user.data.user.id).single();
+  const publicKey=Deno.env.get('SUPABASE_ANON_KEY')||Deno.env.get('SUPABASE_PUBLISHABLE_KEY');
+  if(!publicKey)return respond({error:'Не налаштовано перевірку доступу CRM'},500);
+  const session=createClient(Deno.env.get('SUPABASE_URL')!,publicKey,{global:{headers:{Authorization:'Bearer '+token}},auth:{persistSession:false}});
+  const staff=await session.from('crm_staff').select('active,role').eq('user_id',user.data.user.id).maybeSingle();
+  if(staff.error){console.error('ARCHIVE_STAFF_LOOKUP_FAILED',staff.error.code,staff.error.message);return respond({error:'Не вдалося перевірити доступ працівника CRM'},500);}
   if(staff.error||!staff.data?.active||!['owner','lead','recruiter'].includes(staff.data.role))return respond({error:'Доступ лише активним працівникам CRM'},403);
   const body=await req.json();candidateId=body.candidate_id;
   if(!/^[0-9a-f-]{36}$/i.test(candidateId||'')||body.confirm_delete_originals!==true)return respond({error:'Потрібне підтвердження видалення оригіналів'},400);
