@@ -163,7 +163,7 @@ let planningRecruiter='all';
 async function showPlanning(id=null){
  const content=document.querySelector('.content');CRMWorkspace.markMenu('planning');
  const result=await supabaseClient.from('candidates').select('*').order('created_at',{ascending:false});if(result.error)throw result.error;
- const candidates=(result.data||[]).filter(c=>!isArchived(c)&&!wf(c).outcome);
+ const candidates=(result.data||[]).filter(c=>!isArchived(c));
  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Рух справи</h1><p class="page-subtitle">Планування</p></div></div>';
  if(id){
   const c=candidates.find(c=>c.id===id);if(!c)throw Error('Кандидат відсутній у поточному списку.');CRMWorkspace.setContext(c.id,c.name_nominative||c.full_name);
@@ -179,7 +179,7 @@ async function showPlanning(id=null){
  const render=()=>{
   const q=content.querySelector('[data-planning-search]').value.trim().toLocaleLowerCase('uk-UA');
   content.querySelector('[data-planning-list]').innerHTML=candidates.filter(c=>(planningRecruiter==='all'||(planningRecruiter==='unassigned'?!c.responsible_recruiter_id:c.responsible_recruiter_id===planningRecruiter))&&String(c.name_nominative||c.full_name).toLocaleLowerCase('uk-UA').includes(q)).map(c=>{
-   const w=wf(c);return '<button type="button" class="crm-planning-row" data-planning-id="'+esc(c.id)+'"><strong>'+esc(c.name_nominative||c.full_name)+'</strong><span>'+esc(CRMCandidateConditions.isUnit(c)?'Оформлює ВЧ':stage(c))+(w.paused?' · На паузі':'')+'</span><small>'+esc([w.next_action,w.next_contact_date||w.exams_date].filter(Boolean).join(' · '))+'</small></button>';
+   const w=wf(c);return '<button type="button" class="crm-planning-row" data-planning-id="'+esc(c.id)+'"><strong>'+esc(c.name_nominative||c.full_name)+'</strong><span>'+esc(w.outcome?(w.outcome+' · Архівування не завершено'):(CRMCandidateConditions.isUnit(c)?'Оформлює ВЧ':stage(c)))+(w.paused?' · На паузі':'')+'</span><small>'+esc([w.next_action,w.next_contact_date||w.exams_date].filter(Boolean).join(' · '))+'</small></button>';
   }).join('')||'<p class="muted">Кандидатів не знайдено.</p>';
  };render();content.querySelector('[data-planning-search]').oninput=render;filter.onchange=()=>{planningRecruiter=filter.value;render()};
  content.querySelector('[data-planning-list]').onclick=e=>{const id=e.target.closest('[data-planning-id]')?.dataset.planningId;if(id)crmNavigate('planning',id)};
