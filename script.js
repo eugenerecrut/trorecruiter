@@ -599,8 +599,9 @@ function fillCandidateForm(parsed) {
 function flattenAIExtraction(extracted) {
   if (!extracted || typeof extracted !== 'object') return null;
 
-  const personal = extracted.personal || {};
-  const service = extracted.service || {};
+  extracted = CRMDocumentSync.flatten(extracted);
+  const personal = extracted;
+  const service = extracted;
   const meta = extracted.meta || {};
 
   return {
@@ -785,6 +786,7 @@ async function saveCandidateFromRecommendation(event) {
     sex: ['male', 'female'].includes(String(fd.get('sex') || '')) ? String(fd.get('sex')) : null,
     rnokpp: String(fd.get('rnokpp') || '').trim() || null,
     military_rank: String(fd.get('military_rank') || '').trim() || null,
+    military_specialty: String(fd.get('military_specialty') || '').trim() || null,
     military_status: null,
     civilian_profession: String(fd.get('civilian_profession') || '').trim() || null,
     desired_position: String(fd.get('desired_position') || '').trim() || null,
@@ -792,7 +794,7 @@ async function saveCandidateFromRecommendation(event) {
     tcc: String(fd.get('tcc') || '').trim() || null,
     vlk_status: String(fd.get('vlk_status') || '').trim() || null,
     notes: String(fd.get('notes') || '').trim() || null,
-    profile_data: { service_type: CRMCard13.service({}, {service_type:fd.get('service_type')}, {}), case_mode: fd.get('case_mode') === 'unit' ? 'unit' : 'full', military_unit: String(fd.get('military_unit') || '').trim() || null, candidate_source: pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення' },
+    profile_data: { ...Object.fromEntries(['shpk','tariff_grade','recruiter_name','desired_unit','recommender_unit','signatory'].map(k=>[k,String(fd.get(k)||'').trim()||null])), relatives: fd.get('case_mode') !== 'unit' && typeof form.__pskReadRelatives==='function' ? form.__pskReadRelatives() : [], service_type: CRMCard13.service({}, {service_type:fd.get('service_type')}, {}), case_mode: fd.get('case_mode') === 'unit' ? 'unit' : 'full', military_unit: String(fd.get('military_unit') || '').trim() || null, candidate_source: pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення' },
     recruitment_status: 'Новий',
     recruiter_id: user.id
   };
@@ -856,7 +858,7 @@ async function saveCandidateFromRecommendation(event) {
     if (!uploadResult.ok) {
       status.textContent = 'Особову справу створено. Рекомендаційний лист не зберігся: ' + uploadResult.reason;
     } else {
-      status.textContent = 'Готово: кандидат, особова справа та рекомендаційний лист збережені.';
+      status.textContent = 'Готово: кандидат, особова справа та рекомендаційний лист збережені.' + (uploadResult.syncWarning ? ' Перенесення AI: '+uploadResult.syncWarning : '');
     }
   } else {
     status.textContent = 'Кандидата та особову справу створено.';

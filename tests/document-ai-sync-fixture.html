@@ -1,0 +1,13 @@
+<!doctype html><html lang="uk"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI sync regression fixture</title>
+<style>body{font:14px Arial;margin:24px}button{padding:9px 12px}dialog{width:min(1100px,90vw);border:1px solid #ccd4d9;border-radius:8px}td,th{border:1px solid #ddd;padding:6px;text-align:left;max-width:320px;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}</style>
+<h1>Перевірка синхронізації AI — тестові дані</h1><p id="result" role="status">Тестове сховище. Запитів до Supabase немає.</p><button id="preview">Перевірити синхронізацію</button><button id="reload">Перечитати картку</button><pre id="card"></pre>
+<script src="../document-ai-sync.js"></script><script>
+const c={id:'test',full_name:'ТЕСТЕНКО Іван Петрович',profile_data:{service_type:'За мобілізацією'}};
+const d={id:'test-doc',candidate_id:c.id,document_type:'Рекомендаційний лист',file_name:'test.pdf',ai_extracted:{personal:{full_name:c.full_name},service:{military_specialty:'225256А',shpk:'сола aT в',tariff_grade:2,recruiter_name:'Сергій ТЕСТЕНКО',service_type:'за контрактом'}}};
+let writes=0;
+const client={from(table){return {select(){return this},eq(){return this},async single(){return {data:structuredClone(table==='documents'?d:c)}}}},async rpc(name,args){
+for(const s of args.selections){if(['sync_guard','sync_conflict'].includes(s.target))continue;const dest=s.target==='candidate'?c:c.profile_data;if(JSON.stringify(dest[s.key]??null)!==JSON.stringify(s.expected_current))return {error:{message:'Поле змінилося'}};}
+for(const s of args.selections){if(s.target==='sync_guard')continue;if(s.target==='sync_conflict'){d.ai_warnings=[...new Set([...(d.ai_warnings||[]),'[CRM AI sync] '+s.incoming])];continue;}const dest=s.target==='candidate'?c:c.profile_data;dest[s.key]=structuredClone(s.incoming);}writes++;return {error:null};}};
+function render(){document.querySelector('#card').textContent=JSON.stringify(c,null,2);document.querySelector('#result').textContent='Записів: '+writes+'; вид служби: '+c.profile_data.service_type+'; ШПК: '+(c.profile_data.shpk||'не перенесено');}
+document.querySelector('#preview').onclick=()=>CRMDocumentSync.showPreview(client,d.id);document.querySelector('#reload').onclick=render;render();
+</script></html>

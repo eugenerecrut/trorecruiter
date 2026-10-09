@@ -38,7 +38,7 @@ function documentDisplayState(d,aiEnabled=true){
 function documentFileHtml(d,r,allDocs,esc=docEscape){
   const verified=d.verification_status==='Підтверджено';
   const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
-  const actions=CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
+  const actions=CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
   if(!verified)return '<div class="crm-document-file">'+info+actions+'</div>';
   const detailId='doc-details-'+d.id;
   return '<details class="crm-document-file crm-document-verified"><summary class="crm-document-summary">'+info+'</summary><div class="crm-document-details" id="'+esc(detailId)+'">'+actions+'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></div></details>';
@@ -97,6 +97,7 @@ async function showDocuments(id){
     if(b.dataset.docReplace){const d=allDocs.find(d=>d.id===b.dataset.docReplace);return makeDocumentInput(id,d.requirement_id||'',d.id)}
     if(b.hasAttribute('data-doc-add'))return openAddDocumentModal(id,b.dataset.docAdd);
     if(b.dataset.docOpen)return openDocument(b.dataset.docOpen);
+    if(b.dataset.docSync)return CRMDocumentSync.showPreview(supabaseClient,b.dataset.docSync).catch(error=>alert(error.message));
     if(b.dataset.docData)return reviewDocumentData(b.dataset.docData).catch(error=>alert(error.message));
     b.disabled=true;CRMWorkspace.busy=true;
     try{
@@ -209,14 +210,14 @@ const safeName=Date.now()+'_'+Math.random().toString(36).slice(2,10)+ext;
 const path=forcedCandidateId+'/incoming/'+safeName;
 const upload=await supabaseClient.storage.from(DOC_BUCKET).upload(path,file,{upsert:false,contentType:mime||'application/octet-stream'});if(upload.error)throw new Error('Завантаження: '+upload.error.message);
 const baseDocument={replaces_document_id:replacementId||null,candidate_id:forcedCandidateId,requirement_id:forced?.id||null,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:aiEnabled?'AI обробка':'Завантажено',ai_warnings:[]};
-const{data:document,error:documentError}=await supabaseClient.from('documents').insert(baseDocument).select('id').single();
-if(documentError||!document?.id){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація документа: '+(documentError?.message||'не створено запис'))}
+const{data:storedDocument,error:documentError}=await supabaseClient.from('documents').insert(baseDocument).select('id').single();
+if(documentError||!storedDocument?.id){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація документа: '+(documentError?.message||'не створено запис'))}
 if(!aiEnabled)return{file:file.name,type:tempType,confidence:0,warnings:[],skipped:true};
 let documentText='';try{if(mime==='application/pdf'||/\.pdf$/i.test(name)){documentText=await extractPdfText(file);if(!documentText||documentText.length<100){const images=await pdfToImages(file,10),parts=[];for(let i=0;i<images.length;i++){const s=document.getElementById('docUploadStatus');if(s)s.textContent='OCR сторінки '+(i+1)+' із '+images.length+': '+file.name;const pt=await runOcr(images[i]);if(pt)parts.push(pt)}documentText=parts.join('\n\n').trim()}}else if(mime==='image/jpeg'||mime==='image/png'||/\.(jpe?g|png)$/i.test(name)){documentText=await runOcr(file)}}catch(e){console.warn('OCR не вдався:',e)}
 let ai=null;
-try{ai=await classifyStoredDocument(document.id,path,file.name,documentText)}catch(e){await supabaseClient.from('documents').update({processing_status:'AI помилка',notes:e.message}).eq('id',document.id);throw new Error('Файл збережено. Розпізнавання не завершено: '+e.message)}
+try{ai=await classifyStoredDocument(storedDocument.id,path,file.name,documentText)}catch(e){await supabaseClient.from('documents').update({processing_status:'AI помилка',notes:e.message}).eq('id',storedDocument.id);throw new Error('Файл збережено. Розпізнавання не завершено: '+e.message)}
 const extracted=ai?.extracted||{},aiType=ai?.document_type||tempType,matchedReq=forced||reqs.find(r=>r.document_type===aiType),matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
-const{error:updateError}=await supabaseClient.from('documents').update({requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,status:'Завантажено',verification_status:ai?.review_required?'Потребує перевірки':'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,notes:ai?.review_required?`AI REVIEW REQUIRED model=${ai.model||''}`:ai?.model?`AI OK model=${ai.model}`:'AI OK'}).eq('id',document.id);if(updateError)throw new Error('Оновлення документа: '+updateError.message);return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
+const{error:updateError}=await supabaseClient.from('documents').update({requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,status:'Завантажено',verification_status:ai?.review_required?'Потребує перевірки':'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,notes:ai?.review_required?`AI REVIEW REQUIRED model=${ai.model||''}`:ai?.model?`AI OK model=${ai.model}`:'AI OK'}).eq('id',storedDocument.id);if(updateError)throw new Error('Оновлення документа: '+updateError.message);try{const report=await CRMDocumentSync.sync(supabaseClient,storedDocument.id);const conflicts=report.rows.filter(r=>r.action==='conflict');if(conflicts.length)warnings.push('Синхронізація: '+conflicts.length+' конфлікт(ів); збережені значення залишено.')}catch(err){warnings.push('AI розпізнано, але перенесення не виконано: '+err.message)}return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
 }
 async function uploadSelectedDocuments(){
   const modal=document.getElementById('documentModal');if(!modal||CRMWorkspace.busy)return;
@@ -255,7 +256,7 @@ if(req?.ai_enabled===false)return alert('Для цього документа р
 const{data,error}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:id}});
 if(error){alert('Не вдалося повторити AI: '+error.message);return}
 if(!data?.ok&&!data?.extracted){alert(data?.error||'AI не повернув структуровані дані');return}
-alert('Повторне AI-розпізнавання завершено. Перевірте контейнер і виберіть поля для перенесення.');
+try{const report=await CRMDocumentSync.sync(supabaseClient,id);alert('Повторне AI завершено. Порожні поля перенесено; конфліктів: '+report.rows.filter(r=>r.action==='conflict').length)}catch(err){alert('AI завершено, але синхронізація не виконана: '+err.message)}
 if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id)
 }
 async function openDocument(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();if(error||data?.deleted_at||!data?.storage_path){alert('Документ не знайдено.');return}const{data:signed,error:se}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(data.storage_path,300);if(se||!signed?.signedUrl){alert('Не вдалося відкрити документ: '+(se?.message||'невідома помилка'));return}window.open(signed.signedUrl,'_blank','noopener,noreferrer')}
@@ -269,7 +270,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 // Review the existing document container; never infer values that AI did not return.
 async function reviewDocumentData(id){
   const {data:d,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();
-  if(error)throw error;if(d.deleted_at)throw new Error('Документ видалено. Спочатку відновіть його.');
+  if(error)throw error;if(CRMDocumentSync.plan(d,{profile_data:{}}).supported)return CRMDocumentSync.showPreview(supabaseClient,id);if(d.deleted_at)throw new Error('Документ видалено. Спочатку відновіть його.');
   const [cr,pr]=await Promise.all([supabaseClient.from('candidates').select('*').eq('id',d.candidate_id).single(),supabaseClient.from('personal_files').select('*').eq('candidate_id',d.candidate_id).maybeSingle()]);
   if(cr.error)throw cr.error;if(pr.error)throw pr.error;
   await CRMResponsibility.ready();
