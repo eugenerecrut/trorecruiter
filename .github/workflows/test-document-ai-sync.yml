@@ -1,0 +1,25 @@
+name: Document AI synchronization regression
+on:
+  pull_request:
+  push:
+    branches: [main, codex/ai-document-sync]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Run synchronization and existing CRM regressions
+        run: |
+          node --test tests/crm-document-ai-sync.cjs
+          node tests/crm-audit.cjs
+          node tests/crm-interface.cjs
+          node tests/crm-card-v3.cjs
+          node tests/crm-mobilization.cjs
+          node tests/crm-education-summary.cjs
+          node tests/crm-education-fields.cjs
+          node tests/crm-archive-path.cjs

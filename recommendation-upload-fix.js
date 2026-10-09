@@ -30,9 +30,11 @@
     });
   }
   function flattenAIExtraction(extracted) {
-    const p = extracted?.personal || {};
-    const s = extracted?.service || {};
-    const n = extracted?.name_cases || {};
+    extracted = window.CRMDocumentSync.flatten(extracted);
+    const p = extracted;
+    const s = extracted;
+    const n = {...(extracted?.name_cases || {})};
+    for(const key of ['nominative','genitive','dative','accusative','instrumental','locative','vocative'])n[key]=n[key]||extracted['name_'+key];
     return {
       full_name: p.full_name || '', birth_date: p.birth_date || '', phone: p.phone || '', address: p.address || '',
       rnokpp: p.rnokpp || '', military_rank: p.military_rank || '', tcc: p.tcc || '', civilian_profession: p.civilian_profession || '',
@@ -83,7 +85,9 @@
     const data = await invokeAI(body);
     if (!data?.extracted) throw new Error(data?.error || 'AI не повернув структурованих даних.');
     recognizedFile=file;recognizedResponse=structuredClone(data);
-    return flattenAIExtraction(data.extracted);
+    const flat=flattenAIExtraction(data.extracted);
+    for(const k of ['full_name','military_specialty','shpk','tariff_grade','military_rank','recruiter_name','signatory','desired_position'])if(!window.CRMDocumentSync.valid(k,flat[k])){flat.warnings.push('Некоректне OCR-значення '+k+': '+flat[k]);flat[k]='';}
+    return flat;
   };
   window.uploadRecommendation = async function (candidateId, user) {
     const client = getSupabaseClient(); const file = getRecommendationFile();
@@ -95,9 +99,11 @@
     if (uploadError) return { ok:false, reason:`Storage: ${uploadError.message}` };
     const { data:req,error:reqError } = await client.from('document_requirements').select('id').eq('document_type','Копія рекомендаційного листа').eq('active',true).limit(1).maybeSingle();
     if (reqError) { await client.storage.from('candidate-documents').remove([storagePath]); return { ok:false, reason:`Вимога документа: ${reqError.message}` }; }
-    const { error:docError } = await client.from('documents').insert({candidate_id:candidateId,requirement_id:req?.id||null,document_type:'Рекомендаційний лист',document_name:'Рекомендаційний лист',storage_path:storagePath,file_name:file.name,file_size:file.size,mime_type:file.type||'application/pdf',uploaded_by:user?.id||null,status:'Завантажено',processing_status:recognizedFile===file&&recognizedResponse?'AI оброблено':'Завантажено',verification_status:'Не перевірено',...(recognizedFile===file&&recognizedResponse?{ai_raw_response:recognizedResponse,ai_extracted:recognizedResponse.extracted,ai_model:recognizedResponse.model||null,ai_processed_at:new Date().toISOString(),ai_document_type:'Рекомендаційний лист',ai_warnings:recognizedResponse.warnings||[],ai_confidence:recognizedResponse.confidence??null}:{})});
+    const { data:savedDocument, error:docError } = await client.from('documents').insert({candidate_id:candidateId,requirement_id:req?.id||null,document_type:'Рекомендаційний лист',document_name:'Рекомендаційний лист',storage_path:storagePath,file_name:file.name,file_size:file.size,mime_type:file.type||'application/pdf',uploaded_by:user?.id||null,status:'Завантажено',processing_status:recognizedFile===file&&recognizedResponse?'AI оброблено':'Завантажено',verification_status:'Не перевірено',...(recognizedFile===file&&recognizedResponse?{ai_raw_response:recognizedResponse,ai_extracted:recognizedResponse.extracted,ai_model:recognizedResponse.model||null,ai_processed_at:new Date().toISOString(),ai_document_type:'Рекомендаційний лист',ai_warnings:recognizedResponse.warnings||[],ai_confidence:recognizedResponse.confidence??null}:{})}).select('id').single();
     if (docError) { await client.storage.from('candidate-documents').remove([storagePath]); return { ok:false, reason:`Реєстр документів: ${docError.message}` }; }
-    return { ok:true, storagePath, verified:false };
+    let syncWarning='';
+    if(recognizedFile===file&&recognizedResponse)try{await CRMDocumentSync.sync(client,savedDocument.id)}catch(err){syncWarning=err.message}
+    return { ok:true, storagePath, verified:false, syncWarning };
   };
 
   console.info('PSK recommendation upload + AI extraction fix v8 loaded');
