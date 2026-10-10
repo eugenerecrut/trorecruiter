@@ -99,7 +99,8 @@ function candidateDocumentLines(c,reqs){
  const excluded=/^(?:Заява на контракт|Згода на обробку даних(?: для психологічного тестування)?|Картка соціально-психологічного вивчення|Анкета на контракт|Розписка кандидата на військову службу за контрактом|Характеристика|Додаток 13\b|Сертифікат психологічного тестування)/iu;
  return reqs.map(r=>CRMCandidateConditions.forCandidate(r,c)).filter(r=>requirementCondition(r,c)!==false&&!finalType(r.document_type)&&!['Титульний аркуш','Послужний список','Перелік документів'].includes(r.document_type)&&!excluded.test(String(r.document_type||'').trim())).map(r=>{
   const note=String(r.condition_note||'').trim(),internal=/AI|OCR|розпізнаван|розпізнає|збереження файла|контейнер|лише завантаження|підтвердження|картк[ау] кандидата/iu.test(note);
-  return (r.is_required?'□ ':'□ За наявності: ')+r.document_type+(!internal&&note?' — '+note:'')+(requirementCondition(r,c)===null?' — уточніть у рекрутера':'');
+  const title=String(r.document_type||'').trim(),copyTitle=/^копі[яї](?:\s|$)/iu.test(title)?title:'Копія: '+title;
+  return (r.is_required?'□ ':'□ За наявності: ')+copyTitle+(!internal&&note?' — '+note:'')+(requirementCondition(r,c)===null?' — уточніть у рекрутера':'');
  });
 }
 async function mount(c,root){
