@@ -95,12 +95,21 @@ function preview(title,lines,options={}){
  return d;
 }
 // Candidate handout only: internal CRM requirements and collected files remain unchanged.
+function candidateHandoutCondition(r,c){
+ const type=String(r.document_type||''),p=profile(c);
+ const key=/трудов|трудову діяльність/iu.test(type)?'worked_before':/військового квитка|посвідчення офіцера|проходження.*служб|витягу? з наказу|нагород|УБД/iu.test(type)?'served_before':null;
+ if(!key)return requirementCondition(r,c);
+ const value=c[key]??p[key];
+ if(value===false||value==='false')return false;
+ if(value===true||value==='true')return requirementCondition(r,c);
+ return null;
+}
 function candidateDocumentLines(c,reqs){
  const excluded=/^(?:Заява на контракт|Згода на обробку даних(?: для психологічного тестування)?|Картка соціально-психологічного вивчення|Анкета на контракт|Розписка кандидата на військову службу за контрактом|Характеристика|Додаток 13\b|Сертифікат психологічного тестування)/iu;
- return reqs.map(r=>CRMCandidateConditions.forCandidate(r,c)).filter(r=>requirementCondition(r,c)!==false&&!finalType(r.document_type)&&!['Титульний аркуш','Послужний список','Перелік документів'].includes(r.document_type)&&!/рекомендац/iu.test(r.document_type||'')&&!excluded.test(String(r.document_type||'').trim())).sort((a,b)=>Number(/автобіографія.*друкован/iu.test(b.document_type||''))-Number(/автобіографія.*друкован/iu.test(a.document_type||''))).map(r=>{
+ return reqs.map(r=>CRMCandidateConditions.forCandidate(r,c)).filter(r=>candidateHandoutCondition(r,c)!==false&&!finalType(r.document_type)&&!['Титульний аркуш','Послужний список','Перелік документів'].includes(r.document_type)&&!/рекомендац/iu.test(r.document_type||'')&&!excluded.test(String(r.document_type||'').trim())).sort((a,b)=>Number(/автобіографія.*друкован/iu.test(b.document_type||''))-Number(/автобіографія.*друкован/iu.test(a.document_type||''))).map(r=>{
   const note=String(r.condition_note||'').trim(),internal=/AI|OCR|розпізнаван|розпізнає|збереження файла|контейнер|лише завантаження|підтвердження|картк[ау] кандидата/iu.test(note);
   const rawTitle=String(r.document_type||'').trim(),title=/^свідоцтво про народження$/iu.test(rawTitle)?'Свідоцтво про народження / витяг (ДІЯ)':/^довідка з МВС(?:\s|$)/iu.test(rawTitle)?'Довідка з МВС — ПОВНА (про несудимість) / ПОВНИЙ витяг (ДІЯ)':/документи про трудову діяльність/iu.test(rawTitle)?'Документи про трудову діяльність':rawTitle,copyTitle=/^(?:копі[яї](?:\s|$)|фото(?:\s|\d|$))/iu.test(title)?title:'Копія: '+title;
-  return (r.is_required?'□ ':'□ За наявності: ')+copyTitle+(/автобіографія.*друкован/iu.test(title)?' — бажано у форматі Word (.doc/.docx); потребує подальшого доопрацювання рекрутером.':!/документи про трудову діяльність/iu.test(title)&&!internal&&note?' — '+note:'')+(/документи про трудову діяльність/iu.test(title)?' — уточніть у рекрутера / витяг (ДІЯ)':requirementCondition(r,c)===null?' — уточніть у рекрутера':'');
+  return (r.is_required?'□ ':'□ За наявності: ')+copyTitle+(/автобіографія.*друкован/iu.test(title)?' — бажано у форматі Word (.doc/.docx); потребує подальшого доопрацювання рекрутером.':!/документи про трудову діяльність/iu.test(title)&&!internal&&note?' — '+note:'')+(/документи про трудову діяльність/iu.test(title)?' — уточніть у рекрутера / витяг (ДІЯ)':candidateHandoutCondition(r,c)===null?' — уточніть у рекрутера':'');
  });
 }
 async function mount(c,root){
