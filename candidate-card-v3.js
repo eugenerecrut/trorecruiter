@@ -10,8 +10,8 @@
   try { if (localStorage.getItem(key) === 'v3') version = 'v3'; } catch {}
   const tabs = [
     ['main','ОСНОВНЕ',[1,3,4,10,11,12]], ['military','ВІЙСЬКОВЕ',[7,8,9]],
-    ['documents','ДОКУМЕНТИ',[2,14,15]], ['family','РОДИНА',[13]],
-    ['education','ОСВІТА / РОБОТА',[5,6]], ['history','ІСТОРІЯ',[16]]
+    ['family','РОДИНА',[13]], ['education','ОСВІТА / РОБОТА',[5,6]],
+    ['documents','ДОКУМЕНТИ',[2,14,15]], ['history','ІСТОРІЯ',[16]]
   ];
   const advanced = new Set(('name_genitive unzr birth_certificate phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status candidate_source recruiter_name recruitment_notes psychiatric_record_info work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
   const educationFields = {
