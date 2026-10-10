@@ -83,7 +83,25 @@ async function archive(c,progress){
  if(result.data?.state!=='Готово')throw Error(result.data?.error||'Архівування не завершено');
  c.__archived=true;CRMWorkspace.card=null;
 }
-function preview(title,lines){const d=modal(title,'<article class="crm-workflow-print"><h2>'+esc(title)+'</h2>'+lines.map(l=>'<p>'+esc(l).replace(/\n/g,'<br>')+'</p>').join('')+'</article><button type="button" data-print>Друкувати</button>');d.querySelector('[data-print]').onclick=()=>window.print();return d}
+function preview(title,lines,options={}){
+ const d=modal(title,'<article class="crm-workflow-print"><h2>'+esc(title)+'</h2>'+lines.map(l=>'<p>'+esc(l).replace(/\n/g,'<br>')+'</p>').join('')+'</article>'+(options.pdfFileName?'<button type="button" data-pdf>Завантажити PDF</button> ':'')+'<button type="button" data-print>Друкувати</button>');
+ d.setAttribute('aria-label',title);d.querySelector(':scope > h2')?.remove();d.querySelector('[data-print]').onclick=()=>window.print();
+ const pdfButton=d.querySelector('[data-pdf]');
+ if(pdfButton)pdfButton.onclick=async()=>{
+  pdfButton.disabled=true;
+  try{const blob=await textPDF(title,lines),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=options.pdfFileName;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+  catch(error){alert('Не вдалося сформувати PDF: '+error.message)}finally{pdfButton.disabled=false;}
+ };
+ return d;
+}
+// Candidate handout only: internal CRM requirements and collected files remain unchanged.
+function candidateDocumentLines(c,reqs){
+ const excluded=/^(?:Заява на контракт|Згода на обробку даних(?: для психологічного тестування)?|Картка соціально-психологічного вивчення|Анкета на контракт|Розписка кандидата на військову службу за контрактом|Характеристика|Додаток 13\b|Сертифікат психологічного тестування)/iu;
+ return reqs.map(r=>CRMCandidateConditions.forCandidate(r,c)).filter(r=>requirementCondition(r,c)!==false&&!finalType(r.document_type)&&!['Титульний аркуш','Послужний список','Перелік документів'].includes(r.document_type)&&!excluded.test(String(r.document_type||'').trim())).map(r=>{
+  const note=String(r.condition_note||'').trim(),internal=/AI|OCR|розпізнаван|розпізнає|збереження файла|контейнер|лише завантаження|підтвердження|картк[ау] кандидата/iu.test(note);
+  return (r.is_required?'□ ':'□ За наявності: ')+r.document_type+(!internal&&note?' — '+note:'')+(requirementCondition(r,c)===null?' — уточніть у рекрутера':'');
+ });
+}
 async function mount(c,root){
  const host=root.querySelector('[data-workflow]');if(!host)return;
  let reqs=await getDocumentRequirements(),docs=latest(await getCandidateDocuments(c.id));
@@ -106,7 +124,7 @@ async function mount(c,root){
  host.querySelector('[data-progress-form]').onsubmit=e=>{e.preventDefault();run(async()=>{if(wf(c).outcome)throw Error('Роботу зі справою вже завершено.');const f=new FormData(e.target),paused=f.has('paused'),additional=f.has('additional_exams'),s=unit?null:String(f.get('stage'));if(paused&&(!f.get('pause_reason')||!String(f.get('next_action')||'').trim()))throw Error('Вкажіть причину паузи та наступну дію.');if(additional&&(!String(f.get('exams_details')||'').trim()||!f.get('exams_date')))throw Error('Вкажіть додаткові обстеження та контрольну дату.');if(additional&&s!=='ВЛК')throw Error('Додаткові обстеження позначаються на етапі ВЛК.');if(s==='Направлений до ВЧ'){docs=latest(await getCandidateDocuments(c.id));const needed=missing(c,reqs,docs,true);if(needed.length)throw Error('Спочатку перевірте документи: '+needed.join(', '));if(!docs.some(d=>d.document_type==='Припис про направлення'&&d.verification_status==='Підтверджено')||!docs.some(d=>d.document_type==='Реєстр кандидата'&&d.verification_status==='Підтверджено'))throw Error('Додайте та перевірте припис і реєстр кандидата.')}await persist(c,{stage:s,paused,pause_reason:paused?String(f.get('pause_reason')):null,next_action:paused?String(f.get('next_action')).trim():null,next_contact_date:paused?f.get('next_contact_date')||null:null,additional_exams:additional,exams_details:additional?String(f.get('exams_details')).trim():null,exams_date:additional?f.get('exams_date'):null});workflowState.dirty=false;await refresh()},true)};
  host.querySelector('[data-info]')?.addEventListener('click',()=>crmNavigate('information',c.id));
  host.querySelector('[data-card13]')?.addEventListener('click',()=>CRMCard13.open(c));
- host.querySelector('[data-list]')?.addEventListener('click',async()=>{if(!await CRMWorkspace.guard())return;const lines=reqs.map(r=>CRMCandidateConditions.forCandidate(r,c)).filter(r=>requirementCondition(r,c)!==false&&!finalType(r.document_type)&&!['Титульний аркуш','Послужний список','Перелік документів'].includes(r.document_type)).map(r=>(r.is_required?'□ ':'□ За наявності: ')+r.document_type+(r.condition_note?' — '+r.condition_note:'')+(requirementCondition(r,c)===null?' — умову потрібно уточнити':''));const d=preview('Список документів — '+(c.name_nominative||c.full_name),lines);const b=document.createElement('button');b.textContent='Список надано — кандидат в роботі';d.querySelector('.crm-actions').prepend(b);b.onclick=()=>{d.close();d.remove();run(async()=>{await persist(c,{stage:'В роботі',documents_list_given_at:new Date().toISOString()});if(!c.__archived)await refresh()})}});
+ host.querySelector('[data-list]')?.addEventListener('click',async()=>{if(!await CRMWorkspace.guard())return;const lines=candidateDocumentLines(c,reqs),candidateName=c.name_nominative||c.full_name;const d=preview('Список документів — '+candidateName,lines,{pdfFileName:'Список документів — '+String(candidateName||'Кандидат').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.pdf'});const b=document.createElement('button');b.textContent='Список надано — кандидат в роботі';d.querySelector('.crm-actions').prepend(b);b.onclick=()=>{d.close();d.remove();run(async()=>{await persist(c,{stage:'В роботі',documents_list_given_at:new Date().toISOString()});if(!c.__archived)await refresh()})}});
  const generate=(selector,title,lines)=>host.querySelector(selector)?.addEventListener('click',()=>run(async()=>{await generated(c,title,lines,reqs);docs=latest(await getCandidateDocuments(c.id))}));
  const name=c.name_nominative||c.full_name,p=profile(c);
  const anketaFileName='Анкета_'+String(name||'Кандидат').replace(/[<>:\x22\/\\|?*\x00-\x1f]/g,'_').trim().replace(/[. ]+$/g,'')+'.pdf';
