@@ -76,7 +76,7 @@
     if(!empty(e.rnokpp)&&!empty(candidate.rnokpp)&&String(e.rnokpp)!==String(candidate.rnokpp))ownerIssue='РНОКПП іншої особи';
     if(!empty(e.birth_date)&&!empty(candidate.birth_date)&&String(e.birth_date)!==String(candidate.birth_date))ownerIssue='Дата народження іншої особи';
     const strongMatch=valid('rnokpp',e.rnokpp)&&!empty(e.rnokpp)&&String(e.rnokpp)===String(candidate.rnokpp);
-    if(!ownerIssue&&!empty(e.full_name)&&!equal(e.full_name,candidate.full_name)&&!strongMatch)ownerIssue='ПІБ не збігається: звірте власника документа';
+    if(!ownerIssue&&!empty(e.full_name)&&!equal(e.full_name,candidate.full_name)&&!window.CRMNameHistory?.matches(e.full_name,candidate)&&!strongMatch)ownerIssue='ПІБ не збігається: звірте власника документа';
     if(!strongMatch&&empty(e.full_name))ownerIssue='Не визначено власника документа';
     const warnings=[...(Array.isArray(document.ai_warnings)?document.ai_warnings:[]),...(Array.isArray(e.meta?.warnings)?e.meta.warnings:[])].filter(w=>!String(w).startsWith('[CRM AI sync]')).join(' ');
     if(/інш(?:а|ої|у|ого|ий|е).{0,60}(особ|кандидат|ПІБ)|згаду.{0,80}(особ|ПІБ)|different (?:person|candidate|name)|another (?:person|candidate)/i.test(warnings))ownerIssue='У документі згадано іншу особу: потрібна ручна перевірка';

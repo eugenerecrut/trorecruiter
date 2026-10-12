@@ -8,7 +8,7 @@ function ownerMatches(r,c){
 const a=norm(r.owner_full_name),b=norm(c.name_nominative||c.full_name);
 if(!a||!b)return false;
 if(r.owner_birth_date&&c.birth_date&&r.owner_birth_date!==c.birth_date)return false;
-if(a===b)return true;
+if(a===b||window.CRMNameHistory?.matches(r.owner_full_name,c))return true;
 const words=a.split(' '),other=b.split(' ');
 return words.length>=2&&words.every(w=>other.includes(w))&&!!r.owner_birth_date&&r.owner_birth_date===c.birth_date;
 }

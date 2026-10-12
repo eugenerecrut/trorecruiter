@@ -165,7 +165,7 @@
           input('Громадянство','citizenship',c.citizenship || profile.citizenship || 'Україна')+
           input('РНОКПП','rnokpp',c.rnokpp)+
           input('УНЗР','unzr',profile.unzr)+
-          input('Серія та № свідоцтва про народження','birth_certificate',profile.birth_certificate)+
+          input('Серія та № свідоцтва про народження','birth_certificate',profile.birth_certificate)+CRMNameHistory.editor(c)+
           select('Сімейний стан','marital_status',maritalStatus, [['','Не визначено'],...((sex==='female'?['Одружена','Розлучена','Не одружена']:sex==='male'?['Одружений','Розлучений','Не одружений']:['Одружений','Одружена','Розлучений','Розлучена','Не одружений','Не одружена']).map(x=>[x,x]))])+
           select('Діти','has_children',boolValue(c.has_children ?? profile.has_children),[['','Не визначено'],['true','Є діти'],['false','Не має дітей']])+ 
           input('Кількість дітей','children_count',c.children_count??'','number')+textarea('Інформація про дітей','children_info',pf.children_info || profile.children_info,'cc-wide')
@@ -234,6 +234,7 @@
     };
     const updateManagement=()=>{const field=formForNavigation.querySelector('[name=organizational_skills]')?.closest('.cc-field');if(field)field.hidden=formForNavigation.querySelector('[name=has_management_experience]')?.value!=='true';};
     formForNavigation.querySelector('[name=has_management_experience]')?.addEventListener('change',updateManagement);updateManagement();
+    formForNavigation.querySelectorAll('[data-name-source]').forEach(b=>b.onclick=()=>openDocument(b.dataset.nameSource));
     const updateWorkVisibility=()=>{formForNavigation.querySelector('[data-work-editor]').hidden=formForNavigation.querySelector('[name="worked_before"]').value==='false';};
     formForNavigation.addEventListener('change',updateWorkVisibility);updateWorkVisibility();
     const fullGroups=[
@@ -367,6 +368,7 @@
       }).filter(r => r.full_name||r.relationship);
       if(!unit&&savedRelatives.some(r=>r.deceased!==false&&r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
       if(!unit)oldProfile.relatives = savedRelatives;
+      CRMNameHistory.save(fd,c,oldProfile);
       const existingWork=Array.isArray(oldProfile.work_records)?oldProfile.work_records:[];
       const workRows=[...form.querySelectorAll('[data-work-row]')].map(row=>{
         const get=k=>row.querySelector('[name="work_'+k+'"]')?.value?.trim()||null;
