@@ -157,8 +157,8 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     modal.addEventListener('cancel',e=>{e.preventDefault();if(!CRMWorkspace.busy)modal.querySelector('#closeDocModal').click()});
     upload.onclick=uploadSelectedDocuments;
     modal.querySelector('#docModalCamera').onclick=()=>scanIntoDocumentModal(modal);
-    modal.showModal();
-  }).catch(e=>{modal.remove();alert(e.message)});
+    if(modal.isConnected&&!modal.open)modal.showModal();
+  }).catch(e=>{if(!modal.isConnected)return;modal.remove();alert(e.message)});
 }
 function openAddDocumentModal(id,reqId=''){activeDocumentsCandidateId=id;makeDocumentInput(id,reqId)}
 function scanIntoDocumentModal(modal){
