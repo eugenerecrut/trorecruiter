@@ -111,7 +111,7 @@ window.CRMWorkspace = {
       ['ПІБ',c.name_nominative||c.full_name],['Дата народження',c.birth_date?c.birth_date.split('-').reverse().join('.'):null],['Місце народження',c.birth_place||pf.birth_place||p.birth_place],
       ['Освіта',education],['Трудовий стаж',work||((c.worked_before===false||c.worked_before==='false')?'Не працював / не працювала.':'')],
       ['Військова служба',service],
-      ['Відомості про мотивацію',p.motivation],
+      ['Відомості про мотивацію',String(p.motivation||'').trim()||'Фінансова зацікавленість'],
       ...(p.recruitment_notes?[['Додаткові відомості',p.recruitment_notes]]:[]),
       ['Відомості про судимість',criminal],['Відомості про психіатричний облік',String(p.psychiatric_record_info||'').trim()||'На обліку не перебуває'],
       ...((p.has_management_experience===true||p.has_management_experience==='true')?[['Організаторські здібності',p.organizational_skills]]:[])
