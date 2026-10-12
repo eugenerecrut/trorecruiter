@@ -6,7 +6,7 @@ const present=v=>v!==null&&v!==undefined&&v!=='';
 function review(e,c,p={},documentId){
  const issues=[],fields={},records=(Array.isArray(p.work_records)?p.work_records:[]).map(r=>({...r}));
  const owner=e.full_name||e.name_nominative;
- if(!owner||norm(owner)!==norm(c.name_nominative||c.full_name)||(e.birth_date&&c.birth_date&&e.birth_date!==c.birth_date)||(e.rnokpp&&c.rnokpp&&e.rnokpp!==c.rnokpp))return {blocked:true,issues:['Власника військового документа не звірено.'],fields,records,accepted:0};
+ if(!owner||!CRMNameHistory.matches(owner,c)||(e.birth_date&&c.birth_date&&e.birth_date!==c.birth_date)||(e.rnokpp&&c.rnokpp&&e.rnokpp!==c.rnokpp))return {blocked:true,issues:['Власника військового документа не звірено.'],fields,records,accepted:0};
  const evidence=e.field_evidence||e.meta?.field_evidence||{};
  const safe=k=>!evidence[k]?.requires_review&&!['low','unreadable'].includes(evidence[k]?.legibility);
  for(const k of ['military_document_number','military_document_type','military_registration_date','military_registration_category','military_registration_status','military_training_status'])if(present(e[k])&&safe(k))fields[k]=e[k];

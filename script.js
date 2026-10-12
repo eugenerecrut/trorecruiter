@@ -106,7 +106,7 @@ function showCandidates() {
     const filtered = candidates.filter(c => {
       const text = [
         c.full_name, c.phone, c.email, c.desired_position, c.direction,
-        c.military_rank, c.rnokpp, c.tcc
+        c.military_rank, c.rnokpp, c.tcc, ...(window.CRMNameHistory?.records(c)||[]).map(r=>r.previous_full_name)
       ].join(' ').toLowerCase();
 
       return (!q || text.includes(q)) &&
