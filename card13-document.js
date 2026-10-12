@@ -16,7 +16,9 @@
     pdf.registerFontkit(window.fontkit);
     const font = await pdf.embedFont(await bytes('templates/fonts/Tinos-Regular.ttf'), { subset: true });
     const form = pdf.getForm();
-    for (const [key, value] of Object.entries(values)) {
+    const filled={...values,military_unit:[String(values.military_unit||'').trim(),String(values.residence||'').trim()].filter(Boolean).join('    ')};
+    for (const [key, value] of Object.entries(filled)) {
+      if(['phone','vlk_referral_number','residence'].includes(key))continue;
       const field = form.getTextField(key), rect = field.acroField.getWidgets()[0].getRectangle();
       let size = 10.5;
       const lines = String(value).split('\n');
@@ -27,6 +29,12 @@
       field.setText(String(value)); field.setFontSize(size);
     }
     form.updateFieldAppearances(font);
+    const first=pdf.getPages()[0];
+    for(const [text,x,width] of [[values.phone,285,130],[values.vlk_referral_number?'№ '+values.vlk_referral_number+' / ВЛК':'',425,130]]){
+      if(!text)continue;let size=10.5;while(size>7&&font.widthOfTextAtSize(String(text),size)>width)size-=.5;
+      if(font.widthOfTextAtSize(String(text),size)>width)throw Error('Телефон або номер направлення задовгий.');
+      first.drawText(String(text),{x,y:820,size,font});
+    }
     if (photo) {
       const r = await fetch(photo); if (!r.ok) throw Error('Не вдалося прочитати фото.');
       const data = await r.arrayBuffer();
@@ -53,6 +61,9 @@
       const rl = current.filter(d => /рекомендац/i.test(d.document_type || '')).sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
       const e = parse(rl?.ai_extracted), personal = e.personal || {}, s = e.service || {};
       const values = {
+        phone: c.phone || '',
+        vlk_referral_number: '',
+        residence: pf.address || c.address || p.registered_address || '',
         category: (c.sex || p.sex) === 'male' ? 'Військовозобов’язаного' : (c.sex || p.sex) === 'female' ? 'Військовозобов’язаної' : '',
         name_identifier: [c.name_nominative || c.full_name || '', c.rnokpp ? 'РНОКПП: ' + c.rnokpp : ''].filter(Boolean).join('\n'),
         birth_date: /^\d{4}-\d{2}-\d{2}$/.test(c.birth_date || '') ? c.birth_date.split('-').reverse().join('.') : '',
@@ -60,7 +71,7 @@
         military_unit: e.military_unit || s.military_unit || '',
         military_service: service(c,p,pf)
       };
-      const labels = { category:'Категорія', name_identifier:'ПІБ та РНОКПП · із CRM', birth_date:'Дата народження · із CRM', military_rank:'Військове звання · із РЛ', military_unit:'Військова частина · із РЛ', military_service:'Вид служби · із картки' };
+      const labels = { phone:'Телефон · із CRM', vlk_referral_number:'Номер направлення на ВЛК · вручну', residence:'Місце проживання · після ВЧ у PDF', category:'Категорія', name_identifier:'ПІБ та РНОКПП · із CRM', birth_date:'Дата народження · із CRM', military_rank:'Військове звання · із РЛ', military_unit:'Військова частина · із РЛ', military_service:'Вид служби · із картки' };
       const d = document.createElement('dialog'); d.className = 'crm-dialog crm-workflow-dialog';
       d.innerHTML = '<h2>Картка 13</h2><p>КНП «МКЛ № 6» ДМР. Дві окремі сторінки А4. Медичні дані та підписи порожні.</p><form class="crm-workflow-grid">' + Object.entries(values).map(([k,v]) => '<label>'+esc(labels[k])+(k==='name_identifier'?'<textarea rows="2" name="'+k+'">'+esc(v)+'</textarea>':k==='military_service'?'<select name="'+k+'">'+['','За контрактом','За мобілізацією'].map(x=>'<option '+(x===v?'selected':'')+'>'+esc(x)+'</option>').join('')+'</select>':'<input name="'+k+'" value="'+esc(v)+'">')+'</label>').join('')+'<p data-photo-status>Завантажуємо фото з CRM…</p><p data-status role="status"></p><button type="submit">Сформувати PDF</button></form><iframe title="Картка 13 PDF" hidden style="width:100%;height:55vh"></iframe><a data-download hidden>Завантажити PDF</a><div class="crm-actions"><button data-close>Закрити</button></div>';
       document.body.append(d); d.showModal();
