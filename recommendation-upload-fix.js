@@ -74,7 +74,7 @@
   }
   let recognizedFile=null,recognizedResponse=null;
   window.aiExtractRecommendation = async function (text) {
-    const file = getRecommendationFile();
+    const file = await CRMUploadPDF.prepare(getRecommendationFile());
     const body = { text: String(text || '') };
     if (file) {
       if (file.size > 11000000) throw new Error('Файл завеликий для AI-виборки. Використайте PDF до 11 МБ.');
@@ -90,7 +90,8 @@
     return flat;
   };
   window.uploadRecommendation = async function (candidateId, user) {
-    const client = getSupabaseClient(); const file = getRecommendationFile();
+    const client = getSupabaseClient(); let file;
+    try { file = await CRMUploadPDF.prepare(getRecommendationFile()); } catch(error) { return { ok:false, reason:error.message }; }
     if (!client) return { ok:false, reason:'Supabase-клієнт CRM не ініціалізовано' };
     if (!candidateId) return { ok:false, reason:'Не визначено кандидата' };
     if (!file) return { ok:false, reason:'Файл рекомендаційного листа не вибрано' };

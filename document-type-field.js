@@ -69,6 +69,8 @@
     // Repair the exact failure found in the clean test: the candidate was created,
     // but the selected recommendation file never reached Storage.
     if (!file && selectedFile) {
+      try { selectedFile = await CRMUploadPDF.prepare(selectedFile); }
+      catch (error) { return { ok: false, reason: error.message }; }
       const safeName = `${Date.now()}_${String(selectedFile.name || 'recommendation').replace(/[^a-zA-Z0-9а-яА-ЯіїєґІЇЄҐ._-]/g, '_')}`;
       storagePath = `${candidateId}/recommendation/${safeName}`;
       const { error: uploadError } = await supabaseClient.storage
