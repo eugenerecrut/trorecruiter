@@ -133,6 +133,7 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
   const modal=document.createElement('dialog');modal.id='documentModal';modal.className='crm-dialog';modal.dataset.candidateId=id;modal.dataset.replacementId=replacementId;
   document.body.append(modal);
   return Promise.all([getDocumentRequirements(),supabaseClient.from('candidates').select('*').eq('id',id).single()]).then(([allReqs,cr])=>{
+    if(!modal.isConnected)return;
     if(cr.error)throw cr.error;
     const reqs=allReqs.filter(r=>requirementCondition(r,cr.data)!==false);
     const options='<option value="">Оберіть тип документа</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
