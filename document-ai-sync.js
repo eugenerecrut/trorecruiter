@@ -86,6 +86,7 @@
       const legacy=p.form_data?.[key]??(key==='military_specialty'?p[key]:null);
       const protectedValue=!empty(current)?current:legacy;
       let action='leave',reason='';
+      if(birth&&key==='full_name'&&!ownerIssue&&!empty(value)&&root.CRMNameHistory?.matches(value,candidate)&&!equal(value,candidate.full_name)){add(target,key,value,'leave','ПІБ при народженні підтверджене історією зміни; чинне ПІБ збережено',current);return;}
       if(!empty(value)){
         if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
         else if(!valid(key,value)){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
@@ -136,7 +137,7 @@
     const report=await preview(client,id),dialog=document.createElement('dialog');dialog.className='crm-ai-container';
     const esc=v=>String(typeof v==='object'?JSON.stringify(v):v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const labels={fill:'Заповнити',leave:'Залишити',conflict:'Конфлікт'};
-    dialog.innerHTML='<h3>Перевірка синхронізації</h3><p>'+esc(report.candidate.full_name)+' · '+esc(report.document.file_name)+'</p><div style="overflow:auto;max-height:60vh"><table><thead><tr><th>Поле</th><th>У CRM</th><th>AI</th><th>Дія</th></tr></thead><tbody>'+report.rows.map(r=>'<tr><td>'+esc(r.target+'.'+r.key)+'</td><td>'+esc(r.current)+'</td><td>'+esc(r.incoming)+'</td><td>'+labels[r.action]+'<br>'+esc(r.reason)+'</td></tr>').join('')+'</tbody></table></div><p role="status">Конфлікти залишаються без змін.</p><button type="button" data-apply>Заповнити лише порожні поля ('+report.selections.length+')</button> <button type="button" data-close>Закрити</button>';
+    dialog.innerHTML='<h3>Перевірка синхронізації</h3><p>'+esc(report.candidate.full_name)+' · '+esc(report.document.file_name)+'</p>'+((root.CRMNameHistory?.chain(report.candidate).links||[]).length?'<p>Підтверджена послідовність ПІБ: '+esc(root.CRMNameHistory.chain(report.candidate).links.map(r=>r.previous_full_name+' → '+r.new_full_name).join('; '))+'</p>':'')+'<div style="overflow:auto;max-height:60vh"><table><thead><tr><th>Поле</th><th>У CRM</th><th>AI</th><th>Дія</th></tr></thead><tbody>'+report.rows.map(r=>'<tr><td>'+esc(r.target+'.'+r.key)+'</td><td>'+esc(r.current)+'</td><td>'+esc(r.incoming)+'</td><td>'+labels[r.action]+'<br>'+esc(r.reason)+'</td></tr>').join('')+'</tbody></table></div><p role="status">Конфлікти залишаються без змін.</p><button type="button" data-apply>Заповнити лише порожні поля ('+report.selections.length+')</button> <button type="button" data-close>Закрити</button>';
     document.body.append(dialog);dialog.showModal();const close=()=>{dialog.close();dialog.remove();};dialog.querySelector('[data-close]').onclick=close;dialog.addEventListener('cancel',ev=>{ev.preventDefault();if(!dialog.dataset.busy)close();});
     dialog.querySelector('[data-apply]').disabled=!report.selections.length;
     dialog.querySelector('[data-apply]').onclick=async()=>{
