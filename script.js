@@ -171,7 +171,7 @@ function showNewCandidateForm() {
         <div style="width:42px;height:42px;border-radius:11px;background:#e8f2cc;color:#5d741f;display:grid;place-items:center;font-weight:900;font-size:18px">1</div>
         <div>
           <h3 style="margin:0 0 5px;font-size:17px">Завантаження рекомендаційного листа</h3>
-          <div style="color:#7d8a93;font-size:12px">PDF, JPG, JPEG або PNG. Оригінал після створення справи збережеться у захищеному сховищі.</div>
+          <div style="color:#7d8a93;font-size:12px">PDF, JPG, JPEG або PNG. JPG/JPEG автоматично перетворюються на PDF та зберігаються у захищеному сховищі.</div>
         </div>
       </div>
 
@@ -651,6 +651,8 @@ async function handleRecommendationFile(file) {
   if (status) status.textContent = 'Аналізуємо документ...';
 
   try {
+    pendingRecommendationFile = await CRMUploadPDF.prepare(file);
+    if (selected && pendingRecommendationFile !== file) selected.textContent = `Обрано: ${file.name} → ${pendingRecommendationFile.name} • ${Math.round(pendingRecommendationFile.size / 1024)} КБ`;
     let text = '';
 
     if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
@@ -730,6 +732,7 @@ function safeFileName(name) {
 
 async function uploadRecommendation(candidateId, user) {
   if (!pendingRecommendationFile) return { ok: false, reason: 'Файл не вибрано' };
+  try { pendingRecommendationFile = await CRMUploadPDF.prepare(pendingRecommendationFile); } catch(error) { return { ok:false, reason:error.message }; }
 
   const safeName = `${Date.now()}_${safeFileName(pendingRecommendationFile.name)}`;
   const storagePath = `${candidateId}/recommendation/${safeName}`;

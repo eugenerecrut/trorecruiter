@@ -24,13 +24,13 @@ Deno.serve(async req=>{
     if(newer.error)throw newer.error;if(newer.data?.length)return json({error:'Архівну версію не можна розпізнавати повторно'},409);
     const {data:s,error:se}=await sb.storage.from('candidate-documents').createSignedUrl(doc.storage_path,600);
     if(se||!s?.signedUrl)throw new Error('Не вдалося відкрити оригінал');
-    const r=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-classify-document`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':authorization,'apikey':key},body:JSON.stringify({file_url:s.signedUrl,file_name:doc.file_name,text:''})});
+    const r=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-classify-document`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':authorization,'apikey':key},body:JSON.stringify({file_url:s.signedUrl,file_name:doc.file_name,mime_type:doc.mime_type,text:''})});
     const raw=await r.text();let result:any;
     try{result=JSON.parse(raw)}catch{result={error:'AI повернув неструктуровану відповідь',http_status:r.status,raw_text:raw}}
     if(!r.ok||result.error){
       const update=await sb.from('documents').update({processing_status:'AI помилка',notes:String(result.error||'Помилка AI'),ai_raw_response:result,ai_model:result.model||null,ai_processed_at:new Date().toISOString()}).eq('id',id).select('id');
       if(update.error)throw update.error;if(!update.data?.length)throw new Error('Результат не збережено');
-      return json({error:result.error||'Помилка AI'},502);
+      return json({error:result.error||'Помилка AI',provider_errors:Array.isArray(result.provider_errors)?result.provider_errors:[]},502);
     }
     const ex=structuredClone(result.extracted||{});
     if(/рнокпп|іпн|ідентифікаційн(?:ий|ого)\s*(?:код|номер)|платника\s*податків|податков(?:ий|ого)\s*номер/iu.test(String(result.document_type||doc.document_type)))ex.passport_data=null;

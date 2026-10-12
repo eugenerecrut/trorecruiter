@@ -137,7 +137,7 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     if(cr.error)throw cr.error;
     const reqs=allReqs.filter(r=>requirementCondition(r,cr.data)!==false);
     const options='<option value="">Оберіть тип документа</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
-    modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · виберіть тип для кожного файла до обробки.</p><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
+    modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · виберіть тип для кожного файла до обробки.</p><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><small class="muted">JPG/JPEG автоматично перетворюються на PDF перед завантаженням. Один знімок — один PDF, зі збереженням пропорцій.</small><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
     if(replacementId)modal.querySelector('#docFileInput').removeAttribute('multiple');
     const input=modal.querySelector('#docFileInput'),rootType=modal.querySelector('#docRequirement'),plan=modal.querySelector('#docFilePlan'),upload=modal.querySelector('#docUploadButton');
     const render=()=>{
@@ -184,11 +184,26 @@ async function openCameraDocument(id,reqId=''){
   if(modal?.dataset.candidateId===id)scanIntoDocumentModal(modal);
 }
 
+async function documentAIError(error){
+let payload=null;
+try{const response=error?.context;if(response&&typeof response.json==='function')payload=await (typeof response.clone==='function'?response.clone():response).json()}catch(_){}
+const base=String(payload?.error||payload?.message||error?.message||'Помилка AI');
+const providers=Array.isArray(payload?.provider_errors)?payload.provider_errors:[];
+if(!providers.length)return base;
+return base+'\n'+providers.map(p=>{
+const provider=String(p.provider||'AI'),detail=String(p.detail||'');
+let reason=detail.slice(0,350)||'Помилка сервісу';
+if(/credit_balance_exhausted|no credits remaining|insufficient credits/i.test(detail))reason='Закінчилися кредити API. Поповніть баланс сервісу.';
+else if(/quota exceeded|exceeded.*quota/i.test(detail))reason='Досягнуто ліміту запитів. Спробуйте після поновлення ліміту.';
+else if(/не вдалося розібрати JSON|прочитати JSON|некоректний JSON/i.test(detail))reason='Сервіс повернув некоректну структуровану відповідь. Спробуйте повторне AI.';
+return provider+': '+reason;
+}).join('\n');
+}
 async function classifyStoredDocument(documentId,path,fileName,extractedText=''){
 if(!documentId)throw new Error('Не передано ID документа для AI');
 const doc={id:documentId};
 const{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:doc.id}});
-if(aiError)throw new Error(aiError.message||'Помилка AI');
+if(aiError)throw new Error(await documentAIError(aiError));
 if(!ai?.ok&&!ai?.extracted)throw new Error(ai?.error||'AI не повернув структуровані дані');
 return ai
 }
@@ -202,6 +217,8 @@ if(type.includes('паспорт'))return'passport';
 return null;
 }
 async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId,replacementId=null){
+if(CRMUploadPDF.isJPEG(file)){const status=document.getElementById('docUploadStatus');if(status)status.textContent='Перетворення JPEG у PDF: '+file.name;}
+file=await CRMUploadPDF.prepare(file);
 const name=String(file.name||'').toLowerCase(),mime=String(file.type||'').toLowerCase();
 const ok=mime==='application/pdf'||mime==='image/jpeg'||mime==='image/png'||mime==='application/msword'||mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||/\.(pdf|jpe?g|png|docx?)$/i.test(name);if(!ok)throw new Error('Підтримуються PDF, JPG, JPEG, PNG, DOC та DOCX');if(file.size>DOC_MAX_SIZE)throw new Error('Файл більший за 20 МБ');
 const reqs=await getDocumentRequirements(),forced=reqs.find(r=>r.id===requirementId),tempType=forced?.document_type||'Обробка AI';
@@ -255,7 +272,7 @@ if(documentError||!doc?.candidate_id){alert('Не вдалося визначи�
 const reqs=await getDocumentRequirements(),req=reqs.find(r=>r.id===doc.requirement_id||r.document_type===doc.document_type);
 if(req?.ai_enabled===false)return alert('Для цього документа розпізнавання не передбачене.');
 const{data,error}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:id}});
-if(error){alert('Не вдалося повторити AI: '+error.message);return}
+if(error){alert('Не вдалося повторити AI: '+await documentAIError(error));if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id);return}
 if(!data?.ok&&!data?.extracted){alert(data?.error||'AI не повернув структуровані дані');return}
 try{const report=await CRMDocumentSync.sync(supabaseClient,id);alert('Повторне AI завершено. Порожні поля перенесено; конфліктів: '+report.rows.filter(r=>r.action==='conflict').length)}catch(err){alert('AI завершено, але синхронізація не виконана: '+err.message)}
 if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id)
