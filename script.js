@@ -28,7 +28,10 @@ async function getCount(table) {
     if(result.error)throw result.error;
     return CRMResponsibility.latest(result.data||[]).length;
   }
-  const {count,error}=await supabaseClient.from(table).select('*',{count:'exact',head:true});
+  let query=supabaseClient.from(table).select('*',{count:'exact',head:true});
+  if(table==='candidates')query=query.is('profile_data->>merged_into',null);
+  if(table==='personal_files'){const ids=(await getCandidates()).map(c=>c.id);if(!ids.length)return 0;query=query.in('candidate_id',ids);}
+  const {count,error}=await query;
   if(error)throw error;
   return count||0;
 }
@@ -49,7 +52,7 @@ async function getCandidates() {
     .order('created_at', { ascending: false });
 
   if(error)throw error;
-  return data || [];
+  return (data || []).filter(c=>{try{const p=typeof c.profile_data==='string'?JSON.parse(c.profile_data):c.profile_data||{};return !p.merged_into}catch{return true}});
 }
 
 function showCandidates() {
@@ -98,6 +101,7 @@ function showCandidates() {
     const candidates = await getCandidates();
     await CRMResponsibility.ready();
     if(!content.querySelector('#candidateSearch'))return;
+    CRMCandidateDuplicates.mount(candidates,content);
     const q = content.querySelector('#candidateSearch').value.trim().toLowerCase();
     const status = content.querySelector('#candidateStatus').value;
     const rf=content.querySelector('#candidateRecruiter'),recruiter=rf.value;
@@ -769,6 +773,10 @@ async function saveCandidateFromRecommendation(event) {
 
   const form = event.target;
   const status = document.getElementById('saveStatus');
+  if(form.dataset.saving==='true')return;
+  form.dataset.saving='true';
+  const submitButtons=[...form.querySelectorAll('[type=submit]')],disabled=submitButtons.map(b=>b.disabled);submitButtons.forEach(b=>b.disabled=true);
+  try {
   const user = await getCurrentUser();
 
   if (!user) {
@@ -804,6 +812,19 @@ async function saveCandidateFromRecommendation(event) {
     return;
   }
 
+  const existing=CRMCandidateDuplicates.matching(candidate,await getCandidates());
+  if(existing.length||form.dataset.savedCandidateId){
+    const choice=form.dataset.savedCandidateId?{action:'attach',id:form.dataset.savedCandidateId}:await CRMCandidateDuplicates.choose(existing,!!pendingRecommendationFile);
+    if(form.dataset.savedCandidateId){const repair=await supabaseClient.from('personal_files').upsert({candidate_id:choice.id,address:String(fd.get('address')||'').trim()||null},{onConflict:'candidate_id',ignoreDuplicates:true});if(repair.error)throw repair.error;}
+    if(choice.action==='cancel')return;
+    if(choice.action==='open'){await crmNavigate('card',choice.id);return choice.id;}
+    if(pendingRecommendationFile){
+      status.textContent='Додаємо РЛ до наявної справи…';
+      const result=await uploadRecommendation(choice.id,user);
+      if(!result.ok){status.textContent='РЛ не збережено: '+result.reason;return;}
+    }
+    await updateDashboard();await crmNavigate('card',choice.id);return choice.id;
+  }
   status.textContent = 'Створюємо кандидата та особову справу...';
 
   const { data, error } = await supabaseClient
@@ -814,10 +835,11 @@ async function saveCandidateFromRecommendation(event) {
 
   if (error) {
     console.error(error);
-    status.textContent = 'Помилка збереження кандидата: ' + error.message;
+    status.textContent = error.code==='23505'?'Кандидат уже створений у іншій вкладці. Повторіть збереження, щоб відкрити наявну справу.':'Помилка збереження кандидата: ' + error.message;
     return;
   }
 
+  form.dataset.savedCandidateId=data.id;
   const serviceInfo = [
     ['Військова частина', fd.get('military_unit')],
     ['Підрозділ', fd.get('desired_unit')],
@@ -871,6 +893,8 @@ async function saveCandidateFromRecommendation(event) {
     if(form.isConnected)crmNavigate('card',data.id);
   }, 1100);
   return data.id;
+  } catch(error){status.textContent='Не вдалося зберегти: '+error.message;}
+  finally{delete form.dataset.saving;submitButtons.forEach((b,i)=>{if(b.isConnected)b.disabled=disabled[i];});}
 }
 
 function setupMenu() {

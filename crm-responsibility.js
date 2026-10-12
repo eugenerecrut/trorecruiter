@@ -35,7 +35,8 @@
   }
   async function history(id){
     await ready();
-    const r=await supabaseClient.from('crm_activity').select('*').eq('candidate_id',id).order('occurred_at',{ascending:false});if(r.error)throw r.error;
+    const cr=await supabaseClient.from('candidates').select('profile_data').eq('id',id).single();if(cr.error)throw cr.error;let p=cr.data.profile_data||{};if(typeof p==='string')p=JSON.parse(p);const related=[id,...(p.merged_cases||[]).map(m=>m.source_id||m.source_candidate?.id).filter(Boolean)];
+    const r=await supabaseClient.from('crm_activity').select('*').in('candidate_id',related).order('occurred_at',{ascending:false});if(r.error)throw r.error;
     const documents=await supabaseClient.from('documents').select('id,file_name,document_type').eq('candidate_id',id);if(documents.error)throw documents.error;
     const lookup=new Map((documents.data||[]).map(d=>[d.id,d.file_name||d.document_type]));
     const actions={recruiter_assigned:'Зміна відповідального рекрутера',document_uploaded:'Завантажено документ',document_replaced:'Завантажено нову версію',document_verified:'Змінено перевірку документа',document_deleted:'Документ видалено',document_restored:'Документ відновлено',candidates_update:'Змінено картку кандидата',personal_files_update:'Змінено особову справу',documents_update:'Оновлено документ',candidates_insert:'Створено кандидата',personal_files_insert:'Створено особову справу',documents_delete:'Документ видалено',personal_files_delete:'Особову справу видалено',candidates_delete:'Кандидата видалено'};
@@ -49,5 +50,5 @@
     dialog('Історія справи','<p>Хто, коли та які відомості змінив. Найновіші дії — зверху.</p>'+ (articles||'<p>Дій у цій справі ще немає.</p>'));
   }
   function bindHistory(root){root.addEventListener('click',e=>{const id=e.target.closest('[data-ai-history]')?.dataset.aiHistory;if(id)aiHistory(id).catch(e=>alert(e.message))})}
-  window.CRMResponsibility={ready,name,date,canDelete:()=>staff.some(s=>s.user_id===user?.id&&s.active&&['owner','lead','recruiter'].includes(s.role)),control,bind,mountCard,latest,documentInfo,bindHistory,aiHistory,history,options,get userId(){return user?.id}};
+  window.CRMResponsibility={ready,name,date,canMerge:()=>staff.some(s=>s.user_id===user?.id&&s.active&&['owner','lead'].includes(s.role)),canDelete:()=>staff.some(s=>s.user_id===user?.id&&s.active&&['owner','lead','recruiter'].includes(s.role)),control,bind,mountCard,latest,documentInfo,bindHistory,aiHistory,history,options,get userId(){return user?.id}};
 })();

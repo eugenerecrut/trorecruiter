@@ -192,7 +192,7 @@ let planningRecruiter='all';
 async function showPlanning(id=null){
  const content=document.querySelector('.content');CRMWorkspace.markMenu('planning');
  const result=await supabaseClient.from('candidates').select('*').order('created_at',{ascending:false});if(result.error)throw result.error;
- const candidates=(result.data||[]).filter(c=>!isArchived(c));
+ const candidates=(result.data||[]).filter(c=>!isArchived(c)&&!profile(c).merged_into);
  content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Рух справи</h1><p class="page-subtitle">Планування</p></div></div>';
  if(id){
   const c=candidates.find(c=>c.id===id);if(!c)throw Error('Кандидат відсутній у поточному списку.');CRMWorkspace.setContext(c.id,c.name_nominative||c.full_name);

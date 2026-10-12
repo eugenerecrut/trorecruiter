@@ -126,6 +126,7 @@
     const pf = pr.data || {};
     let profile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
     if (typeof c.profile_data === 'string') { try { profile = JSON.parse(c.profile_data); } catch (_) {} }
+    if(profile.merged_into)return renderCard(profile.merged_into);
     const recommendation=CRMResponsibility.latest(dr.data||[]).filter(d=>/рекомендац/iu.test(d.document_type||'')).at(-1);
     let recommendationData=recommendation?.ai_extracted||{};
     if(typeof recommendationData==='string'){try{recommendationData=JSON.parse(recommendationData)}catch{recommendationData={}}}
