@@ -87,6 +87,6 @@ begin
     end loop;
   end if;
   perform set_config('crm.source_document_id','',true);
-end $function$
+end $function$;
 
 INSERT INTO public.document_requirements(document_type,is_required,applies_to,condition_note,sort_order,active,ai_enabled) SELECT 'Свідоцтво про зміну імені / прізвища',false,'all','За наявності зміни ПІБ.',115,true,true WHERE NOT EXISTS (SELECT 1 FROM public.document_requirements WHERE document_type='Свідоцтво про зміну імені / прізвища');
