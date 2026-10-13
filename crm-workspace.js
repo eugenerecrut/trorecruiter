@@ -141,10 +141,11 @@ window.CRMWorkspace = {
     let photo=null;try{photo=await this.photo(photoDoc)}catch(e){console.warn('Фото 9×12:',e)}
     if(sequence!==this.sequence||!content.querySelector('#crmInfoPhoto'))return;
     const missing=fields.slice(0,6).filter(([,v])=>!v).map(([k])=>k);
-    if(!photo)missing.push('Фото 9×12');
+    const photoOnPaper=!photo&&!!window.CRMDocumentPresence?.byType('Фото 9×12',c);
+    if(!photo&&!photoOnPaper)missing.push('Фото 9×12');
     const notice=content.querySelector('#crmInfoNotice');
     if(photo){const image=content.querySelector('#crmInfoPhoto');image.src=photo;image.hidden=false}
-    notice.textContent=missing.length?'Перед друком заповніть: '+missing.join(', ')+'.':'Перевірте відомості перед друком. Незаповнені додаткові поля позначені «Не вказано».';
+    notice.textContent=(missing.length?'Перед друком заповніть: '+missing.join(', ')+'.':'Перевірте відомості перед друком. Незаповнені додаткові поля позначені «Не вказано».')+(photoOnPaper?' Фото 9×12 є в наявності без файла: у PDF його не буде.':'');
     content.querySelector('#crmInfoPrint').disabled=missing.length>0;
   }
 };

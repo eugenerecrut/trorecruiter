@@ -29,6 +29,15 @@
   function flatten(before,after,key,path,rows,ctx,depth=0){
     if(hidden.has(key)||same(before,after)||(empty(before)&&empty(after))||depth>12)return;
     before=unpack(before);after=unpack(after);
+    if(key==='document_presence'){
+      const a=before&&typeof before==='object'?before:{},b=after&&typeof after==='object'?after:{};
+      for(const id of new Set([...Object.keys(a),...Object.keys(b)])){
+        if(same(a[id],b[id]))continue;
+        const e=b[id]||a[id];
+        rows.push({label:'Наявність документа · '+(e?.document_type||'Документ'),before:a[id]?.available?'Є в наявності, перевірений, без файла':'Не позначено',after:b[id]?.available?'Є в наявності, перевірений, без файла':'Позначку знято'});
+      }
+      return;
+    }
     const title=labels[key]||'Інші відомості',label=path?path+' · '+title:title;
     if(Array.isArray(before)||Array.isArray(after)){
       const a=Array.isArray(before)?before:[],b=Array.isArray(after)?after:[];
