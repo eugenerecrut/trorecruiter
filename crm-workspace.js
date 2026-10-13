@@ -91,7 +91,7 @@ window.CRMWorkspace = {
     const served=servedValue===true||servedValue==='true';
     const noService=servedValue===false||servedValue==='false';
     const sex=c.sex||p.sex;
-    const service=served?(pf.military_service_history||pf.military_experience||p.military_service_history||''):noService?(sex==='male'?'Військову службу не проходив.':sex==='female'?'Військову службу не проходила.':'Немає попередньої військової служби.'):'';
+    const service=served?(pf.military_service_history||pf.military_experience||p.military_service_history||window.CRMDocumentPolicy?.serviceSummary(p.work_records)||''):noService?(sex==='male'?'Військову службу не проходив.':sex==='female'?'Військову службу не проходила.':'Немає попередньої військової служби.'):'';
     const settlement=r=>r.locality||r.city||String(r.address||'').match(/(?:^|[,;])\s*((?:місто\s+|м\.\s*|село\s+|с\.\s*|смт\s+)[^,;]+)/i)?.[1]||'';
     const displayDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('.'):value;
     const mother=r=>/^(мати|матір|мать)$/i.test(String(r.relationship||r.relation||'').trim());

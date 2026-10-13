@@ -64,10 +64,17 @@
     return merged;
   }
   function plan(document,candidate){
-    const p=object(candidate.profile_data),e=flatten(document.ai_extracted),rows=[],selections=[];
-    const type=String(document.ai_document_type||document.document_type||'');
-    const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
-    if(!recommendation&&!birth&&!marriage&&!tax)return {document,candidate,rows,selections,supported:false};
+    const policy=root.CRMDocumentPolicy?.normalize(document),p=object(candidate.profile_data),e=flatten(policy?.extracted||document.ai_extracted),rows=[],selections=[];
+    const type=String(policy?.type||document.ai_document_type||document.document_type||'');
+    const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
+    const ancillary=['education','residence','driver','ubd'].includes(policy?.category)||/довідка.*МВС|несудиміст/i.test(type);
+    if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary)return {document,candidate,rows,selections,supported:false};
+    const marriageCheck=marriage?root.CRMDocumentPolicy?.marriage(e,candidate):null;
+    if(marriageCheck&&!marriageCheck.blocked){
+      if(empty(e.full_name))e.full_name=marriageCheck.owner.full_name;
+      if(empty(e.birth_date))e.birth_date=marriageCheck.owner.birth_date;
+      e.relatives=marriageCheck.relatives;
+    }
     const add=(target,key,incoming,action,reason='',current)=>{
       if(current===undefined)current=target==='candidate'?candidate[key]:p[key];
       rows.push({candidate:candidate.full_name,document:document.file_name||document.id,target,key,current:current??null,incoming:incoming??null,action,reason});
@@ -76,11 +83,12 @@
     if(!empty(e.rnokpp)&&!empty(candidate.rnokpp)&&String(e.rnokpp)!==String(candidate.rnokpp))ownerIssue='РНОКПП іншої особи';
     if(!empty(e.birth_date)&&!empty(candidate.birth_date)&&String(e.birth_date)!==String(candidate.birth_date))ownerIssue='Дата народження іншої особи';
     const strongMatch=valid('rnokpp',e.rnokpp)&&!empty(e.rnokpp)&&String(e.rnokpp)===String(candidate.rnokpp);
-    if(!ownerIssue&&!empty(e.full_name)&&!equal(e.full_name,candidate.full_name)&&!window.CRMNameHistory?.matches(e.full_name,candidate)&&!strongMatch)ownerIssue='ПІБ не збігається: звірте власника документа';
+    if(!ownerIssue&&!empty(e.full_name)&&!equal(e.full_name,candidate.full_name)&&!root.CRMNameHistory?.matches(e.full_name,candidate)&&!strongMatch)ownerIssue='ПІБ не збігається: звірте власника документа';
     if(!strongMatch&&empty(e.full_name))ownerIssue='Не визначено власника документа';
     const warnings=[...(Array.isArray(document.ai_warnings)?document.ai_warnings:[]),...(Array.isArray(e.meta?.warnings)?e.meta.warnings:[])].filter(w=>!String(w).startsWith('[CRM AI sync]')).join(' ');
     if(/інш(?:а|ої|у|ого|ий|е).{0,60}(особ|кандидат|ПІБ)|згаду.{0,80}(особ|ПІБ)|different (?:person|candidate|name)|another (?:person|candidate)/i.test(warnings))ownerIssue='У документі згадано іншу особу: потрібна ручна перевірка';
     if(document.deleted_at)ownerIssue='Документ видалено';
+    if(marriageCheck?.blocked)ownerIssue=marriageCheck.issue;
     const propose=(target,key,value)=>{
       const current=target==='candidate'?candidate[key]:p[key];
       const legacy=p.form_data?.[key]??(key==='military_specialty'?p[key]:null);
@@ -89,7 +97,7 @@
       if(birth&&key==='full_name'&&!ownerIssue&&!empty(value)&&root.CRMNameHistory?.matches(value,candidate)&&!equal(value,candidate.full_name)){add(target,key,value,'leave','ПІБ при народженні підтверджене історією зміни; чинне ПІБ збережено',current);return;}
       if(!empty(value)){
         if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
-        else if(!valid(key,value)){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
+        else if(!(['driver_license','ubd_certificate','registration_records','marriage_record'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
         else if(!empty(protectedValue)){action=equal(key==='service_type'?service(protectedValue):protectedValue,value)?'leave':'conflict';reason=action==='conflict'?'Збережене значення має пріоритет':'';}
         else action='fill';
@@ -101,6 +109,7 @@
       if(birth&&!['full_name','birth_date','birth_place'].includes(key))continue;
       if(tax&&!['full_name','birth_date','rnokpp'].includes(key))continue;
       if(marriage&&!['full_name','birth_date','rnokpp'].includes(key))continue;
+      if(ancillary)continue;
       let v=e[key];if(key==='phone'&&!empty(v)&&root.CRMPhone)v=root.CRMPhone.normalize(v);
       propose('candidate',key,v);
     }
@@ -108,7 +117,22 @@
       for(const key of ['shpk','tariff_grade','recruiter_name','military_unit','desired_unit','recommender_unit','signatory','service_type'])propose('profile',key,key==='service_type'&&!empty(e[key])?service(e[key])||e[key]:e[key]);
     }
     if(birth)propose('profile','birth_certificate',e.document_number||e.birth_certificate);
-    if(marriage&&e.relatives.some(r=>['дружина','чоловік'].includes(relation(r.relationship||r.relation))))propose('candidate','marital_status','Одружений');
+    if(marriage&&e.relatives.some(r=>['дружина','чоловік'].includes(relation(r.relationship||r.relation))))propose('candidate','marital_status',candidate.sex==='female'?'Одружена':'Одружений');
+    if(marriage&&!marriageCheck?.blocked&&e.marriage_record)propose('profile','marriage_record',{...e.marriage_record,source_document_id:document.id});
+    if(ancillary){
+      if(policy?.category==='education'){
+        const records=(Array.isArray(e.education_records)?e.education_records:[]).filter(r=>!r.requires_review&&equal(r.owner_full_name,e.full_name)&&(!r.owner_birth_date||!candidate.birth_date||r.owner_birth_date===candidate.birth_date));
+        const qualification=records.map(r=>r.qualification).find(v=>!empty(v));
+        if(qualification)propose('candidate','civilian_profession',/^техніка-електрика$/i.test(qualification)?'Технік-електрик':qualification);
+      }
+      if(policy?.category==='driver'&&e.driver_license_number)propose('profile','driver_license',{number:e.driver_license_number,issue_date:e.driver_license_issue_date||null,expiry_date:e.driver_license_expiry_date||null,categories:e.driver_license_categories||null,source_document_id:document.id});
+      if(policy?.category==='ubd'&&e.document_number)propose('profile','ubd_certificate',{series:e.document_series||null,number:e.document_number,issue_date:e.document_date||null,source_document_id:document.id});
+      if(policy?.category==='residence'){
+        const residence=root.CRMResidence?.review(e,candidate,p);
+        if(residence?.address)propose('profile','registration_records',(e.registration_records||[]).map(r=>({...r,source_document_id:document.id})));
+      }
+      if(/довідка.*МВС|несудиміст/i.test(type)&&e.criminal_record_details)propose('profile','criminal_record_details',e.criminal_record_details);
+    }
     if(e.relatives.length){
       if(ownerIssue)add('profile','relatives',e.relatives,'conflict',ownerIssue);
       else{
