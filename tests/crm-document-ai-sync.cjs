@@ -125,3 +125,11 @@ test('Malformed military rows remain review-only and structured service can rend
  assert.equal(a.extracted.military_service_records[0].requires_review,true);
  assert.equal(policy.serviceSummary([{kind:'military_service',start_date:'2022-08-23',end_date:'2025-03-15',employer:'А0536',position:'Інші посади'}]),'2022-08-23 · 2025-03-15 · А0536 · Інші посади');
 });
+
+test('Document transfer advances candidate and personal file versions to reject stale card saves',()=>{
+ const sql=fs.readFileSync(path.join(root,'supabase/migrations/20261013132000_document_sync_versions.sql'),'utf8');
+ assert(sql.includes("if cp<>'{}' then cp:=cp||jsonb_build_object('updated_at',clock_timestamp());end if;"));
+ assert(sql.includes("fp:=fp||jsonb_build_object('updated_at',clock_timestamp());"));
+ assert(sql.includes('auth.uid()'));assert(sql.includes('expected_current'));assert(sql.includes('expected_ai'));
+ assert(!/security definer|disable.*trigger|alter table/i.test(sql));
+});
