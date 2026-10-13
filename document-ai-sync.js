@@ -66,8 +66,8 @@
   function plan(document,candidate){
     const p=object(candidate.profile_data),e=flatten(document.ai_extracted),rows=[],selections=[];
     const type=String(document.ai_document_type||document.document_type||'');
-    const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type);
-    if(!recommendation&&!birth)return {document,candidate,rows,selections,supported:false};
+    const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
+    if(!recommendation&&!birth&&!marriage&&!tax)return {document,candidate,rows,selections,supported:false};
     const add=(target,key,incoming,action,reason='',current)=>{
       if(current===undefined)current=target==='candidate'?candidate[key]:p[key];
       rows.push({candidate:candidate.full_name,document:document.file_name||document.id,target,key,current:current??null,incoming:incoming??null,action,reason});
@@ -99,6 +99,8 @@
     };
     for(const key of ['full_name','name_nominative','name_genitive','birth_date','birth_place','rnokpp','phone','sex','military_rank','civilian_profession','desired_position','tcc','military_specialty']){
       if(birth&&!['full_name','birth_date','birth_place'].includes(key))continue;
+      if(tax&&!['full_name','birth_date','rnokpp'].includes(key))continue;
+      if(marriage&&!['full_name','birth_date','rnokpp'].includes(key))continue;
       let v=e[key];if(key==='phone'&&!empty(v)&&root.CRMPhone)v=root.CRMPhone.normalize(v);
       propose('candidate',key,v);
     }
@@ -106,6 +108,7 @@
       for(const key of ['shpk','tariff_grade','recruiter_name','military_unit','desired_unit','recommender_unit','signatory','service_type'])propose('profile',key,key==='service_type'&&!empty(e[key])?service(e[key])||e[key]:e[key]);
     }
     if(birth)propose('profile','birth_certificate',e.document_number||e.birth_certificate);
+    if(marriage&&e.relatives.some(r=>['дружина','чоловік'].includes(relation(r.relationship||r.relation))))propose('candidate','marital_status','Одружений');
     if(e.relatives.length){
       if(ownerIssue)add('profile','relatives',e.relatives,'conflict',ownerIssue);
       else{
