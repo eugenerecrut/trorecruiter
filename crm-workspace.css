@@ -86,3 +86,49 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #78
 .crm-planning-list{display:grid;gap:8px;margin-top:14px}.crm-planning-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(150px,.7fr) minmax(150px,1fr);align-items:center;gap:16px;text-align:left;padding:12px 16px;border:1px solid #e0e6e8;border-radius:10px;background:#fff;color:#24313a;cursor:pointer}.crm-planning-row:hover{border-color:#94b345}.crm-planning-row small{color:#71808a}@media(max-width:640px){.crm-planning-row{grid-template-columns:1fr;gap:5px}}
 
 .crm-planning-filters{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}.crm-planning-filters label{display:grid;gap:5px;font-size:12px;font-weight:700}.crm-planning-filters .crm-search{margin:0;min-height:40px;box-sizing:border-box}.crm-planning-filters>input{flex:1;min-width:180px}.crm-planning-filters select{min-width:220px}@media(max-width:640px){.crm-planning-filters label,.crm-planning-filters select{width:100%}}
+
+/* Compact operational dashboard and shared document manager. */
+.crm-dashboard{max-width:1600px;margin:auto}.crm-dashboard .page-title{font-size:25px}
+.crm-dashboard-filters{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,2fr) minmax(160px,1fr);gap:12px;margin:14px 0}
+.crm-dashboard-filters label{display:grid;gap:4px;font-size:12px;font-weight:600}
+.crm-dashboard-filters input,.crm-dashboard-filters select{height:36px;padding:6px 9px;border:1px solid #cfd8dc;border-radius:4px;background:white;min-width:0;width:100%}
+.crm-dashboard-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin:12px 0 16px}
+.crm-dashboard-metric{display:grid;gap:7px;text-align:left;padding:12px;border:1px solid #dce3e6;border-radius:5px;background:#fff;color:#33454c;cursor:pointer}
+.crm-dashboard-metric span{font-size:12px}.crm-dashboard-metric strong{font-size:24px}.crm-dashboard-metric.active{border-color:#467524;background:#f1f6ed}
+.crm-dashboard-table{overflow:auto;border:1px solid #dce3e6;border-radius:5px;background:#fff}
+.crm-dashboard-table table{width:100%;border-collapse:collapse;min-width:850px}
+.crm-dashboard-table th{font-size:11px;color:#6b7980;text-align:left;background:#f8faf9}
+.crm-dashboard-table th,.crm-dashboard-table td{padding:10px;border-bottom:1px solid #edf0f1}
+.crm-dashboard-table td{font-size:12px;vertical-align:top}.crm-dashboard-table small{display:block;font-size:10px;color:#697b84;margin-top:4px}
+.crm-dashboard-table td:nth-child(3){max-width:260px}.crm-dashboard-table td:last-child{white-space:nowrap}
+.crm-dashboard-table button{font-size:11px;padding:6px 8px;border:1px solid #d7e0e3;border-radius:4px;background:#fff;color:#33454c;cursor:pointer;margin-right:4px}
+.crm-dashboard-table .crm-name-link{padding:0;border:0;font-size:12px;font-weight:700;text-align:left;color:#24353e}
+.crm-due-overdue{color:#9d382f!important;font-weight:700}.crm-due-today{color:#467524!important;font-weight:700}
+.crm-dashboard button:focus-visible,.crm-dashboard input:focus-visible,.crm-dashboard select:focus-visible,.crm-planning-row:focus-visible{outline:2px solid #467524;outline-offset:2px}
+.crm-planning-row{grid-template-columns:minmax(180px,1fr) minmax(115px,.7fr) minmax(160px,1.2fr) 90px 120px;padding:10px 12px;border-radius:5px;font-size:12px;gap:10px}
+.crm-planning-filters{gap:9px}.crm-planning-filters select{min-width:140px;height:36px;min-height:36px;border-radius:4px;font-size:12px;padding:6px 8px}
+.crm-doc-manager .page-title{font-size:23px}.crm-doc-manager .card{box-shadow:none;border-radius:5px}
+.crm-doc-manager section.card:has(#docProgress){padding:12px!important;margin-bottom:10px!important}
+.crm-doc-manager #docProgressText{font-size:13px;margin:7px 0}.crm-doc-manager #docBatchStatus{font-size:11px;margin:7px 0}
+.crm-doc-manager .crm-search{margin:8px 0;height:36px;padding:6px 10px}.crm-doc-manager .crm-filter-bar{margin:7px 0}
+.crm-doc-manager th,.crm-doc-manager td{padding:9px 10px;font-size:12px;vertical-align:middle}
+.crm-doc-manager td:first-child{width:40%}.crm-doc-manager td:nth-child(3){width:32%;overflow-wrap:anywhere}
+.crm-doc-manager td:last-child{min-width:150px}.crm-doc-manager .crm-button{padding:6px 9px;border-radius:4px;font-size:12px}
+.crm-doc-manager .crm-document-summary{padding:4px;border-radius:4px}.crm-doc-manager .crm-document-summary small{font-size:11px}
+.crm-presence-summary{margin:0;font-size:11px}.crm-presence-summary>summary{cursor:pointer;list-style:none;padding:4px 0}.crm-presence-summary>small{display:block;margin:5px 0;line-height:1.4}
+.crm-presence-control{font-size:11px;min-height:28px;margin:0 0 4px}
+.crm-package-readiness{margin:8px 0;font-size:12px}.crm-package-readiness p{margin:5px 0}.crm-package-readiness>summary{cursor:pointer;font-weight:600}
+.crm-field-tip{display:inline-flex;position:relative;margin-left:6px;vertical-align:middle}
+.crm-field-tip>button{border:0;background:none;padding:2px 4px;color:#61767d;cursor:help;font-size:13px}
+.crm-field-tip>[role=tooltip]{display:none;position:absolute;z-index:25;top:100%;left:0;width:240px;padding:8px 10px;border-radius:4px;background:#24333b;color:white;font-size:12px;line-height:1.4;font-weight:400}
+.crm-field-tip:hover>[role=tooltip],.crm-field-tip:focus-within>[role=tooltip],.crm-field-tip.is-open>[role=tooltip]{display:block}
+@media(max-width:1100px){.crm-dashboard-metrics{grid-template-columns:repeat(3,1fr)}.crm-planning-row{grid-template-columns:1fr 1fr}.crm-planning-row strong{grid-column:1/-1}}
+@media(max-width:760px){
+ .crm-dashboard-filters{grid-template-columns:1fr 1fr;gap:8px}.crm-dashboard-filters label:nth-child(2){grid-column:1/-1;grid-row:2}
+ .crm-dashboard-filters input,.crm-dashboard-filters select{height:42px}.crm-dashboard-metrics{grid-template-columns:repeat(3,1fr);gap:6px}.crm-dashboard-metric{padding:9px;min-height:70px}.crm-dashboard-metric strong{font-size:21px}
+ .crm-dashboard-table table{min-width:0}.crm-dashboard-table thead{display:none}.crm-dashboard-table tbody,.crm-dashboard-table tr{display:block}.crm-dashboard-table tr{padding:10px;border-bottom:1px solid #dce3e6}.crm-dashboard-table td{display:block;border:0;padding:4px 0;max-width:none!important}.crm-dashboard-table td:nth-child(4)::before{content:'Дата: ';color:#697b84}.crm-dashboard-table td:nth-child(5)::before{content:'Рекрутер: ';color:#697b84}.crm-dashboard-table td:nth-child(6)::before{content:'Комплект: ';color:#697b84}.crm-dashboard-table button{min-height:40px}
+ .crm-doc-manager th,.crm-doc-manager td{padding:9px 7px}.crm-doc-manager td:first-child,.crm-doc-manager td:nth-child(3){width:auto}.crm-presence-control{min-height:40px}.crm-doc-manager .crm-button{min-height:40px}
+ .crm-planning-filters{display:grid;grid-template-columns:1fr 1fr}.crm-planning-filters label,.crm-planning-filters select{width:100%;min-width:0}.crm-planning-filters>input{grid-column:1/-1;min-width:0}.crm-planning-row{grid-template-columns:1fr;gap:5px}
+}
+
+@media(max-width:760px){.crm-doc-manager #docCameraFiles,.crm-doc-manager #docScanFiles{display:none!important}}

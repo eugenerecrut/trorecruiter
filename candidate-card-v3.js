@@ -5,15 +5,16 @@
   if (typeof openV2 !== 'function') return;
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   const parse = v => { if (typeof v === 'string') { try { return JSON.parse(v) || {}; } catch { return {}; } } return v || {}; };
-  const key = 'crm.candidateCard.version';
-  let version = 'v2', opening = false, fieldSequence = 0;
-  try { if (localStorage.getItem(key) === 'v3') version = 'v3'; } catch {}
+  const key = 'crm.candidateCard.version.454';
+  const activeTabs=new Map();
+  let version = 'v3', opening = false, fieldSequence = 0;
+  try { if (localStorage.getItem(key) === 'v2') version = 'v2'; } catch {}
   const tabs = [
-    ['main','ОСНОВНЕ',[1,3,4,10,11,12]], ['military','ВІЙСЬКОВЕ',[7,8,9]],
+    ['main','ОСНОВНЕ',[1,2,3,4,10,11,12]], ['military','ВІЙСЬКОВЕ',[7,8,9]],
     ['family','РОДИНА',[13]], ['education','ОСВІТА / РОБОТА',[5,6]],
-    ['documents','ДОКУМЕНТИ',[2,14,15]], ['history','ІСТОРІЯ',[16]]
+    ['documents','ДОКУМЕНТИ',[14]], ['history','ІСТОРІЯ',[16]]
   ];
-  const advanced = new Set(('name_genitive unzr birth_certificate phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status candidate_source recruiter_name recruitment_notes psychiatric_record_info work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
+  const advanced = new Set(('name_genitive unzr birth_certificate shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status candidate_source recruiter_name recruitment_notes psychiatric_record_info work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
   const educationFields = {
     degree:['Рівень освіти','text'], institution:['Заклад освіти','text'], specialty:['Спеціальність','text'], qualification:['Кваліфікація','text'],
     graduation_year:['Рік закінчення','number'], study_start_date:['Початок навчання','date'], study_end_date:['Завершення навчання','date'],
@@ -132,13 +133,20 @@
     });
     cleanup.observe(root,{childList:true});
     const header = document.createElement('section'); header.className = 'cc-v3-header'; header.setAttribute('aria-label','Кандидат');
-    const syncTop = () => { header.style.top = (document.querySelector('.header')?.getBoundingClientRect().height || 0)+'px'; };
+    const syncTop = () => { header.style.top = (document.querySelector('.header')?.getBoundingClientRect().height || 0)+'px';header.style.setProperty('--v3-sticky-top',header.style.top); };
     syncTop(); window.addEventListener('resize',syncTop);
     header.innerHTML = '<div class="cc-v3-photo"></div><div class="cc-v3-identity"><h1 data-v3-name></h1><a data-v3-phone></a><span data-v3-stage></span></div><div class="cc-v3-context"><span>Бажана посада</span><b data-v3-position></b><span>Військова частина</span><b data-v3-unit></b></div><div class="cc-v3-owner"></div><div class="cc-v3-indicators"></div><div class="cc-v3-tools"></div>';
-    root.querySelector('.dashboard-top').before(header);
+    form.prepend(header);
+    const overview=form.querySelector('[data-card-photo]');
+    const modes=document.createElement('div');modes.className='cc-v3-modes';
+    overview.querySelectorAll('.crm-case-mode').forEach(el=>modes.append(el));header.append(modes);
+    overview.hidden=true;
+    const extra=document.createElement('button');extra.type='button';extra.className='cc-v3-header-toggle';extra.textContent='Деталі';extra.setAttribute('aria-expanded','false');
+    extra.onclick=()=>{const expanded=header.classList.toggle('cc-v3-header-expanded');extra.setAttribute('aria-expanded',String(expanded));extra.textContent=expanded?'Згорнути':'Деталі';};header.querySelector('.cc-v3-identity').append(extra);
     header.querySelector('.cc-v3-photo').append(root.querySelector('.crm-card-photo-slot'));
-    const owner = root.querySelector('.crm-recruiter-field'); if (owner) header.querySelector('.cc-v3-owner').append(owner);
+    const owner = root.querySelector('.crm-recruiter-field'); if (owner) {header.querySelector('.cc-v3-owner').append(owner);owner.addEventListener('change',event=>event.stopPropagation());}
     const tools = root.querySelector('.dashboard-top .quick-actions'); if (tools) header.querySelector('.cc-v3-tools').append(tools);
+    const footer=document.createElement('div');footer.className='cc-v3-header-footer';footer.append(header.querySelector('.cc-v3-indicators'),header.querySelector('.cc-v3-tools'));header.append(footer);
     root.querySelector('.dashboard-top').hidden = true;
     const responsibility = root.querySelector('[data-responsibility]'); if (responsibility) responsibility.hidden = true;
     const history = document.createElement('section'); history.className = 'cc-section'; history.dataset.section = '16';
@@ -146,9 +154,16 @@
     form.querySelector('.cc-actions').before(history);
     const historyButton = root.querySelector('[data-history]'); if (historyButton) history.append(historyButton);
     const nav = document.createElement('nav'); nav.className = 'cc-v3-nav'; nav.setAttribute('aria-label','Вкладки картки'); nav.setAttribute('role','tablist');
-    root.querySelector('#crmCardNav').before(nav); root.querySelector('#crmCardNav').hidden = true;
+    header.after(nav); root.querySelector('#crmCardNav').hidden = true;
     const title = {1:'Персональні дані',2:'Паспорт',3:'Контакти',4:'Адреси',5:'Освіта',6:'Робота',7:'Військова служба',8:'Військовий облік',9:'ВЛК',10:'Рекрутинг',11:'Контракт',12:'Примітки',13:'Рідні та близькі',14:'Документи',15:'Бланки',16:'Історія'};
-    let active = 'main';
+    let active = activeTabs.get(id)||'main';
+    const manager=document.createElement('section');manager.className='cc-v3-document-manager';manager.setAttribute('role','tabpanel');manager.setAttribute('aria-labelledby','cc-v3-tab-documents');manager.hidden=true;form.querySelector('.cc-actions').before(manager);
+    for(const type of ['input','change','click'])manager.addEventListener(type,event=>event.stopPropagation());
+    let managerLoading=false,managerLoaded=false;
+    function loadManager(){
+      if(managerLoaded||managerLoading||typeof showDocuments!=='function')return;managerLoading=true;manager.textContent='Завантажуємо документи…';
+      showDocuments(id,{host:manager,reload:()=>open(id)}).then(()=>{managerLoaded=true;}).catch(error=>{if(manager.isConnected){manager.textContent='Документи не завантажилися: '+error.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=loadManager;manager.append(retry);}}).finally(()=>managerLoading=false);
+    }
     const value = name => form.querySelector('[name="'+name+'"]')?.value || '';
     const display = name => form.querySelector('[name="'+name+'"]')?.selectedOptions?.[0]?.textContent || value(name);
     const conditional = () => {
@@ -190,6 +205,7 @@
       form.querySelectorAll('section[data-section]').forEach(section => {
         const number = Number(section.dataset.section), heading = section.querySelector('h3');
         if (heading) heading.textContent = title[number] || heading.textContent;
+        if(number===7){for(const [name,text] of [['military_unit','ВЧ попередньої служби'],['military_position','Посада під час служби']]){const label=section.querySelector('[name="'+name+'"]')?.closest('.cc-field')?.querySelector('label');if(label&&!label.querySelector('.cc-v3-tip'))label.textContent=text;}}
         advancedControl(section);
       });
     }
@@ -200,10 +216,13 @@
       const group = tabs.find(t => t[0] === active) || tabs[0];
       form.querySelectorAll('section[data-section]').forEach(section => {
         const number = Number(section.dataset.section);
-        section.hidden = !group[2].includes(number) || (unit && ![1,14,15,16].includes(number)) || (mobilization && number === 13) || (number === 11 && value('service_type') !== 'За контрактом');
+        section.hidden = (number===14&&typeof showDocuments==='function') || !group[2].includes(number) || (unit && ![1,14,15,16].includes(number)) || (mobilization && number === 13) || (number === 11 && value('service_type') !== 'За контрактом');
         section.setAttribute('role','tabpanel'); section.setAttribute('aria-labelledby','cc-v3-tab-'+(tabs.find(t => t[2].includes(number))?.[0] || 'main'));
       });
-      form.querySelector('[data-card-photo]').hidden = active !== 'main';
+      form.querySelector('[data-card-photo]').hidden = true;
+      activeTabs.set(id,active);manager.hidden=active!=='documents';
+      form.querySelector('.cc-actions').hidden=active==='documents'&&typeof showDocuments==='function'&&!CRMWorkspace.card.dirty;
+      if(active==='documents')loadManager();
       nav.querySelectorAll('[data-v3-tab]').forEach(button => {
         const selected = button.dataset.v3Tab === active; button.setAttribute('aria-selected',String(selected)); button.tabIndex = selected ? 0 : -1;
         button.hidden = (unit && !['main','documents','history'].includes(button.dataset.v3Tab)) || (mobilization && button.dataset.v3Tab === 'family');
@@ -226,12 +245,19 @@
       header.querySelector('[data-v3-name]').textContent = value('name_nominative') || 'Кандидат';
       const phone = header.querySelector('[data-v3-phone]'); phone.textContent = value('phone') || 'Телефон не вказаний'; phone.href = 'tel:'+value('phone');
       header.querySelector('[data-v3-position]').textContent = value('desired_position') || 'Не вказана';
-      header.querySelector('[data-v3-unit]').textContent = value('military_unit') || candidate.recommender_unit || 'Не вказана';
+      header.querySelector('[data-v3-unit]').textContent = parse(candidate.profile_data).military_unit || value('military_unit') || candidate.recommender_unit || 'Не вказана';
       header.querySelector('[data-v3-stage]').textContent = value('case_mode') === 'unit' ? 'Оформлює ВЧ' : CRMWorkflow.label(candidate);
-      const documentCounts=window.CRMDocumentPresence?.counts(candidate,documents)||{verified:documents.filter(d=>d.verification_status==='Підтверджено').length,total:documents.length};
-      header.querySelector('.cc-v3-indicators').innerHTML = '<button type="button" data-indicator="documents">Документи · '+documentCounts.verified+'/'+documentCounts.total+'</button><button type="button" data-indicator="documents">AI · '+documents.filter(d => d.ai_extracted).length+'</button><button type="button" data-indicator="military">ВЛК · '+esc(value('vlk_conclusion') ? 'висновок є' : value('vlk_status') || 'немає висновку')+'</button><button type="button" data-indicator="main">'+esc(value('service_type') === 'За мобілізацією' ? 'Мобілізація' : 'Контракт · '+display('contract_status'))+'</button>';
+      const totals=window.CRMDocumentState?.summary(candidate,CRMWorkspace.card.requirements||[],documents);
+      const packet=window.CRMDocumentState?.packageState(candidate,documents);
+      const indicators=totals?
+        '<button type="button" data-indicator="documents">Комплект · '+totals.verified+'/'+totals.total+(totals.unknown?' · уточнити '+totals.unknown:'')+'</button><button type="button" data-indicator="documents">Копії · '+totals.copies+'</button><button type="button" data-indicator="documents">AI · '+('помилок '+totals.errors+(totals.processing?' · обробляється '+totals.processing:''))+'</button><button type="button" data-indicator="documents">PDF · '+(packet.ready?'готовий':'бракує '+packet.missing.length)+'</button><button type="button" data-indicator="military">ВЛК · '+esc(value('vlk_conclusion')?'висновок є':'немає висновку')+'</button>':'';
+      if(header.querySelector('.cc-v3-indicators').innerHTML!==indicators)header.querySelector('.cc-v3-indicators').innerHTML=indicators;
+
     }
+    const documentsButton=[...header.querySelectorAll('.quick-actions button')].find(b=>b.textContent.trim()==='Документи');if(documentsButton)documentsButton.onclick=()=>select('documents');
+    const planningButton=document.createElement('button');planningButton.type='button';planningButton.textContent='Рух справи';planningButton.onclick=()=>crmNavigate('planning',id);header.querySelector('.quick-actions')?.append(planningButton);
     header.addEventListener('click',event => { const tab = event.target.closest('[data-indicator]')?.dataset.indicator; if (tab) select(tab); });
+    form.addEventListener('submit',()=>{CRMWorkspace.card?.saving?.then(saved=>{if(saved){managerLoaded=false;refresh();}});});
     form.addEventListener('input',event => {
       const field = event.target.closest('.cc-field'); field?.querySelectorAll('.cc-v3-source').forEach(b => b.parentElement.remove());
       refresh();
@@ -239,6 +265,7 @@
     form.addEventListener('change',() => queueMicrotask(refresh));
     form.addEventListener('click',() => queueMicrotask(refresh));
     form.addEventListener('invalid',event => {
+      if(event.target.closest('.cc-v3-modes')){header.classList.add('cc-v3-header-expanded');extra.setAttribute('aria-expanded','true');}
       const section = event.target.closest('[data-section]');
       const group = tabs.find(t => t[2].includes(Number(section?.dataset.section || 1))); if (group) select(group[0]);
       event.target.closest('details.cc-v3-record')?.setAttribute('open',''); section?.classList.add('cc-v3-expanded');

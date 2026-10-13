@@ -6,7 +6,9 @@ const vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'..','crm-workspace.js'),'utf8');
 const start=source.indexOf('  employmentInformation(c,p,pf) {');
 const end=source.indexOf('  async showInformation(id)',start);
-const ctx=vm.createContext({CRMWork:{historyText:rows=>(rows||[]).filter(r=>r.kind==='employment').map(r=>r.employer).join('\n')}});
+const ctx=vm.createContext({window:{},CRMCandidateConditions:{bool:v=>v===true||v==='true'?true:v===false||v==='false'?false:null},CRMWork:{historyText:rows=>(rows||[]).filter(r=>r.kind==='employment').map(r=>r.employer).join('\n')}});
+ctx.window.CRMWork=ctx.CRMWork;
+vm.runInContext(fs.readFileSync(path.join(__dirname,'..','case-information.js'),'utf8'),ctx);ctx.CRMCaseInformation=ctx.window.CRMCaseInformation;
 vm.runInContext('var workspace={'+source.slice(start,end)+'};',ctx);
 const summary=(c,p={},pf={})=>ctx.workspace.employmentInformation(c,p,pf);
 test('Explicit no-work in the card overrides old OCR and personal-file work text',()=>{
@@ -25,5 +27,5 @@ test('Work history remains available when worked before; military service is sep
  assert.equal(summary({worked_before:true},{},{civilian_experience:'Existing work'}),'Existing work');
  assert.equal(summary({},{}),'');
  assert(source.includes("['Трудовий стаж',work]"));
- assert(source.includes("serviceSummary(p.work_records)"));
+ assert(fs.readFileSync(path.join(__dirname,'..','case-information.js'),'utf8').includes("serviceSummary(p.work_records)"));
 });

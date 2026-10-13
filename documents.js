@@ -3,6 +3,12 @@ const DOC_BUCKET='candidate-documents';
 const DOC_MAX_SIZE=20*1024*1024;
 const AI_DOC_FUNCTION='process-id-document';
 let activeDocumentsCandidateId=null;
+let activeDocumentsOptions=null;
+async function reloadDocumentView(id){
+  const options=activeDocumentsCandidateId===id?activeDocumentsOptions:null;
+  if(options?.host?.isConnected&&options.reload)return options.reload();
+  return showDocuments(id);
+}
 
 function docEscape(v){return typeof escapeHtml==='function'?escapeHtml(v):String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[c]));}
 function formatDocSize(b){const n=Number(b||0);if(!n)return'—';if(n<1024*1024)return Math.round(n/1024)+' КБ';return(n/1024/1024).toFixed(1)+' МБ';}
@@ -27,14 +33,7 @@ function documentStatusHtml(r,docs){const m=docs.filter(d=>d.requirement_id===r.
 
 function requirementCondition(r,c){return CRMCandidateConditions.requirement(r,c);}
 function documentsForRequirement(r,docs){return docs.filter(d=>d.requirement_id===r.id||d.document_type===r.document_type)}
-function documentDisplayState(d,aiEnabled=true){
-  if(d.verification_status==='Підтверджено')return 'Перевірений';
-  if(d.verification_status==='Потребує перевірки')return 'Є розбіжності';
-  if(aiEnabled&&d.processing_status==='AI помилка')return 'Помилка розпізнавання';
-  if(aiEnabled&&d.processing_status==='AI обробка')return 'Розпізнавання…';
-  if(aiEnabled&&d.ai_extracted&&Object.keys(d.ai_extracted).length)return 'Розпізнано — перевірте дані';
-  return 'Завантажено — перевірте документ';
-}
+function documentDisplayState(d,aiEnabled=true){return CRMDocumentState.fileState(d,aiEnabled);}
 function documentFileHtml(d,r,allDocs,esc=docEscape){
   const verified=d.verification_status==='Підтверджено';
   const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
@@ -43,41 +42,36 @@ function documentFileHtml(d,r,allDocs,esc=docEscape){
   const detailId='doc-details-'+d.id;
   return '<details class="crm-document-file crm-document-verified"><summary class="crm-document-summary">'+info+'</summary><div class="crm-document-details" id="'+esc(detailId)+'">'+actions+'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></div></details>';
 }
-async function showDocuments(id){
-  const content=document.querySelector('.content');if(!content)return;
+async function showDocuments(id,options={}){
+  const content=options.host||document.querySelector('.content');if(!content)return;
+  const embedded=!!options.host;activeDocumentsOptions=embedded?options:null;
+  const ensureSaved=async()=>!embedded||await CRMWorkspace.guard();
   activeDocumentsCandidateId=id;
   const [docs,reqs,cr]=await Promise.all([getCandidateDocuments(id),getDocumentRequirements(),supabaseClient.from('candidates').select('*').eq('id',id).single()]);
-  if(cr.error)throw cr.error;await CRMResponsibility.ready();const allDocs=docs.slice();docs.splice(0,docs.length,...CRMResponsibility.latest(docs));const c=cr.data,esc=docEscape;
-  CRMWorkspace.setContext(id,c.name_nominative||c.full_name);CRMWorkspace.markMenu('documents');
+  if(cr.error)throw cr.error;if(embedded&&!content.isConnected)return;await CRMResponsibility.ready();content.classList.add('crm-doc-manager');const allDocs=docs.slice();docs.splice(0,docs.length,...CRMResponsibility.latest(docs));const c=cr.data,esc=docEscape;
+  CRMWorkspace.setContext(id,c.name_nominative||c.full_name);if(!embedded)CRMWorkspace.markMenu('documents');
   let profile=c.profile_data||{};if(typeof profile==='string'){try{profile=JSON.parse(profile)}catch(_){profile={}}}
   const children=Number(c.children_count)||((profile.relatives||[]).filter(r=>/син|доньк|дитин/i.test(r.relationship||r.relation||'')).length);
   const excludedDocs=docs.filter(d=>{const r=reqs.find(r=>r.id===d.requirement_id||r.document_type===d.document_type);return (r?requirementCondition(r,c):CRMCandidateConditions.documentCondition(d.document_type,c))===false;});
-  const rows=[];
-  reqs.forEach(original=>{
-    const r=CRMCandidateConditions.forCandidate(original,c);
-    const files=documentsForRequirement(r,docs),condition=requirementCondition(r,c);
-    if(condition===false)return;
-    const count=r.condition_field==='has_children'&&condition===true?Math.max(1,children):1;
-    for(let i=0;i<count;i++){
-      const child=r.condition_field==='has_children',rowFiles=child?(i===count-1?files.slice(i):files.slice(i,i+1)):files;
-      rows.push({r,files:rowFiles,condition:child&&condition===true&&!children?null:condition,childIndex:child?i+1:null});
-    }
-  });
+  const rows=CRMDocumentState.rows(c,reqs,docs);
   const knownIds=new Set(reqs.map(r=>r.id)),knownTypes=new Set(reqs.map(r=>r.document_type));
   docs.filter(d=>CRMCandidateConditions.documentCondition(d.document_type,c)!==false&&!knownIds.has(d.requirement_id)&&!knownTypes.has(d.document_type)).forEach(d=>rows.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true}));
   content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docCameraFiles">📷 Сканувати камерою</button><details class="crm-extra-actions"><summary>Інші дії</summary><div><button id="docDeletedFiles">Видалені ('+allDocs.filter(d=>d.deleted_at).length+')</button><button id="docCaseHistory">Історія дій</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></details></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><input type="search" id="docSearch" class="crm-search" placeholder="Знайти документ або файл" aria-label="Пошук документів"><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
   content.querySelector('#docBackCard').onclick=()=>crmNavigate('card',id);
   content.querySelector('#docDeletedFiles').onclick=()=>showDeletedDocuments(id,allDocs);
   content.querySelector('#docCaseHistory').onclick=()=>CRMResponsibility.history(id).catch(e=>alert(e.message));
-  content.querySelector('#docAddFiles').onclick=()=>openAddDocumentModal(id);
-  content.querySelector('#docScanFiles').onclick=()=>openScannerImport(id);
-  content.querySelector('#docCameraFiles').onclick=()=>openCameraDocument(id);
-  const mandatory=rows.filter(row=>row.r.is_required&&row.condition===true).filter((row,i,all)=>!CRMCandidateConditions.isMobilization(c)||!CRMCandidateConditions.militaryDocument(row.r.document_type)||all.findIndex(x=>CRMCandidateConditions.militaryDocument(x.r.document_type))===i);
-  const uploaded=mandatory.filter(row=>row.files.length||window.CRMDocumentPresence?.entry(row.r,c)).length;
-  const verified=mandatory.filter(row=>CRMCandidateConditions.covered(row.r,docs,c)).length;
-  const unknown=rows.filter(row=>row.r.is_required&&row.condition===null).length;
-  content.querySelector('#docProgressText').textContent='Завантажено '+uploaded+' із '+mandatory.length+' · Підтверджено '+verified+' із '+mandatory.length+(unknown?' · Уточніть умови для '+unknown+' пунктів':'');
-  content.querySelector('#docProgress > div').style.width=(mandatory.length?Math.round(verified/mandatory.length*100):0)+'%';
+  content.querySelector('#docAddFiles').onclick=async()=>{if(await ensureSaved())openAddDocumentModal(id)};
+  content.querySelector('#docScanFiles').onclick=async()=>{if(await ensureSaved())openScannerImport(id)};
+  content.querySelector('#docCameraFiles').onclick=async()=>{if(await ensureSaved())openCameraDocument(id)};
+  if(embedded){content.querySelector('#docBackCard').hidden=true;content.querySelector('.page-subtitle').hidden=true;}
+  content.querySelectorAll('button').forEach(b=>b.type='button');
+  const totals=CRMDocumentState.summary(c,reqs,docs);
+  content.querySelector('#docProgressText').textContent='Комплект: '+totals.verified+' із '+totals.total+' перевірено · '+totals.copies+' електронних копій · '+totals.paper+' без файла'+(totals.unknown?' · Уточнити умов: '+totals.unknown:'');
+  content.querySelector('#docProgress > div').style.width=(totals.total?Math.round(totals.verified/totals.total*100):0)+'%';
+  const packageState=CRMDocumentState.packageState(c,docs);
+  const packageInfo=document.createElement('details');packageInfo.className='crm-package-readiness';
+  packageInfo.innerHTML='<summary>PDF «Анкета»: '+(packageState.ready?'готовий до формування':'потрібно уточнити '+packageState.missing.length+' пунктів')+'</summary>'+packageState.rows.map(r=>'<p><b>'+esc(r.title)+'</b> · '+esc(r.state)+'</p>').join('');
+  content.querySelector('#docProgress').after(packageInfo);
   content.querySelector('#docBatchStatus').textContent='Комплектність враховує обов’язкові файли та позначки «Є в наявності». Для PDF-пакета потрібні електронні копії.';
   if(excludedDocs.length&&!CRMCandidateConditions.isUnit(c)){
     const details=document.createElement('details');details.className='card';details.style.marginBottom='18px';
@@ -88,26 +82,29 @@ async function showDocuments(id){
   body.innerHTML=rows.map(row=>{
     const {r,files,condition,childIndex}=row;
     const mark=window.CRMDocumentPresence?.entry(r,c);
-    const required=r.is_required&&condition===true,missing=required&&!files.length&&!mark,errors=files.some(d=>r.ai_enabled!==false&&d.processing_status==='AI помилка'),review=files.some(d=>d.verification_status!=='Підтверджено');
+    const required=r.is_required&&condition===true,missing=required&&!row.received,errors=files.some(d=>r.ai_enabled!==false&&d.processing_status==='AI помилка'),review=files.some(d=>d.verification_status!=='Підтверджено');
     const label=condition===null?'Уточніть у картці':condition===false?'Додатковий':required?'Обов’язковий':'За наявності';
-    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<p class="muted">'+esc(r.condition_note)+'</p>':'')+'</td><td>'+label+'</td><td>'+(mark?CRMDocumentPresence.summary(mark,esc,files.length>0):'')+(files.length?files.map(d=>documentFileHtml(d,r,allDocs,esc)).join(''):mark?'':required?'Не завантажено':'Не додано')+'</td><td>'+(window.CRMDocumentPresence?.control(r,c,files,esc)||'')+(files.length&&files.every(d=>d.verification_status==='Підтверджено')?'':'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати'+(mark?' файл':'')+'</button>')+'</td></tr>';
+    return '<tr data-missing="'+missing+'" data-errors="'+errors+'" data-review="'+review+'" data-additional="'+(!required)+'"><td><b>'+esc(r.document_type)+(childIndex?' · дитина '+childIndex:'')+'</b>'+(r.condition_note?'<span class="crm-field-tip"><button type="button" aria-label="'+esc(r.condition_note)+'" title="'+esc(r.condition_note)+'">ⓘ</button><span role="tooltip">'+esc(r.condition_note)+'</span></span>':'')+'</td><td>'+label+'</td><td>'+(mark?CRMDocumentPresence.summary(mark,esc,files.length>0):'')+(files.length?files.map(d=>documentFileHtml(d,r,allDocs,esc)).join(''):mark?'':row.group==='military-alternative'&&row.received?(row.verified?'Виконано іншим обліковим документом':'Інший обліковий документ — перевірте'):required?'Не завантажено':'Не додано')+'</td><td>'+(window.CRMDocumentPresence?.control(r,c,files,esc)||'')+(files.length&&files.every(d=>d.verification_status==='Підтверджено')?'':'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати'+(mark?' файл':'')+'</button>')+'</td></tr>';
   }).join('');
   body.addEventListener('change',async e=>{
-    const box=e.target.closest('[data-doc-presence]');if(!box)return;
+    const box=e.target.closest('[data-doc-presence]');if(!box)return;e.stopPropagation();
     const r=reqs.find(r=>r.id===box.dataset.docPresence),before=!!window.CRMDocumentPresence?.entry(r,c);
-    if(CRMWorkspace.busy){box.checked=before;return;}
+    if(CRMWorkspace.busy||!await ensureSaved()){box.checked=before;return;}
     let saved=false;
     CRMWorkspace.busy=true;body.querySelectorAll('[data-doc-presence]').forEach(el=>el.disabled=true);
     try{
       await CRMDocumentPresence.set(supabaseClient,c,r,box.checked);
       saved=true;
-      await showDocuments(id);
+      await reloadDocumentView(id);
       document.querySelector('#docBatchStatus').textContent=box.checked?'Документ є в наявності та перевірений. Електронну копію можна додати пізніше.':'Позначку знято. Завантажені файли залишилися без змін.';
     }catch(error){if(!saved&&box.isConnected)box.checked=before;content.querySelector('#docBatchStatus').textContent=(saved?'Позначку збережено, але список не оновився. Оновіть сторінку: ':'Не збережено: ')+error.message;}
     finally{CRMWorkspace.busy=false;content.querySelectorAll('[data-doc-presence]').forEach(el=>el.disabled=false);}
   });
   body.addEventListener('click',async e=>{
-    const b=e.target.closest('button');if(!b)return;
+    const b=e.target.closest('button');
+    if(!b){const td=e.target.closest('td'),row=td?.closest('tr');if(td&&[0,2].includes(td.cellIndex)&&!e.target.closest('summary,details,input,label')){const folds=[...row.querySelectorAll('.crm-document-verified,.crm-presence-summary')];const open=!folds.every(d=>d.open);folds.forEach(d=>d.open=open);}return;}
+    const tip=b.closest('.crm-field-tip');if(tip){const open=tip.classList.toggle('is-open');b.setAttribute('aria-expanded',String(open));return;}
+    if(!await ensureSaved())return;
     if(b.dataset.aiHistory)return CRMResponsibility.aiHistory(b.dataset.aiHistory).catch(error=>alert(error.message));
     if(b.dataset.docReplace){const d=allDocs.find(d=>d.id===b.dataset.docReplace);return makeDocumentInput(id,d.requirement_id||'',d.id)}
     if(b.hasAttribute('data-doc-add'))return openAddDocumentModal(id,b.dataset.docAdd);
@@ -141,7 +138,7 @@ async function confirmDocument(id){
   const user=await getCurrentUser();if(!user)throw new Error('Увійдіть повторно.');
   const {data,error}=await supabaseClient.from('documents').update({verification_status:'Підтверджено',verified_by:user.id,verified_at:new Date().toISOString()}).eq('id',id).select('id,candidate_id,ai_extracted');
   if(error)throw error;if(!data?.length)throw new Error('Документ не підтверджено. Перевірте права доступу до цього файла.');
-  await showDocuments(data[0].candidate_id);
+  await reloadDocumentView(data[0].candidate_id);
   document.querySelector('#docBatchStatus').textContent='Документ перевірений. Натисніть на поле документа, щоб розгорнути деталі та кнопки.';
 }
 async function makeDocumentInput(id,reqId='',replacementId=''){
@@ -169,7 +166,7 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     input.addEventListener('change',render);
     rootType.addEventListener('change',()=>{plan.querySelectorAll('select').forEach(s=>s.value=rootType.value);updateMode()});
     plan.addEventListener('change',updateMode);
-    modal.querySelector('#closeDocModal').onclick=async()=>{if(CRMWorkspace.busy)return;if(modal.querySelector('#docFileInput')?.files?.length&&modal.dataset.uploadComplete!=='true'&&!confirm('Файли ще не завантажені. Закрити вікно та відкинути вибір?'))return;modal.close();modal.remove();await showDocuments(id)};
+    modal.querySelector('#closeDocModal').onclick=async()=>{if(CRMWorkspace.busy)return;if(modal.querySelector('#docFileInput')?.files?.length&&modal.dataset.uploadComplete!=='true'&&!confirm('Файли ще не завантажені. Закрити вікно та відкинути вибір?'))return;modal.close();modal.remove();await reloadDocumentView(id)};
     modal.addEventListener('cancel',e=>{e.preventDefault();if(!CRMWorkspace.busy)modal.querySelector('#closeDocModal').click()});
     upload.onclick=uploadSelectedDocuments;
     modal.querySelector('#docModalCamera').onclick=()=>scanIntoDocumentModal(modal);
@@ -288,11 +285,11 @@ if(documentError||!doc?.candidate_id){alert('Не вдалося визначи�
 const reqs=await getDocumentRequirements(),req=reqs.find(r=>r.id===doc.requirement_id||r.document_type===doc.document_type);
 if(req?.ai_enabled===false)return alert('Для цього документа розпізнавання не передбачене.');
 const{data,error}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:id}});
-if(error){alert('Не вдалося повторити AI: '+await documentAIError(error));if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id);return}
+if(error){alert('Не вдалося повторити AI: '+await documentAIError(error));if(activeDocumentsCandidateId===doc.candidate_id)await reloadDocumentView(doc.candidate_id);return}
 if(!data?.ok&&!data?.extracted){alert(data?.error||'AI не повернув структуровані дані');return}
 let needsReview=false;
 try{const report=await CRMDocumentSync.sync(supabaseClient,id);needsReview=!report.supported;alert(report.supported?'Повторне AI завершено. Порожні поля перенесено; конфліктів: '+report.rows.filter(r=>r.action==='conflict').length:'AI завершено. Відкриваю звірку та вибір даних для перенесення.')}catch(err){alert('AI завершено, але синхронізація не виконана: '+err.message)}
-if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id)
+if(activeDocumentsCandidateId===doc.candidate_id)await reloadDocumentView(doc.candidate_id)
 if(needsReview)await reviewDocumentData(id);
 }
 async function openDocument(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();if(error||data?.deleted_at||!data?.storage_path){alert('Документ не знайдено.');return}const{data:signed,error:se}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(data.storage_path,300);if(se||!signed?.signedUrl){alert('Не вдалося відкрити документ: '+(se?.message||'невідома помилка'));return}window.open(signed.signedUrl,'_blank','noopener,noreferrer')}
@@ -448,7 +445,7 @@ async function setDocumentDeleted(doc,deleted){
   if(!confirm((deleted?'Видалити зі справи':'Відновити у справі')+' документ «'+(doc.file_name||doc.document_name)+'»?\nВідповідальний: '+actor+(deleted?'\nФайл і дані AI збережуться в історії.':'')))return false;
   const r=await supabaseClient.rpc('crm_set_document_deleted',{document_id:doc.id,deleted});
   if(r.error)throw r.error;if(!r.data)throw new Error('Дію не виконано. Оновіть список.');
-  window.CandidatePhotos?.clear();await showDocuments(doc.candidate_id);return true;
+  window.CandidatePhotos?.clear();await reloadDocumentView(doc.candidate_id);return true;
 }
 function showDeletedDocuments(candidateId,docs){
   const esc=docEscape,removed=docs.filter(d=>d.deleted_at).sort((a,b)=>new Date(b.deleted_at)-new Date(a.deleted_at));
