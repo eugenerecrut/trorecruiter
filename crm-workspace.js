@@ -75,6 +75,14 @@ window.CRMWorkspace = {
     if(blob.type.startsWith('image/'))return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});
     return null;
   },
+  employmentInformation(c,p,pf) {
+    const worked=c.worked_before??p.worked_before;
+    if(worked===false||worked==='false') {
+      const sex=String(c.sex||p.sex||'').toLocaleLowerCase('uk-UA');
+      return ['female','жінка','жіноча','f'].includes(sex)?'Не працювала':['male','чоловік','чоловіча','m'].includes(sex)?'Не працював':'Не працював / не працювала';
+    }
+    return CRMWork.historyText(p.work_records)||pf.work_history||pf.civilian_experience||p.work_history||'';
+  },
   async showInformation(id) {
     const sequence=++this.sequence, esc=this.escape;
     const [cr,pr,dr]=await Promise.all([
@@ -86,7 +94,7 @@ window.CRMWorkspace = {
     this.setContext(id,c.name_nominative||c.full_name);
     const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
     const education=CRMEducation.summary(p,pf);
-    const work=CRMWork.historyText(p.work_records)||pf.work_history||pf.civilian_experience||p.work_history||'';
+    const work=this.employmentInformation(c,p,pf);
     const servedValue=c.served_before??p.served_before;
     const served=servedValue===true||servedValue==='true';
     const noService=servedValue===false||servedValue==='false';
@@ -109,7 +117,7 @@ window.CRMWorkspace = {
     }
     const fields=[
       ['ПІБ',c.name_nominative||c.full_name],['Дата народження',c.birth_date?c.birth_date.split('-').reverse().join('.'):null],['Місце народження',c.birth_place||pf.birth_place||p.birth_place],
-      ['Освіта',education],['Трудовий стаж',work||((c.worked_before===false||c.worked_before==='false')?'Не працював / не працювала.':'')],
+      ['Освіта',education],['Трудовий стаж',work],
       ['Військова служба',service],
       ['Відомості про мотивацію',String(p.motivation||'').trim()||'Фінансова зацікавленість'],
       ...(p.recruitment_notes?[['Додаткові відомості',p.recruitment_notes]]:[]),
