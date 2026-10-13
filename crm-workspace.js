@@ -125,10 +125,19 @@ window.CRMWorkspace = {
       ...((p.has_management_experience===true||p.has_management_experience==='true')?[['Організаторські здібності',p.organizational_skills]]:[])
     ];
     const content=document.querySelector('.content');
-    content.innerHTML='<div class="dashboard-top crm-no-print"><div><h1 class="page-title">Обов’язкова інформація</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+' · перед психологічним тестом</p></div><div class="quick-actions"><button id="crmInfoBack">Картка кандидата</button><button id="crmInfoPrint" disabled>Друкувати / зберегти PDF</button></div></div><p class="crm-notice crm-no-print" id="crmInfoNotice">Завантажуємо фото 9×12…</p><article class="crm-information" id="crmInformation"><h2>Обов’язкова інформація '+(CRMCandidateConditions.isMobilization(c)?'для мобілізації':'на контракт')+'</h2><img id="crmInfoPhoto" alt="Фото кандидата 9×12" hidden>'+fields.map(([label,value])=>'<p><strong>'+esc(label)+':</strong>'+(['Освіта','Трудовий стаж','Військова служба'].includes(label)?'<br>':' ')+(label==='Відомості про психіатричний облік'?'<span data-psychiatric-summary>'+esc(value)+'</span>':esc(value||'Не вказано').replace(/\n/g,'<br>'))+'</p>').join('')+'</article>';
+    content.innerHTML='<div class="dashboard-top crm-no-print"><div><h1 class="page-title">Обов’язкова інформація</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+' · перед психологічним тестом</p></div><div class="quick-actions"><button id="crmInfoBack">Картка кандидата</button><button id="crmInfoPrint" disabled>Завантажити PDF</button></div></div><p class="crm-notice crm-no-print" id="crmInfoNotice">Завантажуємо фото 9×12…</p><article class="crm-information" id="crmInformation"><h2>Обов’язкова інформація '+(CRMCandidateConditions.isMobilization(c)?'для мобілізації':'на контракт')+'</h2><img id="crmInfoPhoto" alt="Фото кандидата 9×12" hidden>'+fields.map(([label,value])=>'<p><strong>'+esc(label)+':</strong>'+(['Освіта','Трудовий стаж','Військова служба'].includes(label)?'<br>':' ')+(label==='Відомості про психіатричний облік'?'<span data-psychiatric-summary>'+esc(value)+'</span>':esc(value||'Не вказано').replace(/\n/g,'<br>'))+'</p>').join('')+'</article>';
     const psychiatric=document.createElement('label');psychiatric.className='crm-no-print';psychiatric.textContent='Психіатричний облік · уточнення перед друком ';const psychiatricInput=document.createElement('input');psychiatricInput.value=fields.find(([label])=>label==='Відомості про психіатричний облік')[1];psychiatricInput.oninput=()=>{content.querySelector('[data-psychiatric-summary]').textContent=psychiatricInput.value.trim()||'Не вказано';};psychiatric.append(psychiatricInput);content.querySelector('#crmInformation').before(psychiatric);
     content.querySelector('#crmInfoBack').onclick=()=>this.navigate('card',id);
-    content.querySelector('#crmInfoPrint').onclick=()=>window.print();
+    content.querySelector('#crmInfoPrint').onclick=async()=>{
+      const button=content.querySelector('#crmInfoPrint'),notice=content.querySelector('#crmInfoNotice');
+      button.disabled=true;button.textContent='Формуємо PDF…';CRMWorkspace.busy=true;
+      try {
+        const outputFields=fields.map(([label,value])=>[label,label==='Відомості про психіатричний облік'?(psychiatricInput.value.trim()||'Не вказано'):value]);
+        await CRMInformationPDF.download(content.querySelector('#crmInformation h2').textContent,outputFields,photo,c.name_nominative||c.full_name);
+        notice.textContent='PDF сформовано. Завантаження розпочато.';
+      }catch(error){notice.textContent='Не вдалося завантажити PDF: '+error.message;}
+      finally{CRMWorkspace.busy=false;if(button.isConnected){button.disabled=false;button.textContent='Завантажити PDF';}}
+    };
     let photo=null;try{photo=await this.photo(photoDoc)}catch(e){console.warn('Фото 9×12:',e)}
     if(sequence!==this.sequence||!content.querySelector('#crmInfoPhoto'))return;
     const missing=fields.slice(0,6).filter(([,v])=>!v).map(([k])=>k);
