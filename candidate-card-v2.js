@@ -155,7 +155,8 @@
     const docTypeOptions = ['Паспорт громадянина України (ID-картка)','Паспорт громадянина України (книжечка)','РНОКПП','Військово-обліковий документ','Анкета','Згода на обробку персональних даних','Згода на збір та обробку даних','Заява на контракт','Розписка кандидата','Освіта','Трудова діяльність','ВЛК','Інше'];
 
     const visibleDocs=CRMCandidateConditions.isUnit(c)?docs.filter(d=>CRMCandidateConditions.unitDocument(d.document_type)):docs;
-    const documentRows = visibleDocs.length ? visibleDocs.map(d => `<div class="cc-doc"><div><b>${esc(documentLabel(d))}</b><small>${esc(d.file_name || '')} · ${d.required ? 'Обов’язковий' : 'Додатковий'} · ${esc(d.status || 'Завантажено')}</small></div><button type="button" data-open-doc="${esc(d.storage_path || '')}">Відкрити</button></div>`).join('') : '<div class="cc-empty">Документи ще не завантажені.</div>';
+    const presenceRows=window.CRMDocumentPresence?.cardRows(c,visibleDocs,esc)||'';
+    const documentRows = (visibleDocs.length ? visibleDocs.map(d => `<div class="cc-doc"><div><b>${esc(documentLabel(d))}</b><small>${esc(d.file_name || '')} · ${d.required ? 'Обов’язковий' : 'Додатковий'} · ${esc(d.status || 'Завантажено')}</small></div><button type="button" data-open-doc="${esc(d.storage_path || '')}">Відкрити</button></div>`).join('') : presenceRows?'':'<div class="cc-empty">Документи ще не завантажені.</div>')+presenceRows;
 
     content.innerHTML = `
       <style>

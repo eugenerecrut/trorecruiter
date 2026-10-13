@@ -21,7 +21,7 @@
   if(/групи крові/.test(r.document_type))out.condition_note='Потрібна, якщо група крові та резус не зазначені в паспорті.';
   return out;
  };
- const covered=(r,docs,c)=>docs.some(d=>d.verification_status==='Підтверджено'&&(d.requirement_id===r.id||d.document_type===r.document_type||(isMobilization(c)&&militaryDocument(r.document_type)&&militaryDocument(d.document_type))));
+ const covered=(r,docs,c)=>!!window.CRMDocumentPresence?.entry(r,c)||docs.some(d=>d.verification_status==='Підтверджено'&&(d.requirement_id===r.id||d.document_type===r.document_type||(isMobilization(c)&&militaryDocument(r.document_type)&&militaryDocument(d.document_type))));
  function applyNewCaseMode(form){
   if(!form)return;
   const unit=form.elements.case_mode?.value==='unit';
