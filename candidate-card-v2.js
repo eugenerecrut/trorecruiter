@@ -25,6 +25,18 @@
     return c?.[key] ?? pf?.[key] ?? profile?.[key] ?? fallback;
   }
 
+  async function savePersonalFileCAS(client, candidateId, patch, previous) {
+    const conflict = { message: 'Особову справу вже змінено. Ваші зміни залишені у формі. Оновіть справу після звірки.' };
+    if (!previous) {
+      const result = await client.from('personal_files').insert(patch).select('*').single();
+      return result.error?.code === '23505' ? { data: null, error: conflict } : result;
+    }
+    let query = client.from('personal_files').update(patch).eq('candidate_id', candidateId);
+    query = previous.updated_at ? query.eq('updated_at', previous.updated_at) : query.is('updated_at', null);
+    const result = await query.select('*').maybeSingle();
+    return !result.error && !result.data ? { data: null, error: conflict } : result;
+  }
+
   function input(label, name, value, type = 'text', cls = '') {
     if(name==='phone'||name==='phone_secondary'){value=window.CRMPhone.normalize(value);type='tel';}
     return `<div class="cc-field ${cls}"><label>${esc(label)}</label><input name="${esc(name)}" type="${type}" value="${esc(value ?? '')}"></div>`;
@@ -124,6 +136,7 @@
     const c = cr.data || {};
     if(pr.error)throw pr.error;if(dr.error)throw dr.error;
     const pf = pr.data || {};
+    let personalFileExists = !!pr.data;
     let profile = c.profile_data && typeof c.profile_data === 'object' ? c.profile_data : {};
     if (typeof c.profile_data === 'string') { try { profile = JSON.parse(c.profile_data); } catch (_) {} }
     if(profile.merged_into)return renderCard(profile.merged_into);
@@ -432,10 +445,10 @@
         education: fd.has('education')?(String(fd.get('education')||'').trim()||null):(pf.education??null),
         updated_at: new Date().toISOString()
       };
-      const { error: pe } = unit?{error:null}:await supabaseClient.from('personal_files').upsert(pfPatch, { onConflict:'candidate_id' });
-      if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return; }
+      const { data: savedPersonalFile, error: pe } = unit?{data:null,error:null}:await savePersonalFileCAS(supabaseClient, candidateId, pfPatch, personalFileExists ? pf : null);
+      if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return false; }
       status.textContent = 'Готово. Дані кандидата оновлено.';
-      if(!unit)Object.assign(pf,pfPatch);profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;
+      if(!unit){Object.assign(pf,savedPersonalFile);personalFileExists=true;}profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;
       if(workflowDraft){const progress=CRMWorkspace.workflow.form;for(const input of progress.elements){if(!input.name)continue;if(input.type==='checkbox')input.checked=workflowDraft.has(input.name);else input.value=workflowDraft.get(input.name)||'';}progress.dispatchEvent(new Event('change',{bubbles:true}));}
       return true;
     };

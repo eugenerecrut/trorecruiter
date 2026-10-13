@@ -132,4 +132,6 @@ test('Document transfer advances candidate and personal file versions to reject 
  assert(sql.includes("fp:=fp||jsonb_build_object('updated_at',clock_timestamp());"));
  assert(sql.includes('auth.uid()'));assert(sql.includes('expected_current'));assert(sql.includes('expected_ai'));
  assert(!/security definer|disable.*trigger|alter table/i.test(sql));
+ const fileSql=fs.readFileSync(path.join(root,'supabase/migrations/20261013132800_document_file_sync_versions.sql'),'utf8');
+ assert(fileSql.includes("if cp<>'{}' or fp<>'{}' then cp:=cp||jsonb_build_object('updated_at',clock_timestamp());end if;"));
 });
