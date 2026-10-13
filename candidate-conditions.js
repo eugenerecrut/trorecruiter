@@ -34,6 +34,7 @@
   });
  }
  function documentCondition(type,c){
+  if(/^характеристика$/iu.test(String(type||'').trim()))return false;
   if(isUnit(c))return unitDocument(type);
   if(unitTypes.includes(type))return true;
   if(/гінеколога/iu.test(type)){if(!isMobilization(c))return false;const sex=value(c,'sex');return sex==='female'?true:sex==='male'?false:null;}
