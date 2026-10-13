@@ -4,7 +4,9 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
+require('../supabase/functions/_shared/document-data-policy.js');
 const sync=require('../document-ai-sync.js');
+const uploadPDF={prepare:async file=>file,isJPEG:()=>false};
 const candidate=()=>({id:'c1',full_name:'ТЕСТЕНКО Іван Петрович',birth_date:'1990-06-13',rnokpp:'1234567890',profile_data:{service_type:'За мобілізацією'}});
 const document=(extracted,type='Рекомендаційний лист')=>({id:'d1',candidate_id:'c1',file_name:'test.pdf',document_type:type,ai_extracted:extracted});
 const personal=()=>({full_name:'Тестенко Іван Петрович',birth_date:'1990-06-13',rnokpp:'1234567890'});
@@ -76,12 +78,12 @@ test('Concurrent manual edit, changed AI and read/write errors never report succ
 });
 test('Active upload calls exact document sync, local OCR receives the DOM document',async()=>{
   const source=fs.readFileSync(path.join(root,'documents.js'),'utf8');const code=source.slice(source.indexOf('async function processOneDocument('),source.indexOf('async function uploadSelectedDocuments('));
-  const m=memory(candidate(),document({...personal(),...service()}));let invoked,ocr=0;const context={supabaseClient:m.client,DOC_MAX_SIZE:20e6,DOC_BUCKET:'candidate-documents',getDocumentRequirements:async()=>[{id:'r1',document_type:'Рекомендаційний лист'}],extractPdfText:async()=>'',pdfToImages:async()=>['image'],runOcr:async()=>{ocr++;return 'text'},classifyStoredDocument:async(id)=>{invoked=id;return {document_type:'Рекомендаційний лист',extracted:{...personal(),...service()}}},findCandidateByName:()=>null,document:{getElementById:()=>null},CRMDocumentSync:sync,console};vm.createContext(context);vm.runInContext(code,context);
+  const m=memory(candidate(),document({...personal(),...service()}));let invoked,ocr=0;const context={CRMUploadPDF:uploadPDF,supabaseClient:m.client,DOC_MAX_SIZE:20e6,DOC_BUCKET:'candidate-documents',getDocumentRequirements:async()=>[{id:'r1',document_type:'Рекомендаційний лист'}],extractPdfText:async()=>'',pdfToImages:async()=>['image'],runOcr:async()=>{ocr++;return 'text'},classifyStoredDocument:async(id)=>{invoked=id;return {document_type:'Рекомендаційний лист',extracted:{...personal(),...service()}}},findCandidateByName:()=>null,document:{getElementById:()=>null},CRMDocumentSync:sync,console};vm.createContext(context);vm.runInContext(code,context);
   await context.processOneDocument({name:'test.pdf',type:'application/pdf',size:100},'r1',{id:'u1'},[], 'c1');assert.equal(invoked,'d1');assert.equal(ocr,1);assert.equal(m.state.rpcs,1);assert.equal(m.state.c.military_specialty,'225256А');
 });
 test('Recommendation form supports both formats and saves canonical service/relative fields',async()=>{
   let extracted={...personal(),...service()};
-  const ctx={window:{CRMDocumentSync:sync,supabaseClient:{auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},functions:{invoke:async()=>({data:{extracted}})}}},document:{getElementById:()=>null,querySelectorAll:()=>[]},structuredClone,console};vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.join(root,'recommendation-upload-fix.js'),'utf8'),ctx);
+  const ctx={CRMUploadPDF:uploadPDF,window:{CRMDocumentSync:sync,supabaseClient:{auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},functions:{invoke:async()=>({data:{extracted}})}}},document:{getElementById:()=>null,querySelectorAll:()=>[]},structuredClone,console};vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.join(root,'recommendation-upload-fix.js'),'utf8'),ctx);
   const a=await ctx.window.aiExtractRecommendation('text');extracted={personal:personal(),service:service()};const b=await ctx.window.aiExtractRecommendation('text');assert.equal(a.military_specialty,b.military_specialty);assert.equal(a.shpk,'солдат');
   const save=fs.readFileSync(path.join(root,'script.js'),'utf8');assert(save.includes("military_specialty: String(fd.get('military_specialty')"));assert(save.includes("'shpk','tariff_grade','recruiter_name'"));assert(save.includes("form.__pskReadRelatives()"));
   assert(!fs.readFileSync(path.join(root,'ai-recommendation-bridge.js'),'utf8').includes(".eq('full_name',fullName)"));
@@ -100,4 +102,26 @@ test('Retry and review use the same document-scoped planner; no legacy time-wind
   const s=fs.readFileSync(path.join(root,'documents.js'),'utf8');const retry=s.slice(s.indexOf('async function retryDocumentAI'),s.indexOf('async function openDocument'));
   assert(retry.includes('CRMDocumentSync.sync(supabaseClient,id)'));assert(s.includes('CRMDocumentSync.showPreview(supabaseClient,id)'));
   const legacy=fs.readFileSync(path.join(root,'document-upload-fix.js'),'utf8');assert(!legacy.includes('.gte('));assert(legacy.includes('report.document.candidate_id !== candidateId'));
+});
+
+test('Marriage act matches candidate among two participants and merges only spouse without duplicates',()=>{
+ const c=candidate(); c.profile_data.relatives=[{relationship:'мати',full_name:'ТЕСТЕНКО Олена Іванівна'}];
+ const d=document({full_name:null,relatives:[{relationship:'наречений',full_name:c.full_name,birth_date:c.birth_date},{relationship:'наречена',full_name:'ТЕСТЕНКО Марія Петрівна',birth_date:'1992-09-16'}]},'Актовий запис про шлюб');
+ const a=sync.plan(d,c); const relatives=a.selections.find(x=>x.key==='relatives').incoming;
+ assert.equal(relatives.length,2);assert.equal(relatives[1].relationship,'дружина');assert(!relatives.some(r=>r.full_name===c.full_name));
+ c.profile_data.relatives=relatives;assert(!sync.plan(d,c).selections.some(x=>x.key==='relatives'));
+ d.ai_extracted.relatives[0].birth_date='1980-01-01';assert.equal(sync.plan(d,c).selections.length,0);
+});
+test('Non-passport sources never retain passport fields; UBD cannot populate military ID',()=>{
+ const policy=globalThis.CRMDocumentPolicy;
+ const d=document({passport_data:'EXTRACT-1',passport_expiry_date:'2053-10-06',document_number:'123',military_document_number:'123'},'Військово-обліковий документ (паперовий)');d.requirement_type='Копія УБД';
+ const a=policy.normalize(d);assert.equal(a.type,'Копія УБД');assert.equal(a.extracted.passport_data,null);assert.equal(a.extracted.military_document_number,null);assert.equal(d.ai_extracted.passport_data,'EXTRACT-1');
+ const b=policy.normalize(document({passport_data:'DRIVER-1',passport_expiry_date:'2053-10-06',document_number:'DRIVER-1'},'Посвідчення водія'));
+ assert.equal(b.extracted.driver_license_expiry_date,'2053-10-06');assert.equal(b.extracted.passport_expiry_date,null);
+});
+test('Malformed military rows remain review-only and structured service can render without legacy text',()=>{
+ const policy=globalThis.CRMDocumentPolicy;
+ const a=policy.normalize(document({military_service_records:[{unit:'n/n-2',military_specialty:'курса457',start_date:'2020-07-11'}]},'Військовий квиток'));
+ assert.equal(a.extracted.military_service_records[0].requires_review,true);
+ assert.equal(policy.serviceSummary([{kind:'military_service',start_date:'2022-08-23',end_date:'2025-03-15',employer:'А0536',position:'Інші посади'}]),'2022-08-23 · 2025-03-15 · А0536 · Інші посади');
 });

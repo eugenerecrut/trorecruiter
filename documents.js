@@ -38,7 +38,7 @@ function documentDisplayState(d,aiEnabled=true){
 function documentFileHtml(d,r,allDocs,esc=docEscape){
   const verified=d.verification_status==='Підтверджено';
   const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
-  const actions=CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
+  const actions=CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
   if(!verified)return '<div class="crm-document-file">'+info+actions+'</div>';
   const detailId='doc-details-'+d.id;
   return '<details class="crm-document-file crm-document-verified"><summary class="crm-document-summary">'+info+'</summary><div class="crm-document-details" id="'+esc(detailId)+'">'+actions+'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></div></details>';
@@ -81,8 +81,8 @@ async function showDocuments(id){
   content.querySelector('#docBatchStatus').textContent='Комплектність враховує лише обов’язкові документи, які потрібні цьому кандидату.';
   if(excludedDocs.length&&!CRMCandidateConditions.isUnit(c)){
     const details=document.createElement('details');details.className='card';details.style.marginBottom='18px';
-    details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button></p>').join('');
-    details.addEventListener('click',e=>{const id=e.target.closest('[data-excluded-open]')?.dataset.excludedOpen;if(id)openDocument(id)});content.querySelector('#docFilters').before(details);
+    details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button>'+(d.ai_extracted?' <button type="button" data-excluded-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button><button type="button" data-excluded-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+'</p>').join('');
+    details.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.excludedOpen)openDocument(b.dataset.excludedOpen);if(b.dataset.excludedEditAi)editDocumentExtraction(b.dataset.excludedEditAi).catch(err=>alert(err.message));if(b.dataset.excludedData)reviewDocumentData(b.dataset.excludedData).catch(err=>alert(err.message))});content.querySelector('#docFilters').before(details);
   }
   const body=content.querySelector('#documentRows');
   body.innerHTML=rows.map(row=>{
@@ -99,6 +99,7 @@ async function showDocuments(id){
     if(b.dataset.docOpen)return openDocument(b.dataset.docOpen);
     if(b.dataset.docSync)return CRMDocumentSync.showPreview(supabaseClient,b.dataset.docSync).catch(error=>alert(error.message));
     if(b.dataset.docData)return reviewDocumentData(b.dataset.docData).catch(error=>alert(error.message));
+    if(b.dataset.docEditAi)return editDocumentExtraction(b.dataset.docEditAi).catch(error=>alert(error.message));
     b.disabled=true;CRMWorkspace.busy=true;
     try{
       if(b.dataset.docDelete)await setDocumentDeleted(allDocs.find(d=>d.id===b.dataset.docDelete),true);
@@ -274,8 +275,10 @@ if(req?.ai_enabled===false)return alert('Для цього документа р
 const{data,error}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:id}});
 if(error){alert('Не вдалося повторити AI: '+await documentAIError(error));if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id);return}
 if(!data?.ok&&!data?.extracted){alert(data?.error||'AI не повернув структуровані дані');return}
-try{const report=await CRMDocumentSync.sync(supabaseClient,id);alert('Повторне AI завершено. Порожні поля перенесено; конфліктів: '+report.rows.filter(r=>r.action==='conflict').length)}catch(err){alert('AI завершено, але синхронізація не виконана: '+err.message)}
+let needsReview=false;
+try{const report=await CRMDocumentSync.sync(supabaseClient,id);needsReview=!report.supported;alert(report.supported?'Повторне AI завершено. Порожні поля перенесено; конфліктів: '+report.rows.filter(r=>r.action==='conflict').length:'AI завершено. Відкриваю звірку та вибір даних для перенесення.')}catch(err){alert('AI завершено, але синхронізація не виконана: '+err.message)}
 if(activeDocumentsCandidateId===doc.candidate_id)await showDocuments(doc.candidate_id)
+if(needsReview)await reviewDocumentData(id);
 }
 async function openDocument(id){const{data,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();if(error||data?.deleted_at||!data?.storage_path){alert('Документ не знайдено.');return}const{data:signed,error:se}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(data.storage_path,300);if(se||!signed?.signedUrl){alert('Не вдалося відкрити документ: '+(se?.message||'невідома помилка'));return}window.open(signed.signedUrl,'_blank','noopener,noreferrer')}
 function installDocumentControls(){
