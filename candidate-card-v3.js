@@ -147,7 +147,7 @@
     const historyButton = root.querySelector('[data-history]'); if (historyButton) history.append(historyButton);
     const nav = document.createElement('nav'); nav.className = 'cc-v3-nav'; nav.setAttribute('aria-label','Вкладки картки'); nav.setAttribute('role','tablist');
     root.querySelector('#crmCardNav').before(nav); root.querySelector('#crmCardNav').hidden = true;
-    const title = {1:'Персональні дані',2:'Паспорт / ID-картка',3:'Контакти',4:'Адреси',5:'Освіта',6:'Робота',7:'Військова служба',8:'Військовий облік',9:'ВЛК',10:'Рекрутинг',11:'Контракт',12:'Примітки',13:'Рідні та близькі',14:'Документи',15:'Бланки',16:'Історія'};
+    const title = {1:'Персональні дані',2:'Паспорт',3:'Контакти',4:'Адреси',5:'Освіта',6:'Робота',7:'Військова служба',8:'Військовий облік',9:'ВЛК',10:'Рекрутинг',11:'Контракт',12:'Примітки',13:'Рідні та близькі',14:'Документи',15:'Бланки',16:'Історія'};
     let active = 'main';
     const value = name => form.querySelector('[name="'+name+'"]')?.value || '';
     const display = name => form.querySelector('[name="'+name+'"]')?.selectedOptions?.[0]?.textContent || value(name);
