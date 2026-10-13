@@ -28,13 +28,13 @@ window.CRMWorkspace = {
     this.navigating=true;
     if(this.workflow?.form?.isConnected&&this.workflow.dirty&&!confirm('Є незбережені зміни етапу. Перейти без їх збереження?')){this.navigating=false;return false;}
     if(!await this.guard()){this.navigating=false;return false}
-    this.workflow=null;this.card=null; const target=id||this.candidateId;
+    this.workflow=null;this.card=null;document.querySelector('.content')?.classList.remove('crm-doc-manager'); const target=id||this.candidateId;
     try{
       this.markMenu(['card','information'].includes(key)?'candidates':key);
       if(key==='candidates'){this.candidateId=null;this.candidateName='';await showCandidates()}
       else if(key==='new'){this.candidateId=null;this.candidateName='';showNewCandidateForm();this.trackNewForm()}
       else if(key==='card'&&target)await openCandidateCard(target);
-      else if(key==='documents'){if(target)await showDocuments(target);else await this.pickCandidate('documents')}
+      else if(key==='documents'){if(target)await showDocuments(target);else await CRMDashboard.load('documents')}
       else if(key==='information'){if(target)await this.showInformation(target);else await this.pickCandidate('information')}
       else if(key==='planning')await CRMWorkflow.showPlanning(id);
       else if(key==='archive')await CRMWorkflow.showArchive();
@@ -75,14 +75,7 @@ window.CRMWorkspace = {
     if(blob.type.startsWith('image/'))return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});
     return null;
   },
-  employmentInformation(c,p,pf) {
-    const worked=c.worked_before??p.worked_before;
-    if(worked===false||worked==='false') {
-      const sex=String(c.sex||p.sex||'').toLocaleLowerCase('uk-UA');
-      return ['female','жінка','жіноча','f'].includes(sex)?'Не працювала':['male','чоловік','чоловіча','m'].includes(sex)?'Не працював':'Не працював / не працювала';
-    }
-    return CRMWork.historyText(p.work_records)||pf.work_history||pf.civilian_experience||p.work_history||'';
-  },
+  employmentInformation(c,p,pf) {return CRMCaseInformation.work({...c,profile_data:p||c.profile_data},pf);},
   async showInformation(id) {
     const sequence=++this.sequence, esc=this.escape;
     const [cr,pr,dr]=await Promise.all([
@@ -93,13 +86,13 @@ window.CRMWorkspace = {
     let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
     this.setContext(id,c.name_nominative||c.full_name);
     const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
-    const education=CRMEducation.summary(p,pf);
+    const education=CRMCaseInformation.education(c,pf);
     const work=this.employmentInformation(c,p,pf);
     const servedValue=c.served_before??p.served_before;
     const served=servedValue===true||servedValue==='true';
     const noService=servedValue===false||servedValue==='false';
     const sex=c.sex||p.sex;
-    const service=served?(pf.military_service_history||pf.military_experience||p.military_service_history||window.CRMDocumentPolicy?.serviceSummary(p.work_records)||''):noService?(sex==='male'?'Військову службу не проходив.':sex==='female'?'Військову службу не проходила.':'Немає попередньої військової служби.'):'';
+    const service=CRMCaseInformation.service(c,pf);
     const settlement=r=>r.locality||r.city||String(r.address||'').match(/(?:^|[,;])\s*((?:місто\s+|м\.\s*|село\s+|с\.\s*|смт\s+)[^,;]+)/i)?.[1]||'';
     const displayDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('.'):value;
     const mother=r=>/^(мати|матір|мать)$/i.test(String(r.relationship||r.relation||'').trim());

@@ -124,12 +124,14 @@
   async function renderCard(candidateId) {
     const content = document.querySelector('.content');
     if (!content) return;
+    content.classList.remove('crm-doc-manager');
     content.innerHTML = '<div style="padding:40px;text-align:center;color:#7d8a93">Завантажуємо повну картку кандидата...</div>';
 
-    const [cr, pr, dr] = await Promise.all([
+    const [cr, pr, dr, requirements] = await Promise.all([
       supabaseClient.from('candidates').select('*').eq('id', candidateId).single(),
       supabaseClient.from('personal_files').select('*').eq('candidate_id', candidateId).maybeSingle(),
-      supabaseClient.from('documents').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: true })
+      supabaseClient.from('documents').select('*').eq('candidate_id', candidateId).order('created_at', { ascending: true }),
+      typeof getDocumentRequirements==='function'?getDocumentRequirements():Promise.resolve([])
     ]);
     if (cr.error) throw cr.error;
 
@@ -156,7 +158,7 @@
 
     const visibleDocs=CRMCandidateConditions.isUnit(c)?docs.filter(d=>CRMCandidateConditions.unitDocument(d.document_type)):docs;
     const presenceRows=window.CRMDocumentPresence?.cardRows(c,visibleDocs,esc)||'';
-    const documentRows = (visibleDocs.length ? visibleDocs.map(d => `<div class="cc-doc"><div><b>${esc(documentLabel(d))}</b><small>${esc(d.file_name || '')} · ${d.required ? 'Обов’язковий' : 'Додатковий'} · ${esc(d.status || 'Завантажено')}</small></div><button type="button" data-open-doc="${esc(d.storage_path || '')}">Відкрити</button></div>`).join('') : presenceRows?'':'<div class="cc-empty">Документи ще не завантажені.</div>')+presenceRows;
+    const documentRows = (visibleDocs.length ? visibleDocs.map(d => `<div class="cc-doc"><div><b>${esc(documentLabel(d))}</b><small>${esc(d.file_name || '')} · ${esc(window.CRMDocumentState?(() => {const r=CRMDocumentState.requirementFor(d,requirements);return r&&r.is_required?(CRMCandidateConditions.requirement(r,c)===null?'Уточніть умову':'Обов’язковий'):'За наявності';})():(d.required?'Обов’язковий':'За наявності'))} · ${esc(window.CRMDocumentState?.fileState(d)||d.verification_status||d.status||'Завантажено')}</small></div><button type="button" data-open-doc="${esc(d.storage_path || '')}">Відкрити</button></div>`).join('') : presenceRows?'':'<div class="cc-empty">Документи ще не завантажені.</div>')+presenceRows;
 
     content.innerHTML = `
       <style>
@@ -311,7 +313,7 @@
     identitySelect.addEventListener('change',updateIdentityFields);
     caseMode.addEventListener('change',()=>{if(caseMode.value!=='unit')updateIdentityFields()});updateIdentityFields();
     const childrenInput=formForNavigation.querySelector('[name=children_count]');childrenInput.min='0';childrenInput.step='1';
-    const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null,expectedUpdatedAt:c.updated_at,candidate:c,documents:visibleDocs};
+    const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null,expectedUpdatedAt:c.updated_at,candidate:c,documents:visibleDocs,requirements,personalFile:pf};
     CRMWorkspace.card=cardState;
     formForNavigation.addEventListener('input',()=>{cardState.dirty=true;content.querySelector('#ccStatus').textContent='Є незбережені зміни'});
     formForNavigation.addEventListener('change',()=>{cardState.dirty=true});

@@ -33,7 +33,7 @@
   }
   function summary(e,esc,hasFile=false) {
     const date=window.CRMResponsibility?.date(e.checked_at)||e.checked_at;
-    return '<div class="crm-presence-summary"><span class="status status-done">'+(hasFile?'Наявність підтверджена прапорцем':'Перевірений · без файла')+'</span><small>Позначив: '+esc(e.checked_by_name||'Працівник CRM')+' · '+esc(date)+'</small></div>';
+    return '<details class="crm-presence-summary"><summary><span class="status status-done">'+(hasFile?'Наявність підтверджена прапорцем':'Перевірений · без файла')+'</span></summary><small>Позначив: '+esc(e.checked_by_name||'Працівник CRM')+' · '+esc(date)+'</small></details>';
   }
   function control(r,c,files,esc) {
     if(!r.id||!allowed(r)||files.length&&!entry(r,c))return '';
