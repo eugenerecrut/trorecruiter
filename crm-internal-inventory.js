@@ -48,6 +48,7 @@
     }
     for(const entry of window.CRMDocumentPresence?.withoutCopies(c,latest(documents))||[]){const r=row(entry.document_type);if(r)r.paper.push(entry);}
     for(const r of records){r.included=r.paper.length>0||r.files.some(d=>d.verification_status==='Підтверджено');r.verified=r.files.every(d=>d.verification_status==='Підтверджено');}
+    const photo=byId.get('photo');photo.included=true;photo.count='1';
     // Identity label describes the actual document rather than always claiming an ID card.
     const identity=byId.get('identity');if(identity.files.some(d=>/книжечк/iu.test(d.document_type)))identity.title='Копія паспорта громадянина України';
     const education=byId.get('education');if(education.files.length)education.title='Копія документів про освіту з додатками';
@@ -58,7 +59,7 @@
   function validate(records) {
     for(const r of records.filter(r=>r.included)){
       if(!r.title.trim())throw Error('Заповніть найменування документа.');
-      if(!/^\d+$/.test(String(r.count))||Number(r.count)<1||Number(r.count)>10000)throw Error('Уточніть кількість аркушів: '+r.title);
+      if(r.id!=='photo'&&(!/^\d+$/.test(String(r.count))||Number(r.count)<1||Number(r.count)>10000))throw Error('Уточніть кількість аркушів: '+r.title);
     }
     if(!records.some(r=>r.included))throw Error('Оберіть документи для внутрішнього опису.');
   }
@@ -92,7 +93,7 @@
       const page=pdf.getPage(slot.page),record=byId.get(slot.id);
       if(record?.included&&record.title!==slot.title)text(page,slot.cells[1],record.title);
       else page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.drawObject(slot.xobject),PDFLib.popGraphicsState());
-      text(page,slot.cells[2],record?.included?record.count:'0',true);
+      text(page,slot.cells[2],slot.id==='photo'?'1':record?.included?record.count:'0',true);
       if(record?.included)text(page,slot.cells[3],record.notes);
     }
     extra.forEach((record,i)=>{const slot=layout.extra_slots[i],page=pdf.getPage(slot.page);text(page,slot.cells[0],String(27+i),true);text(page,slot.cells[1],record.title);text(page,slot.cells[2],record.count,true);text(page,slot.cells[3],record.notes);});
@@ -102,26 +103,26 @@
     const documents=await getCandidateDocuments(c.id),records=model(c,documents),manifest=latest(documents).map(d=>[d.id,d.version_number,d.verification_status]).sort();
     await loadExternalScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js','PDFLib');
     const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-inventory-dialog';
-    dialog.innerHTML='<h2>Внутрішній опис особової справи</h2><p>'+esc(c.name_nominative||c.full_name)+'</p><p class="muted">Бланк з оригіналу: 7 сторінок, початкові поля та порожні рядки. Для незібраних документів кількість — 0. Перевірте кількість паперових аркушів перед формуванням. PDF-сторінки — початкова підказка; для двобічного друку або паперових документів уточніть кількість.</p><p data-inventory-status role="status">Рахуємо сторінки PDF…</p><label class="crm-inventory-extra"><input type="checkbox" data-inventory-all> Показати інші рядки зразка</label><div class="crm-inventory-rows"></div><div class="crm-actions"><button type="button" data-inventory-add>＋ Додати рядок</button><button type="button" data-inventory-create disabled>Завантажити PDF</button><button type="button" data-inventory-close>Закрити</button></div>';
+    dialog.innerHTML='<h2>Внутрішній опис особової справи</h2><p>'+esc(c.name_nominative||c.full_name)+'</p><p class="muted">Бланк з оригіналу: 7 сторінок, початкові поля та порожні рядки. Фото — фіксовано 1 аркуш. Для інших незібраних документів кількість — 0. Перевірте кількість паперових аркушів перед формуванням. PDF-сторінки — початкова підказка; для двобічного друку або паперових документів уточніть кількість.</p><p data-inventory-status role="status">Рахуємо сторінки PDF…</p><label class="crm-inventory-extra"><input type="checkbox" data-inventory-all> Показати інші рядки зразка</label><div class="crm-inventory-rows"></div><div class="crm-actions"><button type="button" data-inventory-add>＋ Додати рядок</button><button type="button" data-inventory-create disabled>Завантажити PDF</button><button type="button" data-inventory-close>Закрити</button></div>';
     document.body.append(dialog);dialog.showModal();let busy=true,showAll=false;
     const status=dialog.querySelector('[data-inventory-status]'),body=dialog.querySelector('.crm-inventory-rows'),generate=dialog.querySelector('[data-inventory-create]');
     const close=()=>{if(busy)return;dialog.close();dialog.remove();};dialog.querySelector('[data-inventory-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
     function render() {
-      body.innerHTML=sections.map((title,section)=>'<h3>'+title+'</h3>'+records.map((r,i)=>r.section===section&&(showAll||r.included||r.files.length||r.paper.length)?'<div class="crm-inventory-row"><label><input type="checkbox" data-inventory-include="'+i+'" '+(r.included?'checked':'')+' aria-label="Включити: '+esc(r.title)+'"></label><input data-inventory-title="'+i+'" value="'+esc(r.title)+'" aria-label="Найменування: '+esc(r.title)+'"><input type="number" min="1" max="10000" data-inventory-count="'+i+'" value="'+r.count+'" placeholder="Аркуші" aria-label="Кількість аркушів: '+esc(r.title)+'"><input data-inventory-note="'+i+'" value="'+esc(r.notes)+'" placeholder="Примітка" aria-label="Примітка: '+esc(r.title)+'"><details><summary>Джерела ('+(r.files.length+r.paper.length)+')</summary>'+r.files.map(d=>'<p>'+esc(d.file_name)+' · '+esc(d.verification_status)+'</p>').join('')+r.paper.map(e=>'<p>'+esc(e.document_type)+' · є без файла</p>').join('')+(r.countHint?'<p>'+esc(r.countHint)+'</p>':'')+'</details></div>':'').join('')).join('');
+      body.innerHTML=sections.map((title,section)=>'<h3>'+title+'</h3>'+records.map((r,i)=>r.section===section&&(showAll||r.included||r.files.length||r.paper.length)?'<div class="crm-inventory-row"><label><input type="checkbox" data-inventory-include="'+i+'" '+(r.included?'checked':'')+(r.id==='photo'?' disabled data-inventory-fixed':'')+' aria-label="Включити: '+esc(r.title)+'"></label><input data-inventory-title="'+i+'" value="'+esc(r.title)+'" aria-label="Найменування: '+esc(r.title)+'"><input type="number" min="1" max="10000" data-inventory-count="'+i+'" '+(r.id==='photo'?'readonly title="Фото — фіксовано 1 аркуш." ':'')+'value="'+r.count+'" placeholder="Аркуші" aria-label="Кількість аркушів: '+esc(r.title)+'"><input data-inventory-note="'+i+'" value="'+esc(r.notes)+'" placeholder="Примітка" aria-label="Примітка: '+esc(r.title)+'"><details><summary>Джерела ('+(r.files.length+r.paper.length)+')</summary>'+r.files.map(d=>'<p>'+esc(d.file_name)+' · '+esc(d.verification_status)+'</p>').join('')+r.paper.map(e=>'<p>'+esc(e.document_type)+' · є без файла</p>').join('')+(r.countHint?'<p>'+esc(r.countHint)+'</p>':'')+'</details></div>':'').join('')).join('');
     }
     dialog.querySelector('[data-inventory-all]').onchange=e=>{showAll=e.target.checked;render();};
-    body.oninput=e=>{const t=e.target;for(const [key,field]of [['inventoryTitle','title'],['inventoryCount','count'],['inventoryNote','notes']])if(t.dataset[key]!==undefined)records[Number(t.dataset[key])][field]=t.value;};
-    body.onchange=e=>{if(e.target.dataset.inventoryInclude!==undefined)records[Number(e.target.dataset.inventoryInclude)].included=e.target.checked;};
+    body.oninput=e=>{const t=e.target;for(const [key,field]of [['inventoryTitle','title'],['inventoryCount','count'],['inventoryNote','notes']])if(t.dataset[key]!==undefined){const r=records[Number(t.dataset[key])];if(r.id!=='photo'||field!=='count')r[field]=t.value;}};
+    body.onchange=e=>{if(e.target.dataset.inventoryInclude!==undefined){const r=records[Number(e.target.dataset.inventoryInclude)];if(r.id!=='photo')r.included=e.target.checked;}};
     render();
     dialog.querySelectorAll('input,button').forEach(el=>el.disabled=true);
     try {
       // Limit concurrent downloads, and never send stored PDF contents to a third party.
-      for(const r of records){let count=0,unknown=!!r.paper.length;
+      for(const r of records){if(r.id==='photo'){r.count='1';r.countHint='Фото — фіксовано 1 аркуш.';continue;}let count=0,unknown=!!r.paper.length;
         for(const d of r.files){try{const response=await supabaseClient.storage.from(DOC_BUCKET).download(d.storage_path);if(response.error)throw response.error;const data=new Uint8Array(await response.data.arrayBuffer());if(data[0]===37){const doc=await PDFLib.PDFDocument.load(data);count+=doc.getPageCount();}else if(/^image\//.test(d.mime_type||''))count++;else unknown=true;}catch{unknown=true;}}
         r.count=unknown?'':r.files.length?String(count):'';r.countHint=(count?'PDF-сторінок: '+count+'. ':'')+(unknown?'Кількість паперових аркушів потрібно уточнити.':'');
       }
       render();status.textContent='Готово. Перевірте кількість аркушів і позначте потрібні рядки.';
-    }finally{busy=false;dialog.querySelectorAll('input,button').forEach(el=>el.disabled=false);}
+    }finally{busy=false;dialog.querySelectorAll('input,button').forEach(el=>el.disabled=el.hasAttribute('data-inventory-fixed'));}
     dialog.querySelector('[data-inventory-add]').onclick=()=>{records.push({id:'manual:'+records.length,section:1,title:'Новий документ',files:[],paper:[],included:true,count:'',notes:''});render();};
     generate.onclick=async()=>{
       if(busy||CRMWorkspace.busy)return;try{validate(records);}catch(error){status.textContent=error.message;status.scrollIntoView({block:'nearest'});return;}
@@ -131,7 +132,7 @@
         if(JSON.stringify(current)!==JSON.stringify(manifest))throw Error('Список документів змінився. Закрийте й відкрийте опис повторно.');
         status.textContent='Формуємо та зберігаємо PDF…';await save(await create(c.name_nominative||c.full_name,records));status.textContent='PDF збережено у справі та завантажено.';
       }catch(error){status.textContent='Не сформовано: '+error.message;status.scrollIntoView({block:'nearest'});}
-      finally{busy=false;CRMWorkspace.busy=false;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
+      finally{busy=false;CRMWorkspace.busy=false;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=el.hasAttribute('data-inventory-fixed'));}
     };
     return dialog;
   }
