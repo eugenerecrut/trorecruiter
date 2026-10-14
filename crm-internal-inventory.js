@@ -3,32 +3,32 @@
   'use strict';
   const sections=['ПОСЛУЖНИЙ СПИСОК, АВТОБІОГРАФІЯ ТА АТЕСТАЦІЙНИЙ МАТЕРІАЛ','ДОДАТКОВІ МАТЕРІАЛИ'];
   const slots=[
-    ['photo',0,'Фото',/^фото/iu],['service',0,'Послужний список',/послужний список/iu],['biography',0,'Автобіографії',/автобіограф/iu],
-    ['application',1,'Заява',/заява/iu],['identity',1,'Копія ID-картки',/паспорт|(?:ID|ІД)[\s-]*карт/iu],
-    ['residence',1,'Витяг з реєстру територіальної громади (ДІЯ)',/місц.*проживання|територіальн.*громад/iu],
-    ['displaced',1,'Копія довідки про взяття на облік внутрішньо переміщеної особи',/переміщен.*особ|ВПО/iu],
-    ['tax',1,'Копія картки фізичної особи — платника податків',/ідентифікаційн.*код|платника податк|РНОКПП/iu],
-    ['birth',1,'Свідоцтво / актовий запис про народження',/свідоцтво.*народження|актовий запис.*народження/iu],
-    ['education',1,'Копія документів про освіту з додатками',/диплом|атестат|документи про освіту|свідоцтво.*освіт/iu],
-    ['military',1,'Копія військового квитка / військово-облікового документа',/військов.*квит|військов.*облік|резерв\s*\+|приписн/iu],
-    ['ubd',1,'Копія посвідчення учасника бойових дій',/УБД|посвідчення.*учасника бойових/iu],
-    ['combat',1,'Копія довідки про безпосередню участь особи у заходах, необхідних для забезпечення оборони України, захисту безпеки населення та інтересів держави у зв’язку з військовою агресією російської федерації проти України',/безпосередн.*участ/iu],
-    ['discharge',1,'Копія витягу з наказу про звільнення з попереднього місця служби',/наказ.*звільнення|звільнення.*служб/iu],
-    ['marriage',1,'Копія свідоцтва про шлюб',/^(?!.*розірвання)(?:.*свідоцтво.*шлюб|.*актовий запис.*шлюб)/iu],
-    ['child',1,'Копія свідоцтва про народження дитини',/народження.*(?:дитин|дітей)/iu],
-    ['work',1,'Витяг індивідуальних відомостей про застраховану особу / документи про трудову діяльність',/застрахован.*особ|трудов.*діяльн|трудова книжка|ПФУ/iu],
-    ['consent',1,'Згода на обробку персональних даних',/^згода.*обробку(?!.*психолог)/iu],
-    ['collection',1,'Згода на збір та обробку персональних даних',/^згода.*збір/iu],
-    ['receipt',1,'Розписка кандидата на контракт',/розписка.*(?:контракт|військов)/iu],
-    ['psychology',1,'Карта професійно-психологічного відбору кандидата',/карт[ак].*(?:психолог|соціально)/iu],
-    ['vlk',1,'Копія довідки ВЛК',/^довідка ВЛК$/iu],
-    ['form13',1,'Копія картки обстеження та медичного огляду',/(?:додаток|форма|картка)\s*13|картка обстеження та медичного огляду/iu],
-    ['blood',1,'Копія результатів аналізу крові на групу та резус-фактор',/груп.*кров|резус/iu],
-    ['psychiatry',1,'Копія довідки форми № 100-2/о',/психіатр|нарколог|100[\s-]*2/iu],
-    ['criminal',1,'Повний витяг щодо відомостей про наявність судимості (ДІЯ)',/несудиміст|наявність судимості/iu],
-    ['truth',1,'Розписка кандидата щодо достовірності наданої інформації',/розписка.*достовір/iu],
-    ['recommendation',1,'Копія рекомендаційного листа',/рекомендац/iu],
-    ['bank',1,'Довідка банку з IBAN отримувача',/IBAN|довідка.*банк/iu]
+    ['photo',0,"Фото",/^фото/iu],['service',0,"Послужний список",/послужний список/iu],['biography',0,"Автобіографії",/автобіограф/iu],
+    ['application',1,"Заява",/заява/iu],['identity',1,"Копія ID-картки",/паспорт|(?:ID|ІД)[\s-]*карт/iu],
+    ['residence',1,"Витяг з реєстру територіальної громади (ДІЯ)",/місц.*проживання|територіальн.*громад/iu],
+    ['displaced',1,"Копія Довідки про взяття на облік внутрішньо переміщеної особи",/переміщен.*особ|ВПО/iu],
+    ['tax',1,"Копія картки фізичної особи - платника податків",/ідентифікаційн.*код|платника податк|РНОКПП/iu],
+    ['birth',1,"Актовий запис про народження (ДІЯ)",/свідоцтво.*народження|актовий запис.*народження/iu],
+    ['education',1,"Свідоцтво про здобуття базової середньої освіти (ДІЯ)",/диплом|атестат|документи про освіту|свідоцтво.*освіт/iu],
+    ['military',1,"Копія Військового квитка",/військов.*квит|військов.*облік|резерв\s*\+|приписн/iu],
+    ['ubd',1,"Копія Посвідчення учасника бойових дій,",/УБД|посвідчення.*учасника бойових/iu],
+    ['combat',1,"Копія Довідки про безпосередню участь особи у заходах,  необхідних для забезпечення оборони України, захисту безпеки населення та інтересів держави у зв’язку з військовою агресією російської федерації проти України",/безпосередн.*участ/iu],
+    ['discharge',1,"Копія Витягу з наказу про звільнення з поперднього місця служби",/наказ.*звільнення|звільнення.*служб/iu],
+    ['marriage',1,"Копія Свідоцтва про шлюб",/^(?!.*розірвання)(?:.*свідоцтво.*шлюб|.*актовий запис.*шлюб)/iu],
+    ['child',1,"Копія Свідоцтва про народження (дитини)",/народження.*(?:дитин|дітей)/iu],
+    ['work',1,"Витяг Індивідуальні відомості про застраховану особу",/застрахован.*особ|трудов.*діяльн|трудова книжка|ПФУ/iu],
+    ['consent',1,"Згода на обробку персональних даних",/^згода.*обробку(?!.*психолог)/iu],
+    ['collection',1,"Згода на збір та обробку персональних даних",/^згода.*збір/iu],
+    ['receipt',1,"Розписка кандидата на контракт",/розписка.*(?:контракт|військов)/iu],
+    ['psychology',1,"Карта професійно - психологічного відбору кандидата",/карт[ак].*(?:психолог|соціально)/iu],
+    ['vlk',1,"Копія Довідки ВЛК",/^довідка ВЛК$/iu],
+    ['form13',1,"Копія Картки обстеження та медичного огляду",/(?:додаток|форма|картка)\s*13|картка обстеження та медичного огляду/iu],
+    ['blood',1,"Копія результатів аналізу крові на групу і резус",/груп.*кров|резус/iu],
+    ['psychiatry',1,"Копія довідки форма № 100-2/о",/психіатр|нарколог|100[\s-]*2/iu],
+    ['criminal',1,"Витяг щодо відомостей про наявність судимості (ДІЯ)",/несудиміст|наявність судимості/iu],
+    ['truth',1,"Розписка кандидата щодо достовірності наданої інформації",/розписка.*достовір/iu],
+    ['recommendation',1,"Копія рекомендаційного листа ",/рекомендац/iu],
+    ['bank',1,"Довідка банку з IBAN отримувача",/IBAN|довідка.*банк/iu]
   ];
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const latest=docs=>CRMResponsibility.latest(docs||[]);
@@ -50,6 +50,9 @@
     for(const r of records){r.included=r.paper.length>0||r.files.some(d=>d.verification_status==='Підтверджено');r.verified=r.files.every(d=>d.verification_status==='Підтверджено');}
     // Identity label describes the actual document rather than always claiming an ID card.
     const identity=byId.get('identity');if(identity.files.some(d=>/книжечк/iu.test(d.document_type)))identity.title='Копія паспорта громадянина України';
+    const education=byId.get('education');if(education.files.length)education.title='Копія документів про освіту з додатками';
+    const birth=byId.get('birth');if(birth.files.some(d=>/свідоцтво/iu.test(d.document_type)))birth.title='Копія свідоцтва про народження';
+    const military=byId.get('military');if(military.files.length&&!military.files.some(d=>/військов.*квит/iu.test(d.document_type)))military.title='Копія військово-облікового документа';
     return records;
   }
   function validate(records) {
@@ -59,44 +62,47 @@
     }
     if(!records.some(r=>r.included))throw Error('Оберіть документи для внутрішнього опису.');
   }
-  const fontUrl=new URL('templates/fonts/Tinos-Regular.ttf',typeof document!=='undefined'&&document.currentScript?.src||'http://localhost/').href;
+  const moduleUrl=typeof document!=='undefined'&&document.currentScript?.src||'http://localhost/';
+  const fontUrl=new URL('templates/fonts/Tinos-Regular.ttf',moduleUrl).href;
+  const templateUrl=new URL('templates/internal-inventory/',moduleUrl).href;
   async function create(name,records) {
     validate(records);
     await Promise.all([loadExternalScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js','PDFLib'),loadExternalScript('https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js','fontkit')]);
-    const response=await fetch(fontUrl);if(!response.ok)throw Error('Не вдалося завантажити шрифт PDF.');
-    const pdf=await PDFLib.PDFDocument.create();pdf.registerFontkit(window.fontkit);const font=await pdf.embedFont(await response.arrayBuffer(),{subset:true});
-    pdf.setTitle('Внутрішній опис — '+name);pdf.setCreator('PSK_RECRUTER CRM');
-    const mm=72/25.4,W=210*mm,H=297*mm,left=35*mm,top=15*mm,bottom=15*mm;
-    const widths=[10,99,26,25].map(n=>n*mm),size=14,lineHeight=16;let page,y;
-    const wrap=(text,width)=>{
-      const lines=[];for(const part of String(text??'').split('\n')){let line='';for(const word of part.split(/\s+/).filter(Boolean)){if(line&&font.widthOfTextAtSize(line+' '+word,size)>width){lines.push(line);line='';}for(const char of word){if(line&&font.widthOfTextAtSize(line+char,size)>width){lines.push(line);line='';}line+=char;}line+=' ';}lines.push(line.trim());}return lines;
-    };
-    const centered=(text,width=160*mm)=>{for(const line of wrap(text,width)){page.drawText(line,{x:left+(width-font.widthOfTextAtSize(line,size))/2,y:y-size,font,size});y-=lineHeight;}};
-    function tableRow(cells,header=false) {
-      const lines=cells.map((text,i)=>wrap(text,widths[i]-4*mm)),height=Math.max(8*mm,Math.max(...lines.map(l=>l.length))*lineHeight+4*mm);
-      let x=left;for(let i=0;i<widths.length;i++){
-        page.drawRectangle({x,y:y-height,width:widths[i],height,borderWidth:.5,borderColor:PDFLib.rgb(0,0,0)});
-        lines[i].forEach((text,j)=>{const center=header||i===0||i===2;page.drawText(text,{x:center?x+(widths[i]-font.widthOfTextAtSize(text,size))/2:x+2*mm,y:y-2*mm-size-j*lineHeight,font,size});});x+=widths[i];
-      }y-=height;
+    const responses=await Promise.all([fetch(templateUrl+'blank.pdf?v=1.1.0.456'),fetch(templateUrl+'layout.json?v=1.1.0.456'),fetch(fontUrl)]);
+    if(responses.some(r=>!r.ok))throw Error('Не вдалося завантажити оригінальний бланк або шрифт PDF.');
+    const [bytes,layout,fontBytes]=await Promise.all([responses[0].arrayBuffer(),responses[1].json(),responses[2].arrayBuffer()]);
+    const pdf=await PDFLib.PDFDocument.load(bytes);pdf.registerFontkit(window.fontkit);
+    const font=await pdf.embedFont(fontBytes,{subset:true});const size=14,lineHeight=16.2,padding=5.4;
+    pdf.setTitle('Внутрішній опис — '+name);pdf.setAuthor('');pdf.setCreator('PSK_RECRUTER CRM');
+    if(pdf.getPageCount()!==layout.page_count)throw Error('Бланк і карта полів не узгоджені.');
+    const byId=new Map(records.map(r=>[r.id,r])),ids=new Set(layout.slots.map(r=>r.id));
+    const extra=records.filter(r=>r.included&&!ids.has(r.id));
+    if(extra.length>layout.extra_slots.length)throw Error('У бланку є лише '+layout.extra_slots.length+' додаткові рядки.');
+    function text(page,box,value,center=false) {
+      value=String(value??'');if(!value)return;
+      const width=box[2]-box[0]-2*padding,lines=[];
+      for(const part of value.split('\n')){let line='';for(const word of part.split(/\s+/).filter(Boolean)){
+        if(font.widthOfTextAtSize(word,size)>width)throw Error('Задовге слово у полі: '+word);
+        const candidate=line?line+' '+word:word;if(line&&font.widthOfTextAtSize(candidate,size)>width){lines.push(line);line=word;}else line=candidate;
+      }lines.push(line);}
+      if(size+(lines.length-1)*lineHeight+2>box[3]-box[1])throw Error('Текст не вміщується у рядок оригінального бланка: '+value);
+      lines.forEach((line,i)=>page.drawText(line,{x:center?(box[0]+box[2]-font.widthOfTextAtSize(line,size))/2:box[0]+padding,y:page.getHeight()-box[1]-size-i*lineHeight,font,size}));
     }
-    const start=(section,continuation=false)=>{page=pdf.addPage([W,H]);y=H-top;centered('ВНУТРІШНІЙ ОПИС');centered('ДОКУМЕНТІВ ОСОБОВОЇ СПРАВИ РОЗДІЛУ «'+sections[section]+'»');y-=6*mm;tableRow(['№ з/п','Найменування документів','Кількість аркушів','Примітка'],true);};
-    for(let section=0;section<2;section++){
-      start(section);let index=0;
-      for(const r of records.filter(r=>r.included&&r.section===section)){
-        const cells=[String(++index),r.title,String(r.count),r.notes];const needed=Math.max(8*mm,Math.max(...cells.map((v,i)=>wrap(v,widths[i]-4*mm).length))*lineHeight+4*mm);
-        if(needed>H-top-bottom-140)throw Error('Занадто довге найменування або примітка: '+r.title);
-        if(y-needed<bottom)start(section,true);tableRow(cells);
-      }
-      // A few empty rows preserve the source's space for additions without printing dozens of empty pages.
-      for(let i=0;i<4;i++){if(y-8*mm<bottom)break;tableRow(['','','','']);}
+    for(const slot of layout.slots){
+      const page=pdf.getPage(slot.page),record=byId.get(slot.id);
+      if(record?.included&&record.title!==slot.title)text(page,slot.cells[1],record.title);
+      else page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.drawObject(slot.xobject),PDFLib.popGraphicsState());
+      text(page,slot.cells[2],record?.included?record.count:'0',true);
+      if(record?.included)text(page,slot.cells[3],record.notes);
     }
+    extra.forEach((record,i)=>{const slot=layout.extra_slots[i],page=pdf.getPage(slot.page);text(page,slot.cells[0],String(27+i),true);text(page,slot.cells[1],record.title);text(page,slot.cells[2],record.count,true);text(page,slot.cells[3],record.notes);});
     return new Blob([await pdf.save()],{type:'application/pdf'});
   }
   async function open(c,requirements,{save}) {
     const documents=await getCandidateDocuments(c.id),records=model(c,documents),manifest=latest(documents).map(d=>[d.id,d.version_number,d.verification_status]).sort();
     await loadExternalScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js','PDFLib');
     const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-inventory-dialog';
-    dialog.innerHTML='<h2>Внутрішній опис особової справи</h2><p>'+esc(c.name_nominative||c.full_name)+'</p><p class="muted">Перевірте документи та кількість паперових аркушів перед формуванням. PDF-сторінки — початкова підказка; для двобічного друку або паперових документів уточніть кількість.</p><p data-inventory-status role="status">Рахуємо сторінки PDF…</p><label class="crm-inventory-extra"><input type="checkbox" data-inventory-all> Показати інші рядки зразка</label><div class="crm-inventory-rows"></div><div class="crm-actions"><button type="button" data-inventory-add>＋ Додати рядок</button><button type="button" data-inventory-create disabled>Завантажити PDF</button><button type="button" data-inventory-close>Закрити</button></div>';
+    dialog.innerHTML='<h2>Внутрішній опис особової справи</h2><p>'+esc(c.name_nominative||c.full_name)+'</p><p class="muted">Бланк з оригіналу: 7 сторінок, початкові поля та порожні рядки. Для незібраних документів кількість — 0. Перевірте кількість паперових аркушів перед формуванням. PDF-сторінки — початкова підказка; для двобічного друку або паперових документів уточніть кількість.</p><p data-inventory-status role="status">Рахуємо сторінки PDF…</p><label class="crm-inventory-extra"><input type="checkbox" data-inventory-all> Показати інші рядки зразка</label><div class="crm-inventory-rows"></div><div class="crm-actions"><button type="button" data-inventory-add>＋ Додати рядок</button><button type="button" data-inventory-create disabled>Завантажити PDF</button><button type="button" data-inventory-close>Закрити</button></div>';
     document.body.append(dialog);dialog.showModal();let busy=true,showAll=false;
     const status=dialog.querySelector('[data-inventory-status]'),body=dialog.querySelector('.crm-inventory-rows'),generate=dialog.querySelector('[data-inventory-create]');
     const close=()=>{if(busy)return;dialog.close();dialog.remove();};dialog.querySelector('[data-inventory-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
@@ -124,7 +130,7 @@
         const current=latest(await getCandidateDocuments(c.id)).map(d=>[d.id,d.version_number,d.verification_status]).sort();
         if(JSON.stringify(current)!==JSON.stringify(manifest))throw Error('Список документів змінився. Закрийте й відкрийте опис повторно.');
         status.textContent='Формуємо та зберігаємо PDF…';await save(await create(c.name_nominative||c.full_name,records));status.textContent='PDF збережено у справі та завантажено.';
-      }catch(error){status.textContent='Не сформовано: '+error.message;}
+      }catch(error){status.textContent='Не сформовано: '+error.message;status.scrollIntoView({block:'nearest'});}
       finally{busy=false;CRMWorkspace.busy=false;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
     };
     return dialog;
