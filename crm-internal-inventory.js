@@ -70,7 +70,7 @@
     if(!records.some(r=>r.included))throw Error('Оберіть документи для внутрішнього опису.');
   }
   const moduleUrl=typeof document!=='undefined'&&document.currentScript?.src||'http://localhost/';
-  const fontUrl=new URL('templates/fonts/Tinos-Regular.ttf',moduleUrl).href;
+  const fontUrl=new URL('templates/fonts/TimesNewRoman-Regular.ttf',moduleUrl).href;
   const templateUrl=new URL('templates/internal-inventory/',moduleUrl).href;
   async function create(name,records) {
     validate(records);
