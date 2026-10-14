@@ -132,3 +132,13 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #78
 }
 
 @media(max-width:760px){.crm-doc-manager #docCameraFiles,.crm-doc-manager #docScanFiles{display:none!important}}
+/* Appendix 5 editor: title, physical sheet count and note; source details are folded. */
+.crm-inventory-dialog{width:min(940px,96vw);max-height:90dvh;overflow:auto}
+.crm-inventory-extra{display:flex;align-items:center;gap:7px;margin:12px 0}.crm-inventory-extra input{width:18px;height:18px;flex:none}
+.crm-inventory-dialog h3{font-size:13px;margin:18px 0 8px}
+.crm-inventory-row{display:grid;grid-template-columns:22px minmax(0,1fr) 85px 150px;gap:8px;padding:8px 0;border-bottom:1px solid #e5e9ec;align-items:center}
+.crm-inventory-row input:not([type=checkbox]){min-width:0;width:100%;min-height:36px;padding:6px;border:1px solid #d7dfe3;border-radius:4px;font-size:12px}
+.crm-inventory-row input[type=checkbox]{width:18px;height:18px}
+.crm-inventory-row details{grid-column:2/-1;font-size:11px;color:#66737c}
+.crm-inventory-row details p{margin:5px 0}
+@media(max-width:600px){.crm-inventory-row{grid-template-columns:24px minmax(0,1fr) 75px}.crm-inventory-row [data-inventory-note]{grid-column:2/-1}.crm-inventory-dialog{padding:14px}.crm-inventory-dialog .crm-actions{position:sticky;bottom:0;background:#fff;padding:10px 0}}
