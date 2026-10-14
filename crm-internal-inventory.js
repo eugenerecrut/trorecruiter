@@ -104,7 +104,7 @@
         page.drawPage(upper,{x:0,y:height-bottom});
         page.drawPage(lower,{x:0,y:height-cut-growth});
         page.drawRectangle({x:medicalSlot.cells[0][0]+0.4,y:height-bottom-0.8,width:medicalSlot.cells[3][2]-medicalSlot.cells[0][0]-0.8,height:1.6,color:PDFLib.rgb(1,1,1)});
-        for(const x of [medicalSlot.cells[0][0],...medicalSlot.cells.map(c=>c[2])])page.drawLine({start:{x,y:height-bottom+0.8},end:{x,y:height-bottom-growth},thickness:0.5});
+        for(const x of [medicalSlot.cells[0][0],...medicalSlot.cells.map(c=>c[2])])page.drawLine({start:{x,y:height-box[1]},end:{x,y:height-bottom-growth},thickness:0.5});
         page.drawLine({start:{x:medicalSlot.cells[0][0],y:height-bottom-growth},end:{x:medicalSlot.cells[3][2],y:height-bottom-growth},thickness:0.5});
         for(const slot of [...layout.slots,...layout.extra_slots])if(slot.page===medicalSlot.page){
           if(slot===medicalSlot)slot.cells.forEach(c=>c[3]+=growth);
