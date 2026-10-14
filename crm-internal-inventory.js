@@ -1,8 +1,8 @@
 // Appendix 5: internal inventory of an actual candidate file. No schema changes.
 (function () {
   'use strict';
-  const fixedCounts={photo:'1',service:'5'};
-  const fixedHint=id=>id==='photo'?'Фото — фіксовано 1 аркуш.':'Послужний список — фіксовано 5 аркушів.';
+  const fixedCounts={photo:'1',service:'5',psychology:'5'};
+  const fixedHint=id=>({photo:'Фото — фіксовано 1 аркуш.',service:'Послужний список — фіксовано 5 аркушів.',psychology:'Карта професійно-психологічного відбору кандидата — фіксовано 5 аркушів.'})[id];
   const sections=['ПОСЛУЖНИЙ СПИСОК, АВТОБІОГРАФІЯ ТА АТЕСТАЦІЙНИЙ МАТЕРІАЛ','ДОДАТКОВІ МАТЕРІАЛИ'];
   const slots=[
     ['photo',0,"Фото",/^фото/iu],['service',0,"Послужний список",/послужний список/iu],['biography',0,"Автобіографії",/автобіограф/iu],
@@ -119,7 +119,7 @@
     const ordered=[...originalSection.filter(s=>s.id!=='recommendation'&&s.id!=='bank').map(s=>({record:byId.get(s.id),minimum:s.cells[0][3]-s.cells[0][1]})),
       {record:byId.get('bank'),minimum:32.76},...extra.map(record=>({record,minimum:32.76})),{record:byId.get('recommendation'),minimum:32.76}];
     const rows=ordered.map(({record,minimum})=>{
-      const values=[record.title,record.included?record.count:'0',record.included?record.notes:''];
+      const values=[record.title,fixedCounts[record.id]??(record.included?record.count:'0'),record.included?record.notes:''];
       const lines=Math.max(...values.map((v,i)=>wrapped(v,columns[i+2]-columns[i+1]-2*padding).length));
       return {record,height:Math.max(minimum,size+(lines-1)*lineHeight+8)};
     });
@@ -145,7 +145,7 @@
         const r=row.record;
         text(page,[columns[0],top,columns[1],end],String(number++),true);
         text(page,[columns[1],top,columns[2],end],r.title);
-        text(page,[columns[2],top,columns[3],end],r.included?r.count:'0',true);
+        text(page,[columns[2],top,columns[3],end],fixedCounts[r.id]??(r.included?r.count:'0'),true);
         if(r.included)text(page,[columns[3],top,columns[4],end],r.notes);
       }
       y=end;
@@ -157,7 +157,7 @@
     const documents=await getCandidateDocuments(c.id),records=model(c,documents),manifest=latest(documents).map(d=>[d.id,d.version_number,d.verification_status]).sort();
     await loadExternalScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js','PDFLib');
     const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-inventory-dialog';
-    dialog.innerHTML='<h2>Внутрішній опис особової справи</h2><p>'+esc(c.name_nominative||c.full_name)+'</p><p class="muted">Бланк з оригіналу: 7 сторінок, початкові поля та порожні рядки. Фото — фіксовано 1 аркуш, послужний список — 5 аркушів. Для інших незібраних документів кількість — 0. Перевірте кількість паперових аркушів перед формуванням. PDF-сторінки — початкова підказка; для двобічного друку або паперових документів уточніть кількість.</p><p data-inventory-status role="status">Рахуємо сторінки PDF…</p><label class="crm-inventory-extra"><input type="checkbox" data-inventory-all> Показати інші рядки зразка</label><div class="crm-inventory-rows"></div><div class="crm-actions"><button type="button" data-inventory-add>＋ Додати рядок</button><button type="button" data-inventory-create disabled>Завантажити PDF</button><button type="button" data-inventory-close>Закрити</button></div>';
+    dialog.innerHTML='<h2>Внутрішній опис особової справи</h2><p>'+esc(c.name_nominative||c.full_name)+'</p><p class="muted">Бланк з оригіналу: 7 сторінок, початкові поля та порожні рядки. Фото — фіксовано 1 аркуш, послужний список і карта професійно-психологічного відбору — по 5 аркушів. Для інших незібраних документів кількість — 0. Перевірте кількість паперових аркушів перед формуванням. PDF-сторінки — початкова підказка; для двобічного друку або паперових документів уточніть кількість.</p><p data-inventory-status role="status">Рахуємо сторінки PDF…</p><label class="crm-inventory-extra"><input type="checkbox" data-inventory-all> Показати інші рядки зразка</label><div class="crm-inventory-rows"></div><div class="crm-actions"><button type="button" data-inventory-add>＋ Додати рядок</button><button type="button" data-inventory-create disabled>Завантажити PDF</button><button type="button" data-inventory-close>Закрити</button></div>';
     document.body.append(dialog);dialog.showModal();let busy=true,showAll=false;
     const status=dialog.querySelector('[data-inventory-status]'),body=dialog.querySelector('.crm-inventory-rows'),generate=dialog.querySelector('[data-inventory-create]');
     const close=()=>{if(busy)return;dialog.close();dialog.remove();};dialog.querySelector('[data-inventory-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
