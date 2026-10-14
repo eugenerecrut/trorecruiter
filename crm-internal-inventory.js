@@ -42,7 +42,8 @@
       const special=/народження.*(?:дитин|дітей)/iu.test(type)?'child':/^згода.*збір/iu.test(type)?'collection':null;
       const slot=special?slots.find(s=>s[0]===special):slots.find(s=>s[3].test(type));if(slot)return byId.get(slot[0]);
       let r=records.find(r=>r.id==='extra:'+type);
-      if(!r){r={id:'extra:'+type,section:1,title:type,files:[],paper:[],included:false,count:'',notes:''};records.push(r);}return r;
+      if(!r){const title=/свідоцтво.*змін.*(?:імен|прізвищ)/iu.test(type)?'Копія свідоцтва про зміну імені / прізвища':type;
+        r={id:'extra:'+type,section:1,title,files:[],paper:[],included:false,count:'',notes:''};records.push(r);}return r;
     }
     for(const d of latest(documents)) {
       if(!d.storage_path||CRMCandidateConditions.documentCondition(d.document_type,c)===false)continue;
