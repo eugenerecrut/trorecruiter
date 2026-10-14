@@ -110,9 +110,25 @@
     const status=dialog.querySelector('[data-inventory-status]'),body=dialog.querySelector('.crm-inventory-rows'),generate=dialog.querySelector('[data-inventory-create]');
     const close=()=>{if(busy)return;dialog.close();dialog.remove();};dialog.querySelector('[data-inventory-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
     function render() {
-      body.innerHTML=sections.map((title,section)=>'<h3>'+title+'</h3>'+records.map((r,i)=>r.section===section&&(showAll||r.included||r.files.length||r.paper.length)?'<div class="crm-inventory-row"><label><input type="checkbox" data-inventory-include="'+i+'" '+(r.included?'checked':'')+(fixedCounts[r.id]?' disabled data-inventory-fixed':'')+' aria-label="Включити: '+esc(r.title)+'"></label><input data-inventory-title="'+i+'" value="'+esc(r.title)+'" aria-label="Найменування: '+esc(r.title)+'"><input type="number" min="1" max="10000" data-inventory-count="'+i+'" '+(fixedCounts[r.id]?'readonly title="'+fixedHint(r.id)+'" ':'')+'value="'+r.count+'" placeholder="Аркуші" aria-label="Кількість аркушів: '+esc(r.title)+'"><input data-inventory-note="'+i+'" value="'+esc(r.notes)+'" placeholder="Примітка" aria-label="Примітка: '+esc(r.title)+'"><details><summary>Джерела ('+(r.files.length+r.paper.length)+')</summary>'+r.files.map(d=>'<p>'+esc(d.file_name)+' · '+esc(d.verification_status)+'</p>').join('')+r.paper.map(e=>'<p>'+esc(e.document_type)+' · є без файла</p>').join('')+(r.countHint?'<p>'+esc(r.countHint)+'</p>':'')+'</details>'+(r.id==='biography'?'<small class="muted" style="grid-column:1/-1">'+esc(r.countHint||'Сумарна кількість сторінок рукописної та друкованої автобіографій.')+'</small>':'')+'</div>':'').join('')).join('');
+      body.innerHTML=sections.map((title,section)=>'<h3>'+title+'</h3>'+records.map((r,i)=>r.section===section&&(showAll||r.included||r.files.length||r.paper.length)?'<div class="crm-inventory-row"><label><input type="checkbox" data-inventory-include="'+i+'" '+(r.included?'checked':'')+(fixedCounts[r.id]?' disabled data-inventory-fixed':'')+' aria-label="Включити: '+esc(r.title)+'"></label><input data-inventory-title="'+i+'" value="'+esc(r.title)+'" aria-label="Найменування: '+esc(r.title)+'"><input type="number" min="1" max="10000" data-inventory-count="'+i+'" '+(fixedCounts[r.id]?'readonly title="'+fixedHint(r.id)+'" ':'')+'value="'+r.count+'" placeholder="Аркуші" aria-label="Кількість аркушів: '+esc(r.title)+'"><input data-inventory-note="'+i+'" value="'+esc(r.notes)+'" placeholder="Примітка" aria-label="Примітка: '+esc(r.title)+'"><details><summary>Джерела ('+(r.files.length+r.paper.length)+')</summary>'+r.files.map((d,j)=>'<p>'+esc(d.file_name)+' · '+esc(d.verification_status)+' <button type="button" data-inventory-open="'+i+':'+j+'" aria-label="Відкрити документ: '+esc(d.file_name||d.document_type)+'">Відкрити ↗</button></p>').join('')+r.paper.map(e=>'<p>'+esc(e.document_type)+' · є без файла</p>').join('')+(r.countHint?'<p>'+esc(r.countHint)+'</p>':'')+'</details>'+(r.id==='biography'?'<small class="muted" style="grid-column:1/-1">'+esc(r.countHint||'Сумарна кількість сторінок рукописної та друкованої автобіографій.')+'</small>':'')+'</div>':'').join('')).join('');
     }
     dialog.querySelector('[data-inventory-all]').onchange=e=>{showAll=e.target.checked;render();};
+    body.onclick=async e=>{
+      const button=e.target.closest('[data-inventory-open]');if(!button||busy||button.disabled)return;
+      const [i,j]=button.dataset.inventoryOpen.split(':').map(Number),source=records[i]?.files[j];if(!source?.id)return;
+      // Reserve the tab during the click so mobile browsers do not block it after awaiting Storage.
+      const preview=window.open('about:blank','_blank');
+      if(!preview){status.textContent='Дозвольте відкриття нової вкладки для перегляду документа.';status.scrollIntoView({block:'nearest'});return;}
+      preview.opener=null;button.disabled=true;
+      try{
+        const {data:doc,error}=await supabaseClient.from('documents').select('storage_path,deleted_at').eq('id',source.id).eq('candidate_id',c.id).single();
+        if(error)throw error;if(doc?.deleted_at||!doc?.storage_path)throw Error('Документ не знайдено або видалено.');
+        const {data:signed,error:signError}=await supabaseClient.storage.from(DOC_BUCKET).createSignedUrl(doc.storage_path,300);
+        if(signError)throw signError;if(!signed?.signedUrl)throw Error('Не вдалося отримати посилання.');
+        if(!preview.closed)preview.location.replace(signed.signedUrl);
+      }catch(error){if(!preview.closed)preview.close();status.textContent='Не вдалося відкрити документ: '+(error?.message||'невідома помилка');status.scrollIntoView({block:'nearest'});}
+      finally{button.disabled=busy;}
+    };
     body.oninput=e=>{const t=e.target;for(const [key,field]of [['inventoryTitle','title'],['inventoryCount','count'],['inventoryNote','notes']])if(t.dataset[key]!==undefined){const r=records[Number(t.dataset[key])];if(!fixedCounts[r.id]||field!=='count')r[field]=t.value;}};
     body.onchange=e=>{if(e.target.dataset.inventoryInclude!==undefined){const r=records[Number(e.target.dataset.inventoryInclude)];if(!fixedCounts[r.id])r.included=e.target.checked;}};
     render();
