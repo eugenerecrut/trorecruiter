@@ -56,7 +56,7 @@
     const education=byId.get('education');if(education.files.length)education.title='Копія документів про освіту з додатками';
     const birth=byId.get('birth');if(birth.files.some(d=>/свідоцтво/iu.test(d.document_type)))birth.title='Копія свідоцтва про народження';
     const military=byId.get('military');if(military.files.length&&!military.files.some(d=>/військов.*квит/iu.test(d.document_type)))military.title='Копія військово-облікового документа';
-    return records;
+    return records.filter(r=>r.id!=='recommendation').concat(records.filter(r=>r.id==='recommendation'));
   }
   function validate(records) {
     for(const r of records.filter(r=>r.included)){
@@ -127,13 +127,16 @@
       lines.forEach((line,i)=>page.drawText(line,{x:center?(box[0]+box[2]-font.widthOfTextAtSize(line,size))/2:box[0]+padding,y:firstY-i*lineHeight,font,size}));
     }
     for(const slot of layout.slots){
+      if(slot.id==='recommendation'||slot.id==='bank')continue;
       const page=pdf.getPage(slot.page),record=byId.get(slot.id);
       if(record?.included&&record.title!==slot.title)text(page,slot.cells[1],record.title);
       else page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.translate(0,-(slot.shift||0)),PDFLib.drawObject(slot.xobject),PDFLib.popGraphicsState());
       text(page,slot.cells[2],fixedCounts[slot.id]??(record?.included?record.count:'0'),true);
       if(record?.included)text(page,slot.cells[3],record.notes);
     }
-    extra.forEach((record,i)=>{const slot=layout.extra_slots[i],page=pdf.getPage(slot.page);text(page,slot.cells[0],String(27+i),true);text(page,slot.cells[1],record.title);text(page,slot.cells[2],record.count,true);text(page,slot.cells[3],record.notes);});
+    const tail=[byId.get('bank'),...extra,byId.get('recommendation')];
+    const tailSlots=[layout.slots.find(s=>s.id==='recommendation'),layout.slots.find(s=>s.id==='bank'),...layout.extra_slots];
+    tail.forEach((record,i)=>{const slot=tailSlots[i],page=pdf.getPage(slot.page);if(i>=2)text(page,slot.cells[0],String(25+i),true);text(page,slot.cells[1],record.title);text(page,slot.cells[2],record.included?record.count:'0',true);if(record.included)text(page,slot.cells[3],record.notes);});
     return new Blob([await pdf.save()],{type:'application/pdf'});
   }
   async function open(c,requirements,{save}) {
@@ -182,7 +185,7 @@
       }
       render();status.textContent='Готово. Перевірте кількість аркушів і позначте потрібні рядки.';
     }finally{busy=false;dialog.querySelectorAll('input,button').forEach(el=>el.disabled=el.hasAttribute('data-inventory-fixed'));}
-    dialog.querySelector('[data-inventory-add]').onclick=()=>{records.push({id:'manual:'+records.length,section:1,title:'Новий документ',files:[],paper:[],included:true,count:'',notes:''});render();};
+    dialog.querySelector('[data-inventory-add]').onclick=()=>{records.splice(records.findIndex(r=>r.id==='recommendation'),0,{id:'manual:'+records.length,section:1,title:'Новий документ',files:[],paper:[],included:true,count:'',notes:''});render();};
     generate.onclick=async()=>{
       if(busy||CRMWorkspace.busy)return;try{validate(records);}catch(error){status.textContent=error.message;status.scrollIntoView({block:'nearest'});return;}
       busy=true;CRMWorkspace.busy=true;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=true);
