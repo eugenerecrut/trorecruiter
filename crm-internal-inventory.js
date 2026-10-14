@@ -122,7 +122,9 @@
         const candidate=line?line+' '+word:word;if(line&&font.widthOfTextAtSize(candidate,size)>width){lines.push(line);line=word;}else line=candidate;
       }lines.push(line);}
       if(size+(lines.length-1)*lineHeight+2>box[3]-box[1])throw Error('Текст не вміщується у рядок оригінального бланка: '+value);
-      lines.forEach((line,i)=>page.drawText(line,{x:center?(box[0]+box[2]-font.widthOfTextAtSize(line,size))/2:box[0]+padding,y:page.getHeight()-box[1]-size-i*lineHeight,font,size}));
+      const textHeight=font.heightAtSize(size),blockHeight=textHeight+(lines.length-1)*lineHeight;
+      const firstY=center?page.getHeight()-(box[1]+box[3])/2+blockHeight/2-textHeight:page.getHeight()-box[1]-size;
+      lines.forEach((line,i)=>page.drawText(line,{x:center?(box[0]+box[2]-font.widthOfTextAtSize(line,size))/2:box[0]+padding,y:firstY-i*lineHeight,font,size}));
     }
     for(const slot of layout.slots){
       const page=pdf.getPage(slot.page),record=byId.get(slot.id);
