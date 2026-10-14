@@ -189,7 +189,7 @@
     try {
       // Limit concurrent downloads, and never send stored PDF contents to a third party.
       for(const r of records){if(fixedCounts[r.id]){r.count=fixedCounts[r.id];r.countHint=fixedHint(r.id);continue;}let count=0,unknown=!!r.paper.length;
-        for(const d of r.files){try{const response=await supabaseClient.storage.from(DOC_BUCKET).download(d.storage_path);if(response.error)throw response.error;const data=new Uint8Array(await response.data.arrayBuffer());if(data[0]===37){const doc=await PDFLib.PDFDocument.load(data);count+=doc.getPageCount();}else if(/^image\//.test(d.mime_type||''))count++;else unknown=true;}catch{unknown=true;}}
+        for(const d of r.files){try{const response=await supabaseClient.storage.from(DOC_BUCKET).download(d.storage_path);if(response.error)throw response.error;const data=new Uint8Array(await response.data.arrayBuffer());if(/pdf/i.test(d.mime_type||'')||/\.pdf$/i.test(d.file_name||'')||new TextDecoder('ascii').decode(data.subarray(0,1024)).includes('%PDF-')){const doc=await PDFLib.PDFDocument.load(data);count+=doc.getPageCount();}else if(/^image\//.test(d.mime_type||''))count++;else unknown=true;}catch{unknown=true;}}
         r.count=unknown?'':r.files.length?String(count):'';r.countHint=(count?'PDF-сторінок: '+count+'. ':'')+(unknown?'Кількість паперових аркушів потрібно уточнити.':'');
         if(r.id==='biography'){
           r.countHint='Рукописна + друкована: '+count+' стор. у завантажених файлах. ';
