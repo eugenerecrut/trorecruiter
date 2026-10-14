@@ -80,6 +80,39 @@
     if(pdf.getPageCount()!==layout.page_count)throw Error('Бланк і карта полів не узгоджені.');
     const byId=new Map(records.map(r=>[r.id,r])),ids=new Set(layout.slots.map(r=>r.id));
     const extra=records.filter(r=>r.included&&!ids.has(r.id));
+    // The medical certificate may have a longer official name than the sample.
+    // Grow its row using unused rows at the bottom of the same page.
+    const medicalSlot=layout.slots.find(s=>s.id==='psychiatry'),medicalRecord=byId.get('psychiatry');
+    if(medicalRecord?.included&&medicalRecord.title!==medicalSlot.title){
+      const box=medicalSlot.cells[1],width=box[2]-box[0]-2*padding;
+      let line='',lines=1;
+      for(const word of String(medicalRecord.title).split(/\s+/).filter(Boolean)){
+        const candidate=line?line+' '+word:word;
+        if(line&&font.widthOfTextAtSize(candidate,size)>width){lines++;line=word;}else line=candidate;
+      }
+      const needed=size+(lines-1)*lineHeight+2-(box[3]-box[1]);
+      if(needed>0){
+        const blanks=layout.extra_slots.filter(s=>s.page===medicalSlot.page),removed=[];
+        let growth=0;
+        while(growth<needed&&blanks.length){const spare=blanks.pop();removed.unshift(spare);growth+=spare.cells[0][3]-spare.cells[0][1];}
+        if(growth<needed||extra.length>layout.extra_slots.length-removed.length)throw Error('Для розширення довідки бракує порожніх рядків бланка.');
+        const page=pdf.getPage(medicalSlot.page),height=page.getHeight(),bottom=box[3],cut=removed[0].cells[0][1];
+        const source=await PDFLib.PDFDocument.load(bytes);
+        const upper=await pdf.embedPage(source.getPage(medicalSlot.page),{left:0,bottom:height-bottom,right:page.getWidth(),top:height});
+        const lower=await pdf.embedPage(source.getPage(medicalSlot.page),{left:0,bottom:height-cut,right:page.getWidth(),top:height-bottom});
+        page.node.set(PDFLib.PDFName.of('Contents'),pdf.context.obj([]));
+        page.drawPage(upper,{x:0,y:height-bottom});
+        page.drawPage(lower,{x:0,y:height-cut-growth});
+        page.drawRectangle({x:medicalSlot.cells[0][0]+0.4,y:height-bottom-0.8,width:medicalSlot.cells[3][2]-medicalSlot.cells[0][0]-0.8,height:1.6,color:PDFLib.rgb(1,1,1)});
+        for(const x of [medicalSlot.cells[0][0],...medicalSlot.cells.map(c=>c[2])])page.drawLine({start:{x,y:height-bottom+0.8},end:{x,y:height-bottom-growth},thickness:0.5});
+        page.drawLine({start:{x:medicalSlot.cells[0][0],y:height-bottom-growth},end:{x:medicalSlot.cells[3][2],y:height-bottom-growth},thickness:0.5});
+        for(const slot of [...layout.slots,...layout.extra_slots])if(slot.page===medicalSlot.page){
+          if(slot===medicalSlot)slot.cells.forEach(c=>c[3]+=growth);
+          else if(slot.cells[0][1]>=bottom-0.01){slot.cells.forEach(c=>{c[1]+=growth;c[3]+=growth;});slot.shift=growth;}
+        }
+        layout.extra_slots=layout.extra_slots.filter(s=>!removed.includes(s));
+      }
+    }
     if(extra.length>layout.extra_slots.length)throw Error('У бланку є лише '+layout.extra_slots.length+' додаткові рядки.');
     function text(page,box,value,center=false) {
       value=String(value??'');if(!value)return;
@@ -94,7 +127,7 @@
     for(const slot of layout.slots){
       const page=pdf.getPage(slot.page),record=byId.get(slot.id);
       if(record?.included&&record.title!==slot.title)text(page,slot.cells[1],record.title);
-      else page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.drawObject(slot.xobject),PDFLib.popGraphicsState());
+      else page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.translate(0,-(slot.shift||0)),PDFLib.drawObject(slot.xobject),PDFLib.popGraphicsState());
       text(page,slot.cells[2],fixedCounts[slot.id]??(record?.included?record.count:'0'),true);
       if(record?.included)text(page,slot.cells[3],record.notes);
     }
