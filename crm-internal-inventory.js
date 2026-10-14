@@ -39,6 +39,7 @@
     const byId=new Map(records.map(r=>[r.id,r]));
     function row(type) {
       if(/^(?:Перелік документів|Титульний аркуш)$/iu.test(type))return null;
+      if(/^(?:Копія\s*:?\s*)?(?:Припис про направлення(?:\s+до\s+ВЧ)?|Ре[єе]стр кандидата)$/iu.test(String(type).trim()))return null;
       const special=/народження.*(?:дитин|дітей)/iu.test(type)?'child':/^згода.*збір/iu.test(type)?'collection':null;
       const slot=special?slots.find(s=>s[0]===special):slots.find(s=>s[3].test(type));if(slot)return byId.get(slot[0]);
       let r=records.find(r=>r.id==='extra:'+type);
