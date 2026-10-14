@@ -12,13 +12,13 @@
     ['tax',1,"Копія картки фізичної особи - платника податків",/ідентифікаційн.*код|платника податк|РНОКПП/iu],
     ['birth',1,"Актовий запис про народження (ДІЯ)",/свідоцтво.*народження|актовий запис.*народження/iu],
     ['education',1,"Свідоцтво про здобуття базової середньої освіти (ДІЯ)",/диплом|атестат|документи про освіту|свідоцтво.*освіт/iu],
-    ['military',1,"Копія Військового квитка",/військов.*квит|військов.*облік|резерв\s*\+|приписн/iu],
+    ['military',1,"Копія Військового квитка",/військов.*квит|військов.*облік|резерв\s*\+|приписн|приписк/iu],
     ['ubd',1,"Копія Посвідчення учасника бойових дій,",/УБД|посвідчення.*учасника бойових/iu],
     ['combat',1,"Копія Довідки про безпосередню участь особи у заходах,  необхідних для забезпечення оборони України, захисту безпеки населення та інтересів держави у зв’язку з військовою агресією російської федерації проти України",/безпосередн.*участ/iu],
     ['discharge',1,"Копія Витягу з наказу про звільнення з поперднього місця служби",/наказ.*звільнення|звільнення.*служб/iu],
     ['marriage',1,"Копія Свідоцтва про шлюб",/^(?!.*розірвання)(?:.*свідоцтво.*шлюб|.*актовий запис.*шлюб)/iu],
     ['child',1,"Копія Свідоцтва про народження (дитини)",/народження.*(?:дитин|дітей)/iu],
-    ['work',1,"Витяг Індивідуальні відомості про застраховану особу",/застрахован.*особ|трудов.*діяльн|трудова книжка|ПФУ/iu],
+    ['work',1,"Витяг з Реєстру застрахованих осіб Державного реєстру загальнообовя’зкового державного соціального страхування (ПФУ)",/застрахован.*особ|трудов.*діяльн|трудова книжка|ПФУ/iu],
     ['consent',1,"Згода на обробку персональних даних",/^згода.*обробку(?!.*психолог)/iu],
     ['collection',1,"Згода на збір та обробку персональних даних",/^згода.*збір/iu],
     ['receipt',1,"Розписка кандидата на контракт",/розписка.*(?:контракт|військов)/iu],
@@ -26,8 +26,8 @@
     ['vlk',1,"Копія Довідки ВЛК",/^довідка ВЛК$/iu],
     ['form13',1,"Копія Картки обстеження та медичного огляду",/(?:додаток|форма|картка)\s*13|картка обстеження та медичного огляду/iu],
     ['blood',1,"Копія результатів аналізу крові на групу і резус",/груп.*кров|резус/iu],
-    ['psychiatry',1,"Копія довідки форма № 100-2/о",/психіатр|нарколог|100[\s-]*2/iu],
-    ['criminal',1,"Витяг щодо відомостей про наявність судимості (ДІЯ)",/несудиміст|наявність судимості/iu],
+    ['psychiatry',1,"Копія Довідки про проходження попереднього, періодичного та позачергового психіатричних оглядів, у тому числі на предмет вживання психоактивних речовин",/психіатр|нарколог|100[\s-]*2/iu],
+    ['criminal',1,"Витяг з інформаційно-аналітичної системи «Облік відомостей про притягнення особи до кримінальної відповідальності та наявності судимості» (ДІЯ)",/несудиміст|наявність судимості/iu],
     ['truth',1,"Розписка кандидата щодо достовірності наданої інформації",/розписка.*достовір/iu],
     ['recommendation',1,"Копія рекомендаційного листа ",/рекомендац/iu],
     ['bank',1,"Довідка банку з IBAN отримувача",/IBAN|довідка.*банк/iu]
@@ -55,7 +55,9 @@
     const identity=byId.get('identity');if(identity.files.some(d=>/книжечк/iu.test(d.document_type)))identity.title='Копія паспорта громадянина України';
     const education=byId.get('education');if(education.files.length)education.title='Копія документів про освіту з додатками';
     const birth=byId.get('birth');if(birth.files.some(d=>/свідоцтво/iu.test(d.document_type)))birth.title='Копія свідоцтва про народження';
-    const military=byId.get('military');if(military.files.length&&!military.files.some(d=>/військов.*квит/iu.test(d.document_type)))military.title='Копія військово-облікового документа';
+    const military=byId.get('military');if(military.files.length&&!military.files.some(d=>/військов.*квит/iu.test(d.document_type))){
+      military.title=military.files.every(d=>/приписн|приписк/iu.test(d.document_type))?'Копія посвідчення про приписку до призовної дільниці':'Копія військово-облікового документа';
+    }
     return records.filter(r=>r.id!=='recommendation').concat(records.filter(r=>r.id==='recommendation'));
   }
   function validate(records) {
@@ -80,40 +82,17 @@
     if(pdf.getPageCount()!==layout.page_count)throw Error('Бланк і карта полів не узгоджені.');
     const byId=new Map(records.map(r=>[r.id,r])),ids=new Set(layout.slots.map(r=>r.id));
     const extra=records.filter(r=>r.included&&!ids.has(r.id));
-    // The medical certificate may have a longer official name than the sample.
-    // Grow its row using unused rows at the bottom of the same page.
-    const medicalSlot=layout.slots.find(s=>s.id==='psychiatry'),medicalRecord=byId.get('psychiatry');
-    if(medicalRecord?.included&&medicalRecord.title!==medicalSlot.title){
-      const box=medicalSlot.cells[1],width=box[2]-box[0]-2*padding;
-      let line='',lines=1;
-      for(const word of String(medicalRecord.title).split(/\s+/).filter(Boolean)){
-        const candidate=line?line+' '+word:word;
-        if(line&&font.widthOfTextAtSize(candidate,size)>width){lines++;line=word;}else line=candidate;
-      }
-      const needed=size+(lines-1)*lineHeight+2-(box[3]-box[1]);
-      if(needed>0){
-        const blanks=layout.extra_slots.filter(s=>s.page===medicalSlot.page),removed=[];
-        let growth=0;
-        while(growth<needed&&blanks.length){const spare=blanks.pop();removed.unshift(spare);growth+=spare.cells[0][3]-spare.cells[0][1];}
-        if(growth<needed||extra.length>layout.extra_slots.length-removed.length)throw Error('Для розширення довідки бракує порожніх рядків бланка.');
-        const page=pdf.getPage(medicalSlot.page),height=page.getHeight(),bottom=box[3],cut=removed[0].cells[0][1];
-        const source=await PDFLib.PDFDocument.load(bytes);
-        const upper=await pdf.embedPage(source.getPage(medicalSlot.page),{left:0,bottom:height-bottom,right:page.getWidth(),top:height});
-        const lower=await pdf.embedPage(source.getPage(medicalSlot.page),{left:0,bottom:height-cut,right:page.getWidth(),top:height-bottom});
-        page.node.set(PDFLib.PDFName.of('Contents'),pdf.context.obj([]));
-        page.drawPage(upper,{x:0,y:height-bottom});
-        page.drawPage(lower,{x:0,y:height-cut-growth});
-        page.drawRectangle({x:medicalSlot.cells[0][0]+0.4,y:height-bottom-0.8,width:medicalSlot.cells[3][2]-medicalSlot.cells[0][0]-0.8,height:1.6,color:PDFLib.rgb(1,1,1)});
-        for(const x of [medicalSlot.cells[0][0],...medicalSlot.cells.map(c=>c[2])])page.drawLine({start:{x,y:height-box[1]},end:{x,y:height-bottom-growth},thickness:0.5});
-        page.drawLine({start:{x:medicalSlot.cells[0][0],y:height-bottom-growth},end:{x:medicalSlot.cells[3][2],y:height-bottom-growth},thickness:0.5});
-        for(const slot of [...layout.slots,...layout.extra_slots])if(slot.page===medicalSlot.page){
-          if(slot===medicalSlot)slot.cells.forEach(c=>c[3]+=growth);
-          else if(slot.cells[0][1]>=bottom-0.01){slot.cells.forEach(c=>{c[1]+=growth;c[3]+=growth;});slot.shift=growth;}
-        }
-        layout.extra_slots=layout.extra_slots.filter(s=>!removed.includes(s));
-      }
-    }
     if(extra.length>layout.extra_slots.length)throw Error('У бланку є лише '+layout.extra_slots.length+' додаткові рядки.');
+    function wrapped(value,width){
+      const lines=[];
+      for(const part of String(value??'').split('\n')){let line='';
+        for(const word of part.split(/\s+/).filter(Boolean)){
+          if(font.widthOfTextAtSize(word,size)>width)throw Error('Задовге слово у полі: '+word);
+          const candidate=line?line+' '+word:word;
+          if(line&&font.widthOfTextAtSize(candidate,size)>width){lines.push(line);line=word;}else line=candidate;
+        }lines.push(line);
+      }return lines;
+    }
     function text(page,box,value,center=false) {
       value=String(value??'');if(!value)return;
       const width=box[2]-box[0]-2*padding,lines=[];
@@ -126,17 +105,51 @@
       const firstY=center?page.getHeight()-(box[1]+box[3])/2+blockHeight/2-textHeight:page.getHeight()-box[1]-size;
       lines.forEach((line,i)=>page.drawText(line,{x:center?(box[0]+box[2]-font.widthOfTextAtSize(line,size))/2:box[0]+padding,y:firstY-i*lineHeight,font,size}));
     }
-    for(const slot of layout.slots){
-      if(slot.id==='recommendation'||slot.id==='bank')continue;
+    for(const slot of layout.slots.filter(s=>s.section===0)){
       const page=pdf.getPage(slot.page),record=byId.get(slot.id);
       if(record?.included&&record.title!==slot.title)text(page,slot.cells[1],record.title);
-      else page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.translate(0,-(slot.shift||0)),PDFLib.drawObject(slot.xobject),PDFLib.popGraphicsState());
+      else page.pushOperators(PDFLib.pushGraphicsState(),PDFLib.drawObject(slot.xobject),PDFLib.popGraphicsState());
       text(page,slot.cells[2],fixedCounts[slot.id]??(record?.included?record.count:'0'),true);
       if(record?.included)text(page,slot.cells[3],record.notes);
     }
-    const tail=[byId.get('bank'),...extra,byId.get('recommendation')];
-    const tailSlots=[layout.slots.find(s=>s.id==='recommendation'),layout.slots.find(s=>s.id==='bank'),...layout.extra_slots];
-    tail.forEach((record,i)=>{const slot=tailSlots[i],page=pdf.getPage(slot.page);if(i>=2)text(page,slot.cells[0],String(25+i),true);text(page,slot.cells[1],record.title);text(page,slot.cells[2],record.included?record.count:'0',true);if(record.included)text(page,slot.cells[3],record.notes);});
+    // Keep the source cover, margins, header and column widths; flow full titles in taller rows.
+    const originalSection=layout.slots.filter(s=>s.section===1),first=originalSection[0];
+    const source=await PDFLib.PDFDocument.load(bytes),columns=[first.cells[0][0],...first.cells.map(c=>c[2])];
+    const ordered=[...originalSection.filter(s=>s.id!=='recommendation'&&s.id!=='bank').map(s=>({record:byId.get(s.id),minimum:s.cells[0][3]-s.cells[0][1]})),
+      {record:byId.get('bank'),minimum:32.76},...extra.map(record=>({record,minimum:32.76})),{record:byId.get('recommendation'),minimum:32.76}];
+    const rows=ordered.map(({record,minimum})=>{
+      const values=[record.title,record.included?record.count:'0',record.included?record.notes:''];
+      const lines=Math.max(...values.map((v,i)=>wrapped(v,columns[i+2]-columns[i+1]-2*padding).length));
+      return {record,height:Math.max(minimum,size+(lines-1)*lineHeight+8)};
+    });
+    for(let i=extra.length;i<layout.extra_slots.length;i++)rows.push({height:32.76});
+    let pageIndex=first.page,y=first.cells[0][1],number=1;
+    const bottom=795,continuationTop=42.84;
+    function clearPage(index){
+      const page=pdf.getPage(index);page.node.set(PDFLib.PDFName.of('Contents'),pdf.context.obj([]));return page;
+    }
+    let page=clearPage(pageIndex);
+    const header=await pdf.embedPage(source.getPage(pageIndex),{left:0,bottom:page.getHeight()-y,right:page.getWidth(),top:page.getHeight()});
+    page.drawPage(header,{x:0,y:page.getHeight()-y});
+    const used=new Set([pageIndex]);
+    for(const row of rows){
+      if(y+row.height>bottom+0.1){
+        pageIndex++;if(pageIndex>=pdf.getPageCount())throw Error('Для повних назв бракує сторінок бланка.');
+        page=clearPage(pageIndex);used.add(pageIndex);y=continuationTop;
+      }
+      const top=y,end=y+row.height;
+      for(const x of columns)page.drawLine({start:{x,y:page.getHeight()-top},end:{x,y:page.getHeight()-end},thickness:0.5});
+      for(const edge of [top,end])page.drawLine({start:{x:columns[0],y:page.getHeight()-edge},end:{x:columns[4],y:page.getHeight()-edge},thickness:0.5});
+      if(row.record){
+        const r=row.record;
+        text(page,[columns[0],top,columns[1],end],String(number++),true);
+        text(page,[columns[1],top,columns[2],end],r.title);
+        text(page,[columns[2],top,columns[3],end],r.included?r.count:'0',true);
+        if(r.included)text(page,[columns[3],top,columns[4],end],r.notes);
+      }
+      y=end;
+    }
+    for(let index=first.page;index<pdf.getPageCount();index++)if(!used.has(index))clearPage(index);
     return new Blob([await pdf.save()],{type:'application/pdf'});
   }
   async function open(c,requirements,{save}) {
