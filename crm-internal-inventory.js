@@ -43,7 +43,7 @@
       const special=/народження.*(?:дитин|дітей)/iu.test(type)?'child':/^згода.*збір/iu.test(type)?'collection':null;
       const slot=special?slots.find(s=>s[0]===special):slots.find(s=>s[3].test(type));if(slot)return byId.get(slot[0]);
       let r=records.find(r=>r.id==='extra:'+type);
-      if(!r){const title=/свідоцтво.*змін.*(?:імен|прізвищ)/iu.test(type)?'Копія свідоцтва про зміну імені / прізвища':type;
+      if(!r){const title=/свідоцтво.*змін.*(?:імен|прізвищ)/iu.test(type)?'Копія Свідоцтва про зміну імені / прізвища':type;
         r={id:'extra:'+type,section:1,title,files:[],paper:[],included:false,count:'',notes:''};records.push(r);}return r;
     }
     for(const d of latest(documents)) {
@@ -56,7 +56,7 @@
     // Identity label describes the actual document rather than always claiming an ID card.
     const identity=byId.get('identity');if(identity.files.some(d=>/книжечк/iu.test(d.document_type)))identity.title='Копія паспорта громадянина України';
     const education=byId.get('education');if(education.files.length)education.title='Копія документів про освіту з додатками';
-    const birth=byId.get('birth');if(birth.files.some(d=>/свідоцтво/iu.test(d.document_type)))birth.title='Копія свідоцтва про народження';
+    const birth=byId.get('birth');if(birth.files.some(d=>/свідоцтво/iu.test(d.document_type)))birth.title='Копія Свідоцтва про народження';
     const military=byId.get('military');if(military.files.length&&!military.files.some(d=>/військов.*квит/iu.test(d.document_type))){
       military.title=military.files.every(d=>/приписн|приписк/iu.test(d.document_type))?'Копія посвідчення про приписку до призовної дільниці':'Копія військово-облікового документа';
     }
