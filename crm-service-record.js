@@ -72,15 +72,31 @@ function model(c,pf={}){
   [stacked(r.start_date),stacked(r.end_date),[r.position,r.military_specialty].filter(Boolean).join(', '),r.unit,[r.order_issuer,r.order_number,date(r.order_date)].filter(Boolean).join(' ')].forEach((v,j)=>add('training_'+i+'_'+j,['Початок','Завершення','Посада та ВОС','Частина','Наказ'][j]+' зборів · '+(i+1),9,[cols[j],top,cols[j+1],end],v,'Збори в запасі'));
  });
  for(const f of fields)if(typeof p.service_record_print?.[f.key]==='string')f.value=p.service_record_print[f.key];
+ for(const field of fields)if(field.key.startsWith('work_')){field.center=true;field.verticalCenter=true;}
  return {fields,worked,served,name:c.name_nominative||c.full_name};
+}
+function wrapText(value,width,measure){
+ const out=[];
+ for(const part of String(value||'').split('\n')){let row='';
+  for(const word of part.split(/\s+/).filter(Boolean)){
+   if(measure(word)<=width){const next=row?row+' '+word:word;if(row&&measure(next)>width){out.push(row);row=word;}else row=next;continue;}
+   if(row){out.push(row);row='';}
+   // Prefer existing hyphens; split a longer segment only when it cannot fit alone.
+   const chunks=word.match(/[^-‐‑–—]+[-‐‑–—]?|[-‐‑–—]/gu)||[word];
+   for(const chunk of chunks){
+    if(measure(chunk)<=width){if(row&&measure(row+chunk)>width){out.push(row);row='';}row+=chunk;}
+    else for(const ch of Array.from(chunk)){if(measure(ch)>width)throw Error('Комірка надто вузька для друку.');if(row&&measure(row+ch)>width){out.push(row);row='';}row+=ch;}
+   }
+  }out.push(row);
+ }return out;
 }
 async function create(state){
  await Promise.all([loadExternalScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js','PDFLib'),loadExternalScript('https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js','fontkit')]);
  const responses=await Promise.all([fetch(asset('templates/service-record/blank.pdf?v=1.1.0.473')),fetch(asset('templates/fonts/TimesNewRoman-Regular.ttf'))]);if(responses.some(r=>!r.ok))throw Error('Не вдалося завантажити бланк послужного або шрифт.');
  const [bytes,fontBytes]=await Promise.all(responses.map(r=>r.arrayBuffer())),pdf=await PDFLib.PDFDocument.load(bytes);if(pdf.getPageCount()!==10)throw Error('Бланк має містити 10 сторінок.');
  pdf.registerFontkit(window.fontkit);const font=await pdf.embedFont(fontBytes,{subset:true}),size=12,line=13.8,pad=3;
- function lines(value,width,label){const out=[];for(const part of String(value||'').split('\n')){let row='';for(const word of part.split(/\s+/).filter(Boolean)){if(font.widthOfTextAtSize(word,size)>width)throw Error('Не вміщується «'+label+'»: скоротіть слово «'+word+'» для друку.');const next=row?row+' '+word:word;if(row&&font.widthOfTextAtSize(next,size)>width){out.push(row);row=word;}else row=next;}out.push(row);}return out;}
- function draw(f){if(!f.value.trim())return;const [x,top,right,bottom]=f.box,inset=bottom-top<20?1:pad,rows=lines(f.value,right-x-2*inset,f.label);if(size+(rows.length-1)*line+2*inset>bottom-top)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');const pg=pdf.getPage(f.page);rows.forEach((row,i)=>pg.drawText(row,{font,size,x:f.center?(x+right-font.widthOfTextAtSize(row,size))/2:x+inset,y:pg.getHeight()-top-inset-size-i*line}));}
+ function lines(value,width,label){return wrapText(value,width,text=>font.widthOfTextAtSize(text,size));}
+ function draw(f){if(!f.value.trim())return;const [x,top,right,bottom]=f.box,inset=bottom-top<20?1:pad,rows=lines(f.value,right-x-2*inset,f.label);if(size+(rows.length-1)*line+2*inset>bottom-top)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');const pg=pdf.getPage(f.page),textHeight=font.heightAtSize(size),blockHeight=textHeight+(rows.length-1)*line,firstY=f.verticalCenter?pg.getHeight()-(top+bottom)/2+blockHeight/2-textHeight:pg.getHeight()-top-inset-size;rows.forEach((row,i)=>pg.drawText(row,{font,size,x:f.center?(x+right-font.widthOfTextAtSize(row,size))/2:x+inset,y:firstY-i*line}));}
  function rect(page,box){const [x,t,r,b]=box;pdf.getPage(page).drawRectangle({x,y:pdf.getPage(page).getHeight()-b,width:r-x,height:b-t,color:PDFLib.rgb(1,1,1)});}
  function rule(page,x1,t1,x2,t2){const pg=pdf.getPage(page);pg.drawLine({start:{x:x1,y:pg.getHeight()-t1},end:{x:x2,y:pg.getHeight()-t2},thickness:.48});}
  if(state.worked===true){
@@ -99,5 +115,5 @@ async function open(c,pf,{save}){
  async function build(saving){if(busy||CRMWorkspace.busy)return;busy=true;CRMWorkspace.busy=true;dialog.querySelectorAll('button,textarea').forEach(el=>el.disabled=true);try{state.fields.forEach(f=>f.value=dialog.querySelector('[data-service-field="'+f.key+'"]').value);status.textContent='Формуємо та перевіряємо PDF…';const blob=await create(state);if(saving){const fresh=await supabaseClient.from('candidates').select('updated_at').eq('id',c.id).single();if(fresh.error)throw fresh.error;if(fresh.data.updated_at!==c.updated_at)throw Error('Дані картки змінилися. Закрийте й відкрийте послужний повторно.');await save(blob);status.textContent='Послужний збережено у справі та завантажено.';}else{if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(blob);let iframe=dialog.querySelector('iframe');if(!iframe){iframe=document.createElement('iframe');iframe.title='Послужний список — PDF';iframe.style='width:100%;height:65vh;border:1px solid #ddd';dialog.querySelector('.crm-actions').before(iframe);}iframe.src=previewUrl;status.textContent='PDF готовий: 10 сторінок. Перевірте всі сторінки перед збереженням.';}}catch(e){status.textContent=e.message;status.scrollIntoView({block:'nearest'});}finally{busy=false;CRMWorkspace.busy=false;dialog.querySelectorAll('button,textarea').forEach(el=>el.disabled=false);}}
  dialog.querySelector('[data-service-preview]').onclick=()=>build(false);dialog.querySelector('[data-service-save]').onclick=()=>build(true);return dialog;
 }
-window.CRMServiceRecord={model,create,open};
+window.CRMServiceRecord={model,create,open,wrapText};
 })();
