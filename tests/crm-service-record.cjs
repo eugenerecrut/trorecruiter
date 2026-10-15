@@ -11,3 +11,10 @@ candidate.served_before=true;candidate.profile_data.service_type='За конт�
 state=model(candidate,{});assert.equal(value(state,'service_0_2'),'Курсант');assert.equal(value(state,'service_1_2'),undefined);assert.ok(!value(state,'callup').includes('контракт'));
 assert.equal(value(state,'rank_order'),'');assert.equal(value(state,'family_address'),'');
 console.log('Service record model: gender, explicit absence, no SHPK rank, historical service, reviewed records, print-only overrides: PASS');
+
+const wrap=context.window.CRMServiceRecord.wrapText;
+assert.deepEqual(Array.from(wrap('Продавець-конс.',10,s=>Array.from(s).length)),['Продавець-','конс.']);
+assert.equal(wrap('Електрогазозварювальник',8,s=>s.length).join(''),'Електрогазозварювальник');
+candidate.worked_before=true;candidate.profile_data.work_records=[{kind:'employment',employer:'Підприємство',position:'Продавець-конс.'}];
+state=model(candidate,{});assert.ok(state.fields.filter(f=>f.key.startsWith('work_')).every(f=>f.center&&f.verticalCenter));
+console.log('Long words/hyphens and centered employment rows: PASS');
