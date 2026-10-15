@@ -31,7 +31,7 @@ let pdfPromise;
 function pdfLibrary(){if(window.PDFLib)return Promise.resolve(window.PDFLib);if(!pdfPromise)pdfPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';s.onload=()=>resolve(window.PDFLib);s.onerror=()=>{pdfPromise=null;s.remove();reject(Error('Не вдалося завантажити модуль PDF. Спробуйте знову.'))};document.head.append(s)});return pdfPromise}
 async function textPDF(title,lines){return CRMInformationPDF.create(title,lines.map(line=>['',String(line??'')]),null);}
 function fileName(title,c){return title+'_'+String(typeof c==='string'?c:c.name_nominative||c.full_name||'Кандидат').replace(/[<>:\x22/\\|?*\x00-\x1f]/g,'_').trim().replace(/[. ]+$/g,'')+'.pdf';}
-async function mergedPDF(docs,progress,cover=null,snapshot=null){
+async function mergedPDF(docs,progress,cover=null,snapshot=null,options={}){
  const {PDFDocument}=await pdfLibrary(),out=await PDFDocument.create();
  if(cover){const first=await PDFDocument.load(await cover.arrayBuffer());(await out.copyPages(first,first.getPageIndices())).forEach(p=>out.addPage(p))}
  for(let i=0;i<docs.length;i++){
@@ -39,9 +39,9 @@ async function mergedPDF(docs,progress,cover=null,snapshot=null){
   const r=await supabaseClient.storage.from(DOC_BUCKET).download(d.storage_path);if(r.error)throw Error(d.file_name+': '+r.error.message);
   const bytes=new Uint8Array(await r.data.arrayBuffer());
   try{
-   if(bytes[0]===37&&bytes[1]===80&&bytes[2]===68&&bytes[3]===70){const source=await PDFDocument.load(bytes);if(!source.getPageCount())throw Error('порожній PDF');const pages=await out.embedPages(source.getPages());for(const original of pages){const landscape=original.width>original.height,W=landscape?841.89:595.28,H=landscape?595.28:841.89,left=35*72/25.4,right=15*72/25.4,pad=15*72/25.4,scale=Math.min((W-left-right)/original.width,(H-2*pad)/original.height);out.addPage([W,H]).drawPage(original,{x:left,y:(H-original.height*scale)/2,width:original.width*scale,height:original.height*scale});}}
+   if(/pdf/i.test(d.mime_type||'')||/\.pdf$/i.test(d.file_name||'')||new TextDecoder('ascii').decode(bytes.subarray(0,1024)).includes('%PDF-')){const source=await PDFDocument.load(bytes);if(!source.getPageCount())throw Error('порожній PDF');if(options.full&&/^(?:Послужний список|Перелік документів|Титульний аркуш|Реєстр кандидата|Додаток 13.*)$/.test(d.document_type||'')){(await out.copyPages(source,source.getPageIndices())).forEach(page=>out.addPage(page));continue;}for(const sourcePage of source.getPages()){const original=sourcePage.node.Contents()?await out.embedPage(sourcePage):{width:sourcePage.getWidth(),height:sourcePage.getHeight(),blank:true};const landscape=original.width>original.height,W=landscape?841.89:595.28,H=landscape?595.28:841.89,left=35*72/25.4,right=15*72/25.4,pad=15*72/25.4,scale=Math.min((W-left-right)/original.width,(H-2*pad)/original.height);const page=out.addPage([W,H]);if(!original.blank)page.drawPage(original,{x:left,y:(H-original.height*scale)/2,width:original.width*scale,height:original.height*scale});}}
    else if((bytes[0]===255&&bytes[1]===216)||(bytes[0]===137&&bytes[1]===80)){const image=bytes[0]===255?await out.embedJpg(bytes):await out.embedPng(bytes);const landscape=image.width>image.height, width=landscape?841.89:595.28,height=landscape?595.28:841.89,left=35*72/25.4,right=15*72/25.4,s=Math.min((width-left-right)/image.width,(height-30*72/25.4)/image.height);out.addPage([width,height]).drawImage(image,{x:left,y:(height-image.height*s)/2,width:image.width*s,height:image.height*s})}
-   else if(/\.docx?$/i.test(d.file_name||'')){await out.attach(bytes,d.file_name,{mimeType:d.mime_type||'application/octet-stream'});const notice=await textPDF('Вкладений документ',[d.document_type,d.file_name,'Оригінал Word збережений усередині цього PDF як вкладення. Відкрийте панель вкладень у PDF-програмі.']);const pageDoc=await PDFDocument.load(await notice.arrayBuffer());(await out.copyPages(pageDoc,pageDoc.getPageIndices())).forEach(p=>out.addPage(p))}
+   else if(!options.full&&/\.docx?$/i.test(d.file_name||'')){await out.attach(bytes,d.file_name,{mimeType:d.mime_type||'application/octet-stream'});const notice=await textPDF('Вкладений документ',[d.document_type,d.file_name,'Оригінал Word збережений усередині цього PDF як вкладення. Відкрийте панель вкладень у PDF-програмі.']);const pageDoc=await PDFDocument.load(await notice.arrayBuffer());(await out.copyPages(pageDoc,pageDoc.getPageIndices())).forEach(p=>out.addPage(p))}
    else throw Error('потрібна PDF-копія цього файла');
   }catch(e){throw Error(d.file_name+': '+e.message)}
  }
@@ -120,7 +120,7 @@ async function mount(c,root){
  (!unit?'<label class="wf-switch wf-exams" data-exams-toggle><input type="checkbox" name="additional_exams" '+(w.additional_exams?'checked':'')+'> Додаткові обстеження ВЛК</label><label data-exams-details>Обстеження / наступна дія<textarea name="exams_details" rows="2">'+esc(w.exams_details||'')+'</textarea></label><label data-exams-details>Контрольна дата обстежень<input name="exams_date" type="date" value="'+esc(w.exams_date||'')+'"></label>':'')+'</form>'+
  (!unit&&!closed?'<details class="wf-readiness"><summary>'+esc(miss.length?'До направлення бракує документів: '+miss.length:'Комплект документів перевірений')+'</summary>'+(miss.length?'<ul>'+miss.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+'<p>'+ (CRMCandidateConditions.isMobilization(c)?'Мобілізація: психологічний тест — контрольний пункт. Для нього сформуйте Обов’язкову інформацію з освітою та трудовим стажем. Перша сторінка сертифіката психологічного тестування обов’язкова. Припис і реєстр обов’язкові.':'Психологічний тест — контрольний пункт. Додайте сертифікат або позначте його наявність. Довідку ВЛК завантажте та перевірте.')+'</p></details>':'')+
  (!closed?'<div class="wf-main-actions">'+(!unit?'<div class="crm-actions"><button type="button" data-list>Надати список документів</button><button type="button" data-info>Обов’язкова інформація</button></div>':'<span>РЛ · припис · реєстр кандидата</span>')+'<button type="button" class="wf-finish" data-finish>Завершити справу →</button></div>':'')+
- '<details class="wf-tools"><summary>Друк та пакети документів</summary><div class="wf-tool-grid"><button type="button" '+(unit?'hidden':'')+' data-card13>Картка 13 <small>Дані з CRM · PDF</small></button><button type="button" '+(unit?'hidden':'')+' data-service>Послужний список</button><button type="button" '+(unit?'hidden':'')+' data-inventory>Перелік документів</button><button type="button" '+(unit?'hidden':'')+' data-title>Титул</button><button type="button" data-registry>Реєстр кандидата</button><button type="button" '+(unit?'hidden':'')+' data-anketa>PDF «Анкета»</button></div></details>'+
+ '<details class="wf-tools"><summary>Друк та пакети документів</summary><div class="wf-tool-grid"><button type="button" '+(unit?'hidden':'')+' data-card13>Картка 13 <small>Дані з CRM · PDF</small></button><button type="button" '+(unit?'hidden':'')+' data-service>Послужний список</button><button type="button" '+(unit?'hidden':'')+' data-inventory>Перелік документів</button><button type="button" '+(unit?'hidden':'')+' data-title>Титул</button><button type="button" data-full-package>Створити повний PDF-пакет</button><button type="button" data-registry>Реєстр кандидата</button><button type="button" '+(unit?'hidden':'')+' data-anketa>PDF «Анкета»</button></div></details>'+
  (closed?'<p>Результат: '+esc(w.outcome)+' · '+esc(w.completion_date||'')+'</p>'+(w.archive_error?'<p class="crm-notice">Архівний пакет не сформовано: '+esc(w.archive_error)+'</p>':'')+(!archived?'<div class="crm-actions"><button type="button" data-retry>Повторити формування архіву</button>'+(!w.archive_lock?'<button type="button" data-reopen>Скасувати завершення справи</button>':'')+'</div>':'<p>Справа в окремому журналі «Архів».</p>'):'')+
  (w.archive_package?'<button type="button" data-download-archive>Завантажити архівний PDF</button>':'')+(w.anketa_package?'<button type="button" data-download-anketa>Завантажити PDF «Анкета»</button>':'')+'<p data-workflow-status role="status"></p></div></details>';
  const workflowState={form:host.querySelector('[data-progress-form]'),dirty:false};CRMWorkspace.workflow=workflowState;
@@ -139,6 +139,35 @@ async function mount(c,root){
  generate('[data-registry]','Реєстр кандидата',[name]);
  host.querySelector('[data-inventory]').onclick=()=>run(()=>CRMInventory.open(c,reqs,{save:async blob=>{await generated(c,'Перелік документів',blob,reqs);docs=latest(await getCandidateDocuments(c.id));}}));
  host.querySelector('[data-service]').onclick=()=>run(async()=>{const pf=await supabaseClient.from('personal_files').select('*').eq('candidate_id',c.id).maybeSingle();if(pf.error)throw pf.error;await generated(c,'Послужний список',[name,'Дата народження: '+(c.birth_date||'Не вказано'),'Звання: '+(c.military_rank||'Не вказано'),'ВОС: '+(c.military_specialty||p.military_specialty||'Не вказано'),'Військова служба:\n'+(CRMCaseInformation.service(c,pf.data)||'Не вказано'),'Освіта:\n'+(CRMCaseInformation.education(c,pf.data)||'Не вказано'),'Трудова діяльність:\n'+(CRMCaseInformation.work(c,pf.data)||'Не вказано'),...CRMHistoryFormat.changes({profile_data:{before:null,after:Object.fromEntries(Object.entries(profile(c)).filter(([k])=>/education|military|service|work|award|combat/.test(k)))}}).map(r=>r.label+': '+r.after)],reqs)});
+
+ host.querySelector('[data-full-package]')?.addEventListener('click',()=>run(async()=>{
+  const all=latest(await getCandidateDocuments(c.id)),files=all.filter(d=>d.storage_path);
+  const order=['Титульний аркуш','Перелік документів','Послужний список','Автобіографія рукописна','Автобіографія друкована'];
+  const priority=d=>{const n=order.indexOf(d.document_type);return n<0?order.length:n};
+  files.sort((a,b)=>priority(a)-priority(b)||String(a.document_type||'').localeCompare(String(b.document_type||''),'uk')||String(a.file_name||'').localeCompare(String(b.file_name||''),'uk'));
+  const paper=window.CRMDocumentPresence?.withoutCopies(c,all)||[];
+  const supported=d=>/pdf|image\/(?:jpeg|png)/i.test(d.mime_type||'')||/\.(?:pdf|jpe?g|png)$/i.test(d.file_name||'');
+  const stamp=rows=>JSON.stringify(rows.map(d=>[d.id,d.storage_path,d.version_number,d.verification_status]).sort());
+  const snapshot=stamp(files);
+  const d=modal('Повний PDF-пакет кандидата','<p>'+esc(name)+'</p><p>Об’єднаємо вибрані актуальні файли. Неперевірені документи позначені нижче. PDF-бланки CRM зберігають свої поля; інші копії отримують відступ для підшивання 35 мм.</p><div data-full-files>'+files.map((f,i)=>'<label style="display:block;margin:8px 0"><input type="checkbox" data-full-file="'+i+'" checked> '+esc(f.document_type)+' — '+esc(f.file_name)+' <small>'+esc(f.verification_status||'Не перевірено')+(!supported(f)?' · Потрібна PDF-копія':'')+'</small></label>').join('')+'</div>'+(paper.length?'<p><strong>Є без файла — сторінки не ввійдуть до PDF:</strong></p><ul>'+paper.map(e=>'<li>'+esc(e.document_type)+'</li>').join('')+'</ul>':'')+'<p>Word та інші непідтримувані файли спочатку потрібно завантажити у PDF або зняти їхню позначку.</p><button type="button" data-full-build '+(!files.length?'disabled':'')+'>Створити та завантажити PDF</button><p data-full-status role="status"></p>');
+  const feedback=d.querySelector('[data-full-status]'),build=d.querySelector('[data-full-build]');
+  build.onclick=async()=>{
+   const chosen=[...d.querySelectorAll('[data-full-file]:checked')].map(el=>files[Number(el.dataset.fullFile)]);
+   if(!chosen.length){feedback.textContent='Виберіть хоча б один файл.';return;}
+   const unsupported=chosen.filter(f=>!supported(f));if(unsupported.length){feedback.textContent='Потрібна PDF-копія або зняття позначки: '+unsupported.map(f=>f.file_name).join(', ');return;}
+   await run(async()=>{
+    d.querySelectorAll('button,input').forEach(el=>el.disabled=true);let url;
+    try{
+     const current=latest(await getCandidateDocuments(c.id)).filter(f=>f.storage_path);
+     if(stamp(current)!==snapshot)throw Error('Документи змінилися. Закрийте вікно та відкрийте пакет повторно.');
+     const blob=await mergedPDF(chosen,t=>feedback.textContent=t,null,null,{full:true});
+     url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=fileName('Повний пакет документів',c);document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+     feedback.textContent='PDF сформовано та завантажено. Файлів у пакеті: '+chosen.length+'.'+(paper.length?' Документи без файла не включені.':'');
+    }catch(error){feedback.textContent='Не сформовано: '+error.message;throw error;}
+    finally{d.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
+   });
+  };
+ }));
  host.querySelector('[data-anketa]').onclick=()=>run(async()=>{
   docs=latest(await getCandidateDocuments(c.id));
   const packet=CRMDocumentState.packageState(c,docs),packageDocs=packet.files,packageRows=packet.rows;
