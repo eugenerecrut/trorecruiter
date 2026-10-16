@@ -1,0 +1,22 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium}=require('C:/Users/eugen/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});try{
+ const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const mock=`window.CRMWorkspace={escape:v=>String(v??'').replaceAll('<','&lt;'),setContext(){},markMenu(){}};
+ const candidates=[{id:'one',full_name:'ТЕСТЕНКО Іван',responsible_recruiter_id:'u',profile_data:{service_type:'За мобілізацією'}},{id:'two',full_name:'ПРИКЛАД Марія',profile_data:{service_type:'За контрактом'}}];
+ window.getCandidates=async()=>candidates;window.getDocumentRequirements=async()=>[];
+ window.CRMWorkflow={profile:c=>c.profile_data,isArchived:()=>false};window.CRMCandidateConditions={isMobilization:c=>c.profile_data.service_type==='За мобілізацією'};
+ window.CRMResponsibility={ready:async()=>[{user_id:'u',active:true,role:'lead'}],latest:d=>d,name:id=>id?'Тестовий рекрутер':'Не призначено',userId:'u'};
+ window.CRMDocumentState={summary:c=>({total:5,verified:2,received:2,review:0,errors:c.id==='one'?1:0,processing:c.id==='two'?1:0,unknown:0})};
+ window.supabaseClient={from:()=>({select:async()=>({data:[]})})};window.crmNavigate=(tab,id)=>document.title=tab+':'+id;`;
+ await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><style>'+read('crm-workspace.css')+read('crm-mobile.css')+'</style><main class="content"></main><script>'+mock+'</script><script>'+read('crm-dashboard.js')+'</script>');
+ await page.evaluate(()=>CRMDashboard.load());
+ assert.equal(await page.locator('[data-dashboard-rows] tr').count(),2);await page.getByRole('columnheader',{name:'Стан документів',exact:true}).waitFor();
+ await page.getByRole('cell',{name:'Помилка AI',exact:true}).waitFor();await page.getByRole('cell',{name:'Розпізнавання',exact:true}).waitFor();
+ await page.locator('[data-dashboard-mode]').selectOption('mobilization');assert.equal(await page.locator('[data-dashboard-rows] tr').count(),1);
+ await page.locator('[data-dashboard-search]').fill('немає такого');assert.equal(await page.locator('[data-dashboard-rows] tr').count(),0);await page.locator('[data-dashboard-empty]').waitFor({state:'visible'});
+ await page.locator('[data-dashboard-search]').fill('');await page.locator('[data-dashboard-docs]').click();assert.equal(await page.title(),'documents:one');
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);
+ console.log('PASS dashboard: document statuses, mode/search filters, empty state, document navigation, mobile overflow, 0 JS errors; mocks only');
+ }finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});
