@@ -27,3 +27,8 @@ test('new work period rejects another document and fake manual approval',()=>{
 test('malformed saved lists are preserved for review',()=>{
  assert(appendRecords('education_records','legacy',[],'doc').error);
 });
+test('PFU employer code does not duplicate manually confirmed service period',()=>{
+ const old={kind:'military_service',unit:'А1363',employer:'Військова частина А1363',start_date:'2022-07-11',end_date:'2022-08-23',position:'Курсант',confirmed_by_user:true};
+ const incoming={kind:'military_service',employer:'ВІЙСЬКОВА ЧАСТИНА А1363',employer_code:'08190603',start_date:'2022-07-11',end_date:'2022-08-23',position:'солдат',source_document_id:'pfu'};
+ const result=appendRecords('work_records',[old],[incoming],'pfu');assert.deepEqual(result.value,[old]);assert.equal(result.conflicts.length,1);
+});

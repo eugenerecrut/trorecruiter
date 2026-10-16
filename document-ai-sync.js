@@ -70,7 +70,14 @@
     const identity=r=>key==='education_records'?(r.diploma_number?[r.diploma_series,r.diploma_number].map(norm).join('|'):[r.degree,r.institution,r.graduation_year].map(norm).join('|')):key==='work_events'?[r.kind,r.employer_code||r.employer,r.event_date,r.order_number].map(norm).join('|'):[r.kind,r.employer_code||r.employer,r.start_date].map(norm).join('|');
     for(const row of incoming){
       if(!row||typeof row!=='object'||Array.isArray(row)){conflicts.push('Некоректний запис залишено для звірки.');continue;}
-      const old=merged.find(r=>identity(r)===identity(row));
+      const sameOrganisation=r=>{
+        if(r.employer_code&&row.employer_code&&norm(r.employer_code)===norm(row.employer_code))return true;
+        if(!empty(r.employer)&&norm(r.employer)===norm(row.employer))return true;
+        if(!['military_service','service_start','service_end'].includes(row.kind))return false;
+        const unit=x=>String(x.unit||x.employer||'').toUpperCase().match(/[АA]\s*\d{4}/u)?.[0].replace(/A/g,'А').replace(/\s/g,'');
+        return !!unit(r)&&unit(r)===unit(row);
+      };
+      const old=merged.find(r=>identity(r)===identity(row)||(key!=='education_records'&&r.kind===row.kind&&equal(key==='work_events'?r.event_date:r.start_date,key==='work_events'?row.event_date:row.start_date)&&sameOrganisation(r)));
       if(old){if(Object.keys(row).some(k=>!metadata.has(k)&&!empty(row[k])&&!equal(old[k],row[k])))conflicts.push('Запис уже є, але відомості відрізняються або доповнені. Звірте його без створення дубля.');continue;}
       if(row.source_document_id!==documentId||row.requires_review||row.confirmed_by_user===true){conflicts.push('Для нового запису потрібне перевірене джерело.');continue;}
       merged.push(structuredClone(row));
