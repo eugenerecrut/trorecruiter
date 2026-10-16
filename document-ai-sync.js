@@ -49,19 +49,33 @@
       if(i<0&&['мати','батько','дружина','чоловік'].includes(r.relationship)&&merged.some(x=>relation(x.relationship||x.relation)===r.relationship)){
         add('profile','relatives',raw,'conflict','Інші ПІБ уже записаного родича');continue;
       }
-      if(i<0){i=merged.length;merged.push({relationship:r.relationship,full_name:r.full_name,source_document_id:documentId});}
+      if(i<0){i=merged.length;merged.push({relationship:r.relationship,full_name:r.full_name,source_document_id:documentId,field_sources:{relationship:documentId,full_name:documentId}});}
       const dest=merged[i];
       for(const [key,v] of Object.entries(r)){
         if(['source_document_id','relationship','full_name','requires_review'].includes(key)||empty(v))continue;
         if(!['birth_date','death_date','birth_place','citizenship','address','phone','workplace','position','notes','deceased'].includes(key))continue;
         const field='relatives.'+i+'.'+key;
         if(/_date$/.test(key)&&!date(v,true)){add('profile',field,v,'conflict','Некоректна дата',dest[key]);continue;}
-        if(empty(dest[key])){add('profile',field,v,'fill','',dest[key]);dest[key]=v;}
-        else add('profile',field,v,equal(dest[key],v)?'leave':'conflict','',dest[key]);
+        if(empty(dest[key])){add('profile',field,v,'fill','',dest[key]);dest[key]=v;dest.field_sources={...object(dest.field_sources),[key]:documentId};}
+        else add('profile',field,v,equal(dest[key],v)?'leave':'conflict',equal(dest[key],v)?'':'Збережене значення родича має пріоритет',dest[key]);
       }
       if(!Array.isArray(current)||!current.some(x=>relativeKey(x)===relativeKey(r)))add('profile','relatives.'+i,r,'fill','Новий родич',null);
     }
     return merged;
+  }
+  function appendRecords(key,current,incoming,documentId){
+    if(current!=null&&!Array.isArray(current)||!Array.isArray(incoming))return {error:'Некоректний формат збережених записів.'};
+    const merged=structuredClone(current||[]),conflicts=[];
+    const metadata=new Set(['source_document_id','source_pages','raw_text','source_record_index','field_sources','degree_raw','requires_review','confirmed_by_user','accepted_by_ai']);
+    const identity=r=>key==='education_records'?(r.diploma_number?[r.diploma_series,r.diploma_number].map(norm).join('|'):[r.degree,r.institution,r.graduation_year].map(norm).join('|')):key==='work_events'?[r.kind,r.employer_code||r.employer,r.event_date,r.order_number].map(norm).join('|'):[r.kind,r.employer_code||r.employer,r.start_date].map(norm).join('|');
+    for(const row of incoming){
+      if(!row||typeof row!=='object'||Array.isArray(row)){conflicts.push('Некоректний запис залишено для звірки.');continue;}
+      const old=merged.find(r=>identity(r)===identity(row));
+      if(old){if(Object.keys(row).some(k=>!metadata.has(k)&&!empty(row[k])&&!equal(old[k],row[k])))conflicts.push('Запис уже є, але відомості відрізняються або доповнені. Звірте його без створення дубля.');continue;}
+      if(row.source_document_id!==documentId||row.requires_review||row.confirmed_by_user===true){conflicts.push('Для нового запису потрібне перевірене джерело.');continue;}
+      merged.push(structuredClone(row));
+    }
+    return {value:merged,conflicts};
   }
   function plan(document,candidate){
     const policy=root.CRMDocumentPolicy?.normalize(document),p=object(candidate.profile_data),e=flatten(policy?.extracted||document.ai_extracted),rows=[],selections=[];
@@ -82,6 +96,10 @@
       if(current===undefined)current=target==='candidate'?candidate[key]:p[key];
       rows.push({candidate:candidate.full_name,document:document.file_name||document.id,target,key,current:current??null,incoming:incoming??null,action,reason});
     };
+    if(policy?.category==='education'&&empty(e.full_name)){
+      const owners=[...new Set((Array.isArray(e.education_records)?e.education_records:[]).map(r=>r?.owner_full_name).filter(v=>!empty(v)).map(norm))];
+      if(owners.length===1)e.full_name=(e.education_records||[]).find(r=>norm(r?.owner_full_name)===owners[0]).owner_full_name;
+    }
     let ownerIssue='';
     const confidence=Number(document.ai_confidence);
     if(document.verification_status!=='Підтверджено'&&document.ai_confidence!=null&&(!Number.isFinite(confidence)||confidence<0.85||confidence>1))ownerIssue='Недостатня впевненість AI: потрібна перевірка рекрутера';
@@ -105,18 +123,23 @@
       const current=target==='candidate'?candidate[key]:p[key];
       const legacy=p.form_data?.[key]??(key==='military_specialty'?p[key]:null);
       const protectedValue=!empty(current)?current:legacy;
-      let action='leave',reason='';
+      let action='leave',reason='',structured=false;
       if(birth&&key==='full_name'&&!ownerIssue&&!empty(value)&&root.CRMNameHistory?.matches(value,candidate)&&!equal(value,candidate.full_name)){add(target,key,value,'leave','ПІБ при народженні підтверджене історією зміни; чинне ПІБ збережено',current);return;}
       if(!empty(value)){
         if(e.field_evidence?.[key]?.requires_review||e.meta?.field_evidence?.[key]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[key]?.legibility||e.meta?.field_evidence?.[key]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
         else if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
         else if(!(['driver_license','ubd_certificate','registration_records','marriage_record','education_records','work_records','work_events'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
+        else if(target==='profile'&&['education_records','work_records','work_events'].includes(key)&&empty(legacy)){
+          const merged=document.verification_status!=='Підтверджено'&&(!Number.isFinite(Number(document.ai_confidence))||Number(document.ai_confidence)<0.85||Number(document.ai_confidence)>1)?{error:'Потрібна звірка впевненості розпізнавання.'}:appendRecords(key,current,value,document.id);
+          if(merged.error){action='conflict';reason=merged.error;}
+          else{for(const issue of merged.conflicts)add(target,key,null,'conflict',issue,current);value=merged.value;structured=true;action=equal(current||[],value)?'leave':'fill';}
+        }
         else if(!empty(protectedValue)){action=equal(key==='service_type'?service(protectedValue):protectedValue,value)?'leave':'conflict';reason=action==='conflict'?'Збережене значення має пріоритет':'';}
         else action='fill';
       }
       add(target,key,value,action,reason,protectedValue);
-      if(action==='fill')selections.push({target,key,incoming:value,expected_current:current??null,fill_only:!(Array.isArray(current)&&current.length===0),expected_ai:document.ai_extracted});
+      if(action==='fill')selections.push({target,key,incoming:value,expected_current:current??null,fill_only:structured||!(Array.isArray(current)&&current.length===0),...(structured?{merge_records:true,structured_records:true}:{}),expected_ai:document.ai_extracted});
     };
     for(const key of ['full_name','name_nominative','name_genitive','birth_date','birth_place','rnokpp','phone','sex','military_rank','civilian_profession','desired_position','tcc','military_specialty']){
       if(birth&&!['full_name','birth_date','birth_place'].includes(key))continue;
@@ -199,7 +222,7 @@
       if(ownerIssue)add('profile','relatives',e.relatives,'conflict',ownerIssue);
       else{
         const merged=mergeRelatives(p.relatives,e.relatives,add,document.id);
-        if(!equal(p.relatives||[],merged))selections.push({target:'profile',key:'relatives',incoming:merged,expected_current:p.relatives??null,fill_only:true,merge_relatives:true,expected_ai:document.ai_extracted});
+        if(!equal(p.relatives||[],merged))selections.push({target:'profile',key:'relatives',incoming:merged,expected_current:p.relatives??null,fill_only:true,merge_relatives:true,relative_sources:true,expected_ai:document.ai_extracted});
       }
     }
     return {document,candidate,rows,selections,supported:true};
@@ -213,7 +236,7 @@
     const conflicts=report.rows.filter(r=>r.action==='conflict').map(r=>({target:'sync_conflict',key:r.key,incoming:JSON.stringify({field:r.key,current:r.current,ai:r.incoming,reason:r.reason}),expected_ai:report.document.ai_extracted}));
     const selections=[...report.selections,...conflicts];if(!selections.length)return report;
     // An old RPC must reject the request before it can ignore compare-and-set metadata.
-    selections.unshift({target:'sync_guard',key:'version',incoming:report.selections.some(s=>s.structured_military)?'2':'1',expected_ai:report.document.ai_extracted});
+    selections.unshift({target:'sync_guard',key:'version',incoming:report.selections.some(s=>s.structured_records||s.relative_sources)?'3':report.selections.some(s=>s.structured_military)?'2':'1',expected_ai:report.document.ai_extracted});
     const result=await client.rpc('crm_apply_document_fields',{document_id:report.document.id,selections});if(result.error)throw result.error;
     const after=await preview(client,report.document.id);
     for(const row of report.rows.filter(r=>r.action==='fill'&&!r.key.startsWith('relatives.'))){
@@ -256,6 +279,6 @@
     };
     return report;
   }
-  const api={flatten,plan,preview,apply,sync,automate,showPreview,mergeRelatives,valid,relation};
+  const api={flatten,plan,preview,apply,sync,automate,showPreview,mergeRelatives,appendRecords,valid,relation};
   root.CRMDocumentSync=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

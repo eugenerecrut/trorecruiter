@@ -377,12 +377,16 @@
       const savedRelatives = [...form.querySelectorAll('[data-relative-row]')].map(row => {
         const get = key => row.querySelector(`[name="${key}"]`)?.value?.trim() || '';
         const original=(Array.isArray(oldProfile.relatives)?oldProfile.relatives:[])[Number(row.dataset.relativeRow)]||{};
-        return {
+        const saved = {
           ...original, deceased:get('deceased')==='true'?true:get('deceased')==='false'?false:null,death_date:get('death_date')||null,death_date_precision:CRMBiography.partial(get('death_date'))?.precision||null,
           relationship: get('relationship'), full_name: get('full_name'), birth_date: get('birth_date'),
           birth_place: get('birth_place'), citizenship: get('citizenship'), address: get('address'),
           phone: window.CRMPhone.normalize(get('phone')), workplace: get('workplace'), position: get('position'), notes: get('notes')
         };
+        const sources={...(original.field_sources||{})};
+        for(const key of ['relationship','full_name','birth_date','birth_place','citizenship','address','phone','workplace','position','notes','deceased','death_date'])if(String(original[key]??'')!==String(saved[key]??''))sources[key]=null;
+        if(Object.keys(sources).length)saved.field_sources=sources;
+        return saved;
       }).filter(r => r.full_name||r.relationship);
       if(!unit&&savedRelatives.some(r=>r.deceased!==false&&r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
       if(!unit)oldProfile.relatives = savedRelatives;

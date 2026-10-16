@@ -297,6 +297,16 @@
       details.append(summary); const body = document.createElement('div'); body.innerHTML = CRMHistoryFormat.render(CRMHistoryFormat.changes(event.changes || {},{person:CRMResponsibility.name})); details.append(body); historyContent.append(details);
     });
     educationEditor(form,parse(candidate.profile_data),documents);
+    const relativeRecords=parse(candidate.profile_data).relatives||[];
+    form.querySelectorAll('[data-relative-row]').forEach(row=>{
+      const record=relativeRecords[Number(row.dataset.relativeRow)];if(!record)return;
+      row.querySelectorAll('[name]').forEach(input=>{
+        const source=Object.prototype.hasOwnProperty.call(record.field_sources||{},input.name)?record.field_sources[input.name]:record.source_document_id;
+        const doc=documents.find(d=>d.id===source),label=input.closest('.cc-field')?.querySelector('label');
+        if(doc&&label&&String(record[input.name]??'')===String(input.value)&&String(input.value).trim())sourceButton(label,doc);
+      });
+    });
+
     form.querySelectorAll('.cc-field').forEach(field => {
       const input = field.querySelector('[name]'); if (!input || field.closest('[data-relative-row],[data-work-row]')) return;
       const source = sources.get(input.name === 'name_nominative' ? 'full_name' : input.name);
