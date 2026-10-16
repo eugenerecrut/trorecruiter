@@ -169,9 +169,17 @@ CRMWorkspace.loadHome=async function(){
     tasks.insertAdjacentHTML('beforeend',group('Неповні комплекти документів',missing)+group('Неперевірені документи',owners(review))+group('Помилки розпізнавання',owners(errors)));
   }
 };
+let workspaceAuthUserId=null;
 supabaseClient.auth.onAuthStateChange((event,session)=>{
-  if(!session?.user)return;
+  if(event==='SIGNED_OUT'){workspaceAuthUserId=null;return;}
+  if(!session?.user||!['INITIAL_SESSION','SIGNED_IN'].includes(event))return;
+  if(workspaceAuthUserId===session.user.id)return;
+  workspaceAuthUserId=session.user.id;
   const refresh=()=>setTimeout(()=>{
+    if(workspaceAuthUserId!==session.user.id)return;
+    // Auth refresh must never replace a candidate, editor or unsaved form.
+    if(CRMWorkspace.navigating||CRMWorkspace.busy||CRMWorkspace.card?.form?.isConnected||CRMWorkspace.workflow?.form?.isConnected)return;
+    if(!document.querySelector('.content .cards, .content [data-dashboard]'))return;
     if(typeof updateDashboard!=='function'||typeof getDocumentRequirements!=='function')return;
     Promise.all([updateDashboard(),CRMWorkspace.loadHome()]).catch(error=>{console.error(error);const content=document.querySelector('.content');if(content?.querySelector('.cards')){const notice=document.createElement('p');notice.className='crm-notice';notice.setAttribute('role','alert');notice.textContent='Не вдалося завантажити огляд: '+error.message;content.prepend(notice)}});
   },0);
