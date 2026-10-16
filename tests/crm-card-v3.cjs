@@ -6,7 +6,7 @@ const read = name => fs.readFileSync(require('node:path').join(root,name),'utf8'
 const context = {window:{openCandidateCard(){}},localStorage:{getItem(){return null}}};
 vm.createContext(context); vm.runInContext(read('candidate-card-v3.js'),context);
 const v3 = context.window.CRMCandidateCardV3;
-assert.equal(v3.tabs.length,6);
+assert.equal(v3.tabs.length,3);
 const events = [
   {action:'candidates_update',source_document_id:null,changes:{profile_data:{before:{passport_number:'123',workflow:1},after:{passport_number:'123',workflow:2}}}},
   {action:'candidates_update',source_document_id:'passport',changes:{profile_data:{before:{passport_number:''},after:{passport_number:'123'}}}},

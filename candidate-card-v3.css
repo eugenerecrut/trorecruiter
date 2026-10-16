@@ -62,3 +62,14 @@
  .cc-v3-header-footer button,.cc-v3-tools button{min-height:40px!important}.cc-v3-nav{background:#f4f6f7}
  .cc-v3-tip>button{min-width:28px;min-height:28px}
 }
+
+/* Main path: upload, resolve exceptions, create the file. Extra actions stay reachable. */
+.cc-v3 .crm-document-compact{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;padding:6px 0}
+.cc-v3 .crm-document-compact>small{overflow-wrap:anywhere}
+.cc-v3 .crm-document-primary{display:flex;gap:6px;align-items:start;flex-wrap:wrap}
+.cc-v3 .crm-document-more{grid-column:1/-1;font-size:12px}
+.cc-v3 .crm-document-more>summary{color:#536471;cursor:pointer;padding:4px 0}
+.cc-v3 .crm-document-more .crm-document-details{display:flex;flex-wrap:wrap;gap:6px;padding:7px 0}
+.cc-v3 .crm-case-primary{margin:10px 0;display:flex;gap:8px}
+.cc-v3 .crm-case-primary>button{min-height:38px}
+@media(max-width:760px){.cc-v3 .crm-document-compact{grid-template-columns:minmax(0,1fr)}.cc-v3 .crm-document-primary{grid-column:1}.cc-v3 .crm-document-more{grid-column:1}.cc-v3 .crm-document-primary button{min-height:38px}}

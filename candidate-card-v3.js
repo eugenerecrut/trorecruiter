@@ -9,11 +9,7 @@
   const activeTabs=new Map();
   let version = 'v3', opening = false, fieldSequence = 0;
   try { if (localStorage.getItem(key) === 'v2') version = 'v2'; } catch {}
-  const tabs = [
-    ['main','ОСНОВНЕ',[1,2,3,4,10,11,12]], ['military','ВІЙСЬКОВЕ',[7,8,9]],
-    ['family','РОДИНА',[13]], ['education','ОСВІТА / РОБОТА',[5,6]],
-    ['documents','ДОКУМЕНТИ',[14]], ['history','ІСТОРІЯ',[16]]
-  ];
+  const tabs = [['documents','ДОДАТИ ДОКУМЕНТИ',[14]],['review','ВИРІШИТИ ПИТАННЯ',[1,2,3,4,5,6,7,8,9,10,11,12,13,16]],['case','СФОРМУВАТИ СПРАВУ',[]]];
   const advanced = new Set(('name_genitive unzr birth_certificate shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status candidate_source recruiter_name recruitment_notes psychiatric_record_info work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
   const educationFields = {
     degree:['Рівень освіти','text'], institution:['Заклад освіти','text'], specialty:['Спеціальність','text'], qualification:['Кваліфікація','text'],
@@ -156,9 +152,14 @@
     const nav = document.createElement('nav'); nav.className = 'cc-v3-nav'; nav.setAttribute('aria-label','Вкладки картки'); nav.setAttribute('role','tablist');
     header.after(nav); root.querySelector('#crmCardNav').hidden = true;
     const title = {1:'Персональні дані',2:'Паспорт',3:'Контакти',4:'Адреси',5:'Освіта',6:'Робота',7:'Військова служба',8:'Військовий облік',9:'ВЛК',10:'Рекрутинг',11:'Контракт',12:'Примітки',13:'Рідні та близькі',14:'Документи',15:'Бланки',16:'Історія'};
-    let active = activeTabs.get(id)||'main';
+    let active = activeTabs.get(id)||'documents';if(!tabs.some(t=>t[0]===active))active='documents';
+    let manualEditing=false,reviewLoaded=false,caseLoaded=false;
     const manager=document.createElement('section');manager.className='cc-v3-document-manager';manager.setAttribute('role','tabpanel');manager.setAttribute('aria-labelledby','cc-v3-tab-documents');manager.hidden=true;form.querySelector('.cc-actions').before(manager);
     for(const type of ['input','change','click'])manager.addEventListener(type,event=>event.stopPropagation());
+    window.CRMCaseAssistant?.mount(form,id);
+    const reviewHost=document.createElement('section');reviewHost.className='cc-v3-intake-review';reviewHost.hidden=true;form.before(reviewHost);
+    const caseHost=document.createElement('section');caseHost.dataset.workflow='';caseHost.hidden=true;form.after(caseHost);
+    const manual=document.createElement('button');manual.type='button';manual.textContent='Додатково: редагувати картку';manual.setAttribute('aria-expanded','false');manual.onclick=()=>{manualEditing=!manualEditing;manual.setAttribute('aria-expanded',String(manualEditing));select('review');};reviewHost.after(manual);manual.hidden=true;
     let managerLoading=false,managerLoaded=false;
     function loadManager(){
       if(managerLoaded||managerLoading||typeof showDocuments!=='function')return;managerLoading=true;manager.textContent='Завантажуємо документи…';
@@ -212,20 +213,25 @@
     function select(tab, focus = false) {
       active = tab;
       const unit = value('case_mode') === 'unit', mobilization = value('service_type') === 'За мобілізацією';
-      if ((unit && !['main','documents','history'].includes(active)) || (mobilization && active === 'family')) active = 'main';
+      if(!tabs.some(t=>t[0]===active))active='documents';
       const group = tabs.find(t => t[0] === active) || tabs[0];
       form.querySelectorAll('section[data-section]').forEach(section => {
         const number = Number(section.dataset.section);
-        section.hidden = (number===14&&typeof showDocuments==='function') || !group[2].includes(number) || (unit && ![1,14,15,16].includes(number)) || (mobilization && number === 13) || (number === 11 && value('service_type') !== 'За контрактом');
+        section.hidden = (active==='review'&&!manualEditing) || (number===14&&typeof showDocuments==='function') || !group[2].includes(number) || (unit && ![1,14,15,16].includes(number)) || (mobilization && number === 13) || (number === 11 && value('service_type') !== 'За контрактом');
         section.setAttribute('role','tabpanel'); section.setAttribute('aria-labelledby','cc-v3-tab-'+(tabs.find(t => t[2].includes(number))?.[0] || 'main'));
       });
       form.querySelector('[data-card-photo]').hidden = true;
-      activeTabs.set(id,active);manager.hidden=active!=='documents';
-      form.querySelector('.cc-actions').hidden=active==='documents'&&typeof showDocuments==='function'&&!CRMWorkspace.card.dirty;
+      activeTabs.set(id,active);manager.hidden=active!=='documents';reviewHost.hidden=active!=='review';manual.hidden=active!=='review';caseHost.hidden=active!=='case';
+      if(active==='review'&&!reviewLoaded&&candidate.id){reviewLoaded=true;CRMIntake.review(reviewHost,candidate,documents).catch(e=>{reviewHost.textContent=e.message;reviewLoaded=false;});}
+      if(active==='case'&&!caseLoaded&&candidate.id){caseLoaded=true;CRMWorkflow.mount(candidate,caseHost.parentElement).then(()=>{
+        const tools=caseHost.querySelector('.wf-tools'),full=tools?.querySelector('[data-full-package]');
+        if(full){const actions=document.createElement('div');actions.className='crm-case-primary';full.classList.add('primary');actions.append(full);tools.before(actions);tools.querySelector('summary').textContent='Окремі бланки та додаткові дії';}
+      }).catch(e=>{caseHost.textContent=e.message;caseLoaded=false;});}
+      form.querySelector('.cc-actions').hidden=!(active==='review'&&manualEditing)&&!CRMWorkspace.card.dirty;
       if(active==='documents')loadManager();
       nav.querySelectorAll('[data-v3-tab]').forEach(button => {
         const selected = button.dataset.v3Tab === active; button.setAttribute('aria-selected',String(selected)); button.tabIndex = selected ? 0 : -1;
-        button.hidden = (unit && !['main','documents','history'].includes(button.dataset.v3Tab)) || (mobilization && button.dataset.v3Tab === 'family');
+        button.hidden=false;
         if (selected && focus) button.focus();
       });
     }
@@ -255,8 +261,8 @@
 
     }
     const documentsButton=[...header.querySelectorAll('.quick-actions button')].find(b=>b.textContent.trim()==='Документи');if(documentsButton)documentsButton.onclick=()=>select('documents');
-    const planningButton=document.createElement('button');planningButton.type='button';planningButton.textContent='Рух справи';planningButton.onclick=()=>crmNavigate('planning',id);header.querySelector('.quick-actions')?.append(planningButton);
-    header.addEventListener('click',event => { const tab = event.target.closest('[data-indicator]')?.dataset.indicator; if (tab) select(tab); });
+    const caseButton=document.createElement('button');caseButton.type='button';caseButton.textContent='Особова справа';caseButton.onclick=()=>select('case');header.querySelector('.quick-actions')?.append(caseButton);
+    header.addEventListener('click',event => { const tab = event.target.closest('[data-indicator]')?.dataset.indicator; if (tab) select(tab==='documents'?'documents':'review'); });
     form.addEventListener('submit',()=>{CRMWorkspace.card?.saving?.then(saved=>{if(saved){managerLoaded=false;refresh();}});});
     form.addEventListener('input',event => {
       const field = event.target.closest('.cc-field'); field?.querySelectorAll('.cc-v3-source').forEach(b => b.parentElement.remove());
@@ -266,7 +272,7 @@
     form.addEventListener('click',() => queueMicrotask(refresh));
     form.addEventListener('invalid',event => {
       if(event.target.closest('.cc-v3-modes')){header.classList.add('cc-v3-header-expanded');extra.setAttribute('aria-expanded','true');}
-      const section = event.target.closest('[data-section]');
+      manualEditing=true;manual.setAttribute('aria-expanded','true');const section = event.target.closest('[data-section]');
       const group = tabs.find(t => t[2].includes(Number(section?.dataset.section || 1))); if (group) select(group[0]);
       event.target.closest('details.cc-v3-record')?.setAttribute('open',''); section?.classList.add('cc-v3-expanded');
     },true);
@@ -308,6 +314,10 @@
       if (version === 'v3') {
         try { await mountV3(form,id); }
         catch (error) { console.error('Candidate Card V3:',error); document.querySelector('.content')?.classList.remove('cc-v3'); await openV2.call(window,id); version = 'v2'; try { localStorage.setItem(key,version); } catch {} }
+      }
+      if(version === 'v2' && window.CRMWorkflow?.mount && CRMWorkspace.card?.candidate){
+        const host=document.createElement('section');host.dataset.workflow='';form.after(host);
+        await CRMWorkflow.mount(CRMWorkspace.card.candidate,host.parentElement);
       }
       const target = document.querySelector('.cc-v3-tools .quick-actions') || document.querySelector('.dashboard-top .quick-actions');
       if (target) {

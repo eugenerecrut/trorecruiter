@@ -1,7 +1,7 @@
 // Document-scoped AI synchronization. No OCR calls and no writes during preview.
 (function (root) {
   'use strict';
-  const empty = v => v == null || (typeof v === 'string' && !v.trim());
+  const empty = v => v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v)&&v.length===0);
   const norm = v => String(v ?? '').normalize('NFKC').replace(/[’ʼ`]/g,"'").trim().replace(/\s+/g,' ').toLocaleLowerCase('uk');
   const object = v => { if(typeof v==='string'){try{v=JSON.parse(v)}catch(_){return {}}}return v && typeof v==='object' && !Array.isArray(v)?v:{}; };
   const equal = (a,b) => typeof a==='object'||typeof b==='object'?JSON.stringify(a)===JSON.stringify(b):norm(a)===norm(b);
@@ -67,8 +67,10 @@
     const policy=root.CRMDocumentPolicy?.normalize(document),p=object(candidate.profile_data),e=flatten(policy?.extracted||document.ai_extracted),rows=[],selections=[];
     const type=String(policy?.type||document.ai_document_type||document.document_type||'');
     const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
+    const identity=/паспорт|ID[\s-]*карт/iu.test(type),military=!!root.CRMMilitary?.isDocument(type),work=!!root.CRMWork?.isDocument(type),vlk=!!root.CRMVLK?.isDocument(type);
+    const registry=/Резерв\s*\+|приписн|військовий облік/iu.test(type);
     const ancillary=['education','residence','driver','ubd'].includes(policy?.category)||/довідка.*МВС|несудиміст/i.test(type);
-    if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary)return {document,candidate,rows,selections,supported:false};
+    if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary&&!identity&&!military&&!work&&!vlk&&!registry)return {document,candidate,rows,selections,supported:false};
     const marriageCheck=marriage?root.CRMDocumentPolicy?.marriage(e,candidate):null;
     if(marriageCheck&&!marriageCheck.blocked){
       if(empty(e.full_name))e.full_name=marriageCheck.owner.full_name;
@@ -80,6 +82,8 @@
       rows.push({candidate:candidate.full_name,document:document.file_name||document.id,target,key,current:current??null,incoming:incoming??null,action,reason});
     };
     let ownerIssue='';
+    const confidence=Number(document.ai_confidence);
+    if(document.verification_status!=='Підтверджено'&&document.ai_confidence!=null&&(!Number.isFinite(confidence)||confidence<0.85||confidence>1))ownerIssue='Недостатня впевненість AI: потрібна перевірка рекрутера';
     if(!empty(e.rnokpp)&&!empty(candidate.rnokpp)&&String(e.rnokpp)!==String(candidate.rnokpp))ownerIssue='РНОКПП іншої особи';
     if(!empty(e.birth_date)&&!empty(candidate.birth_date)&&String(e.birth_date)!==String(candidate.birth_date))ownerIssue='Дата народження іншої особи';
     const strongMatch=valid('rnokpp',e.rnokpp)&&!empty(e.rnokpp)&&String(e.rnokpp)===String(candidate.rnokpp);
@@ -88,7 +92,14 @@
     const warnings=[...(Array.isArray(document.ai_warnings)?document.ai_warnings:[]),...(Array.isArray(e.meta?.warnings)?e.meta.warnings:[])].filter(w=>!String(w).startsWith('[CRM AI sync]')).join(' ');
     if(/інш(?:а|ої|у|ого|ий|е).{0,60}(особ|кандидат|ПІБ)|згаду.{0,80}(особ|ПІБ)|different (?:person|candidate|name)|another (?:person|candidate)/i.test(warnings))ownerIssue='У документі згадано іншу особу: потрібна ручна перевірка';
     if(document.deleted_at)ownerIssue='Документ видалено';
+    if(document.verification_status!=='Підтверджено'&&/AI REVIEW REQUIRED/.test(document.notes||''))ownerIssue='AI просить перевірити документ перед перенесенням';
     if(marriageCheck?.blocked)ownerIssue=marriageCheck.issue;
+    if(identity&&/ID[\s-]*карт/iu.test(type)){
+      const check=root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate);
+      if(!check||check.blocked)ownerIssue='ID-картка потребує перевірки реквізитів';
+    }
+    if(military&&root.CRMMilitary.review(e,candidate,p,document.id).blocked)ownerIssue='Потрібна перевірка власника військового документа';
+    if(vlk&&root.CRMVLK.review(e,candidate).issues?.length)ownerIssue='Потрібна перевірка власника ВЛК';
     const propose=(target,key,value)=>{
       const current=target==='candidate'?candidate[key]:p[key];
       const legacy=p.form_data?.[key]??(key==='military_specialty'?p[key]:null);
@@ -96,14 +107,15 @@
       let action='leave',reason='';
       if(birth&&key==='full_name'&&!ownerIssue&&!empty(value)&&root.CRMNameHistory?.matches(value,candidate)&&!equal(value,candidate.full_name)){add(target,key,value,'leave','ПІБ при народженні підтверджене історією зміни; чинне ПІБ збережено',current);return;}
       if(!empty(value)){
-        if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
-        else if(!(['driver_license','ubd_certificate','registration_records','marriage_record'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
+        if(e.field_evidence?.[key]?.requires_review||e.meta?.field_evidence?.[key]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[key]?.legibility||e.meta?.field_evidence?.[key]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
+        else if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
+        else if(!(['driver_license','ubd_certificate','registration_records','marriage_record','education_records','work_records','work_events'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
         else if(!empty(protectedValue)){action=equal(key==='service_type'?service(protectedValue):protectedValue,value)?'leave':'conflict';reason=action==='conflict'?'Збережене значення має пріоритет':'';}
         else action='fill';
       }
       add(target,key,value,action,reason,protectedValue);
-      if(action==='fill')selections.push({target,key,incoming:value,expected_current:current??null,fill_only:true,expected_ai:document.ai_extracted});
+      if(action==='fill')selections.push({target,key,incoming:value,expected_current:current??null,fill_only:!(Array.isArray(current)&&current.length===0),expected_ai:document.ai_extracted});
     };
     for(const key of ['full_name','name_nominative','name_genitive','birth_date','birth_place','rnokpp','phone','sex','military_rank','civilian_profession','desired_position','tcc','military_specialty']){
       if(birth&&!['full_name','birth_date','birth_place'].includes(key))continue;
@@ -115,6 +127,40 @@
     }
     if(recommendation){
       for(const key of ['shpk','tariff_grade','recruiter_name','military_unit','desired_unit','recommender_unit','signatory','service_type'])propose('profile',key,key==='service_type'&&!empty(e[key])?service(e[key])||e[key]:e[key]);
+    }
+    if(identity){
+      const check=/ID[\s-]*карт/iu.test(type)?root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate):null;
+      if(check?.blocked)ownerIssue='ID-картка потребує перевірки реквізитів';
+      for(const key of ['passport_number','passport_series','passport_issuer','passport_issue_date','passport_expiry_date','citizenship','unzr'])propose('profile',key,e[key]);
+      propose('profile','identity_document_type',/ID[\s-]*карт/iu.test(type)?'ID':'passport');
+    }
+    if(military){
+      const checked=root.CRMMilitary.review(e,candidate,p,document.id);
+      if(checked.blocked)ownerIssue=checked.issues?.join('; ')||'Потрібна перевірка військового документа';
+      for(const [key,value] of Object.entries(checked.fields||{}))propose('profile',key,value);
+      if(checked.accepted)propose('profile','work_records',checked.records);
+      for(const issue of checked.issues||[])add('profile','military_service_records',null,'conflict',issue);
+    }
+    if(registry){
+      for(const key of ['military_document_number','military_document_type','military_registration_date','military_registration_category','military_registration_status','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status'])propose('profile',key,e[key]);
+    }
+    if(military||registry){
+      for(const key of ['military_rank_records','military_oath','military_discharge','combat_records','awards','reserve_training_records'])if(!empty(e[key])&&!equal(p[key],e[key]))add('profile',key,e[key],'conflict','Потрібна звірка рекрутера перед перенесенням до послужного списку',p[key]);
+    }
+    if(work){
+      const checked=root.CRMWork.review(e,candidate,p,document.id);
+      if(checked.accepted){propose('profile','work_records',checked.records);propose('profile','work_events',checked.events);}
+      for(const issue of checked.issues||[])add('profile','work_records',null,'conflict',issue);
+    }
+    if(vlk){
+      const checked=root.CRMVLK.review(e,candidate);
+      if(checked.issues?.length)ownerIssue=checked.issues.join('; ');
+      for(const [key,value] of Object.entries(checked.fields||{}))propose('profile',key,value);
+    }
+    if(policy?.category==='education'&&root.CRMEducation){
+      const checked=root.CRMEducation.review({...e,source_verified:document.verification_status==='Підтверджено',education_records:(e.education_records||[]).map(r=>({...r,source_document_id:document.id}))},candidate,p);
+      if(checked.accepted)propose('profile','education_records',checked.records);
+      for(const issue of checked.issues||[])add('profile','education_records',null,'conflict',issue);
     }
     if(birth)propose('profile','birth_certificate',e.document_number||e.birth_certificate);
     if(marriage&&e.relatives.some(r=>['дружина','чоловік'].includes(relation(r.relationship||r.relation))))propose('candidate','marital_status',candidate.sex==='female'?'Одружена':'Одружений');
@@ -160,6 +206,25 @@
     return after;
   }
   async function sync(client,id){return apply(client,await preview(client,id));}
+  async function automate(client,id){
+    const before=await preview(client,id);let report=before,error=null;
+    try{if(before.supported)report=await apply(client,before);}catch(e){error=e;}
+    const reasons=[];
+    if(!before.supported)reasons.push('Для цього типу документа потрібна звірка рекрутера: автоматичне перенесення ще не підтримується.');
+    if(error)reasons.push('Дані не перенесено: '+error.message);
+    if(report.rows.some(r=>r.action==='conflict'))reasons.push('Є розбіжності або нерозбірливі дані. Збережені значення залишено без змін.');
+    if(report.document.verification_status!=='Підтверджено'&&/AI REVIEW REQUIRED/.test(report.document.notes||''))reasons.push('AI просить перевірити документ перед перенесенням.');
+    const needsRecruiter=reasons.length>0;
+    if(needsRecruiter){
+      const dr=await client.from('documents').select('*').eq('id',id).single();if(dr.error)throw dr.error;
+      if(JSON.stringify(dr.data.ai_extracted)!==JSON.stringify(before.document.ai_extracted))throw new Error('Результат AI змінився. Оновіть перевірку.');
+      const warnings=[...new Set([...(Array.isArray(dr.data.ai_warnings)?dr.data.ai_warnings:[]),...reasons.map(r=>'[Рекрутер] '+r)])];
+      let query=client.from('documents').update({verification_status:'Потребує перевірки',ai_warnings:warnings}).eq('id',id);
+      if(dr.data.updated_at)query=query.eq('updated_at',dr.data.updated_at);
+      const result=await query.select('id');if(result.error)throw result.error;if(Array.isArray(result.data)&&!result.data.length)throw new Error('Документ змінився. Оновіть перевірку.');
+    }
+    return {...report,needsRecruiter,reasons,autoFilled:!error?before.rows.filter(r=>r.action==='fill').length:0};
+  }
   async function showPreview(client,id){
     const report=await preview(client,id),dialog=document.createElement('dialog');dialog.className='crm-ai-container';
     const esc=v=>String(typeof v==='object'?JSON.stringify(v):v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -175,6 +240,6 @@
     };
     return report;
   }
-  const api={flatten,plan,preview,apply,sync,showPreview,mergeRelatives,valid,relation};
+  const api={flatten,plan,preview,apply,sync,automate,showPreview,mergeRelatives,valid,relation};
   root.CRMDocumentSync=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

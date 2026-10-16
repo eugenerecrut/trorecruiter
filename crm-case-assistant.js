@@ -1,0 +1,37 @@
+(function(root){
+'use strict';
+const labels={full_name:'ПІБ',name_nominative:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',phone:'Телефон',sex:'Стать',service_type:'Вид оформлення',education_level:'Рівень освіти',education_institution:'Заклад освіти',education_records:'Освіта',work_records:'Періоди роботи / служби',work_events:'Події трудової діяльності',worked_before:'Досвід роботи',served_before:'Досвід служби',military_specialty:'ВОС',military_rank:'Військове звання',military_unit:'Військова частина',desired_position:'Бажана посада',relatives:'Рідні та близькі',shpk:'ШПК',tariff_grade:'Тарифний розряд',recruiter_name:'Рекрутер',passport_number:'Номер паспорта',criminal_record_info:'Відомості про судимість'};
+const label=k=>labels[k]||'Інші відомості ('+k+')';
+const blank=v=>v==null||typeof v==='string'&&!v.trim()||Array.isArray(v)&&!v.length;
+function profile(c){if(typeof c.profile_data==='string'){try{return JSON.parse(c.profile_data)||{}}catch{return {}}}return c.profile_data||{}}
+function build(candidate,requirements,documents){
+ const p=profile(candidate),value=k=>candidate[k]??p[k]??p.form_data?.[k],questions=[],missingData=[],issues=[],fills=[];
+ const add=(key,text)=>{if(!questions.some(q=>q.key===key))questions.push({key,text});};
+ const state=root.CRMDocumentState.summary(candidate,requirements,documents),pack=root.CRMDocumentState.packageState(candidate,documents);
+ const missingDocuments=state.rows.filter(r=>r.r.is_required&&r.condition===true&&!r.received).filter((r,i,a)=>a.findIndex(x=>x.group===r.group&&x.childIndex===r.childIndex)===i);
+ for(const [key,text] of [['full_name','Як зазначено ваше повне ПІБ у чинному документі?'],['birth_date','Укажіть дату народження.'],['birth_place','Укажіть місце народження.'],['phone','Укажіть контактний номер телефону.'],['service_type','Ви оформлюєтесь за контрактом чи за мобілізацією?'],['education_level','Яку освіту ви здобули?'],['worked_before','Чи працювали ви раніше?'],['served_before','Чи проходили ви військову службу?']])if(blank(value(key))){missingData.push({key,label:label(key)});add(key,text);}
+ if(value('worked_before')===true||value('worked_before')==='true')if(blank(p.work_records)&&blank(value('work_history')))add('work_history','Уточніть періоди роботи: початок і завершення, підприємство та посада.');
+ if(value('served_before')===true||value('served_before')==='true')if(blank(p.work_records)&&blank(value('military_service_history')))add('military_service_history','Уточніть періоди військової служби та додайте підтвердні документи.');
+ if(!blank(value('education_level'))&&blank(p.education_records)&&blank(value('education_institution')))add('education_institution','Уточніть назву закладу освіти й рік завершення навчання.');
+ for(const doc of root.CRMResponsibility.latest(documents)){
+  if(doc.processing_status==='AI помилка')issues.push({kind:'error',document:doc,text:'Не вдалося розпізнати документ. Потрібна повторна обробка або ручна перевірка.'});
+  if(doc.ai_extracted)try{const plan=root.CRMDocumentSync.plan(doc,candidate);for(const row of plan.rows||[])if(row.action==='conflict')issues.push({kind:'conflict',document:doc,key:row.key,current:row.current,incoming:row.incoming,text:row.reason||'Дані відрізняються.'});else if(row.action==='fill')fills.push({...row,document:doc});}catch{issues.push({kind:'error',document:doc,text:'Не вдалося звірити розпізнані дані. Потрібна ручна перевірка.'});}
+ }
+ const blockers=[...missingData.map(r=>'Не заповнено: '+r.label),...missingDocuments.map(r=>'Бракує документа: '+r.r.document_type),...(state.unknown?['Потрібно уточнити умови переліку документів: '+state.unknown]:[]),...(issues.length?['Потребують звірки: '+issues.length]:[]),...(state.review?['Неперевірених файлів: '+state.review]:[]),...(state.processing?['Триває розпізнавання: '+state.processing]:[]),...(fills.length?['Є неперенесені дані: '+fills.length]:[]),...pack.missing.map(r=>'PDF «Анкета»: '+r.title+' — '+r.state),...(questions.length?['Є запитання кандидату: '+questions.length]:[])];
+ return {candidateId:candidate.id,state,missingDocuments,missingData,questions,issues,fills,package:pack,blockers,ready:!blockers.length};
+}
+function render(host,report){
+ const esc=root.CRMWorkspace.escape,fmt=v=>blank(v)?'Не заповнено':typeof v==='object'?JSON.stringify(v):String(v);
+ const list=items=>items.length?'<ul>'+items.map(s=>'<li>'+esc(s)+'</li>').join('')+'</ul>':'<p>Немає.</p>';
+ host.innerHTML='<h2 tabindex="-1">Перевірка особової справи</h2><p>За збереженою карткою та результатами AI/OCR. Звіт не змінює дані й не підтверджує документи.</p><p role="status">'+(report.ready?'За перевіреними правилами перешкод не знайдено. Перед формуванням перегляньте справу.':'Справа потребує уваги.')+'</p><details open><summary>Комплектність: перевірено '+report.state.verified+' із '+report.state.total+' обов’язкових документів</summary>'+list(report.blockers)+'</details><details open><summary>Розбіжності та помилки ('+report.issues.length+')</summary>'+report.issues.map(r=>'<div class="crm-notice"><strong>'+esc(r.key?label(r.key):r.document.document_type)+'</strong><p>'+esc(r.text)+'</p>'+(r.key?'<p>У картці: '+esc(fmt(r.current))+'<br>У документі: '+esc(fmt(r.incoming))+'</p>':'')+'<button type="button" data-case-source="'+esc(r.document.id)+'">Джерело: '+esc(r.document.file_name||r.document.document_type)+'</button></div>').join('')+(!report.issues.length?'<p>Не знайдено.</p>':'')+'</details><details><summary>Дані для перенесення ('+report.fills.length+')</summary>'+list(report.fills.map(r=>label(r.key)+' — '+fmt(r.incoming)+'; джерело: '+(r.document.file_name||r.document.document_type)))+'<p>Перенесення доступне у вкладці «Перевірка даних» після перегляду.</p></details><details open><summary>Запитання кандидату — чернетка ('+report.questions.length+')</summary>'+list(report.questions.map(q=>q.text))+'<p>Автоматичне надсилання в Telegram ще не підключено.</p></details>';
+ host.onclick=async e=>{const b=e.target.closest('[data-case-source]');if(!b)return;try{await root.openDocument(b.dataset.caseSource)}catch(error){const p=document.createElement('p');p.setAttribute('role','alert');p.textContent='Не вдалося відкрити джерело: '+error.message;b.after(p)}};
+ host.querySelector('h2')?.focus();
+}
+function mount(form,id){
+ const button=document.createElement('button');button.type='button';button.textContent='Перевірити справу';
+ const host=document.createElement('section');host.className='crm-case-assistant';host.hidden=true;form.before(host);
+ (form.querySelector('.cc-v3-tools .quick-actions')||form.querySelector('.cc-v3-tools')||form).append(button);
+ button.onclick=async()=>{if(root.CRMWorkspace.busy)return;if(root.CRMWorkspace.card?.dirty||root.CRMWorkspace.workflow?.dirty){host.hidden=false;host.textContent='Збережіть зміни картки та етапу перед перевіркою.';return}button.disabled=true;host.hidden=false;host.textContent='Звіряємо збережену справу…';try{const [c,requirements,docs]=await Promise.all([(typeof supabaseClient!=='undefined'?supabaseClient:root.supabaseClient).from('candidates').select('*').eq('id',id).single(),root.getDocumentRequirements(),root.getCandidateDocuments(id)]);if(c.error)throw c.error;if(!host.isConnected)return;render(host,build(c.data,requirements,docs));}catch(e){host.textContent='Перевірку не завершено: '+e.message}finally{button.disabled=false}};
+}
+root.CRMCaseAssistant={build,render,mount,label};
+})(typeof window==='undefined'?globalThis:window);

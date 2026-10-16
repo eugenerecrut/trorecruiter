@@ -76,10 +76,10 @@ test('Concurrent manual edit, changed AI and read/write errors never report succ
   const n=memory(candidate(),document({...personal(),...service()}));const q=await sync.preview(n.client,'d1');n.state.d.ai_extracted.shpk='сержант';await assert.rejects(sync.apply(n.client,q),e=>e.message==='AI changed');
   n.state.fail='Read failed';await assert.rejects(sync.preview(n.client,'d1'),e=>e.message==='Read failed');
 });
-test('Active upload calls exact document sync, local OCR receives the DOM document',async()=>{
+test('Active upload syncs exact document without redundant browser OCR',async()=>{
   const source=fs.readFileSync(path.join(root,'documents.js'),'utf8');const code=source.slice(source.indexOf('async function processOneDocument('),source.indexOf('async function uploadSelectedDocuments('));
-  const m=memory(candidate(),document({...personal(),...service()}));let invoked,ocr=0;const context={CRMUploadPDF:uploadPDF,supabaseClient:m.client,DOC_MAX_SIZE:20e6,DOC_BUCKET:'candidate-documents',getDocumentRequirements:async()=>[{id:'r1',document_type:'Рекомендаційний лист'}],extractPdfText:async()=>'',pdfToImages:async()=>['image'],runOcr:async()=>{ocr++;return 'text'},classifyStoredDocument:async(id)=>{invoked=id;return {document_type:'Рекомендаційний лист',extracted:{...personal(),...service()}}},findCandidateByName:()=>null,document:{getElementById:()=>null},CRMDocumentSync:sync,console};vm.createContext(context);vm.runInContext(code,context);
-  await context.processOneDocument({name:'test.pdf',type:'application/pdf',size:100},'r1',{id:'u1'},[], 'c1');assert.equal(invoked,'d1');assert.equal(ocr,1);assert.equal(m.state.rpcs,1);assert.equal(m.state.c.military_specialty,'225256А');
+  const m=memory(candidate(),document({...personal(),...service()}));let invoked,ocr=0;const context={CRMUploadPDF:uploadPDF,supabaseClient:m.client,DOC_MAX_SIZE:20e6,DOC_BUCKET:'candidate-documents',getDocumentRequirements:async()=>[{id:'r1',document_type:'Рекомендаційний лист'}],extractPdfText:async()=>'',pdfToImages:async()=>['image'],runOcr:async()=>{ocr++;return 'text'},classifyStoredDocument:async(id)=>{invoked=id;return {document_type:'Рекомендаційний лист',confidence:0.99,extracted:{...personal(),...service()}}},findCandidateByName:()=>null,document:{getElementById:()=>null},CRMDocumentSync:sync,console};vm.createContext(context);vm.runInContext(code,context);
+  await context.processOneDocument({name:'test.pdf',type:'application/pdf',size:100},'r1',{id:'u1'},[], 'c1');assert.equal(invoked,'d1');assert.equal(ocr,0);assert.equal(m.state.rpcs,1);assert.equal(m.state.c.military_specialty,'225256А');
 });
 test('Recommendation form supports both formats and saves canonical service/relative fields',async()=>{
   let extracted={...personal(),...service()};
@@ -100,7 +100,7 @@ test('Contradictory flat/nested OCR and malformed relative entries become confli
 });
 test('Retry and review use the same document-scoped planner; no legacy time-window writes',()=>{
   const s=fs.readFileSync(path.join(root,'documents.js'),'utf8');const retry=s.slice(s.indexOf('async function retryDocumentAI'),s.indexOf('async function openDocument'));
-  assert(retry.includes('CRMDocumentSync.sync(supabaseClient,id)'));assert(s.includes('CRMDocumentSync.showPreview(supabaseClient,id)'));
+  assert(retry.includes('CRMDocumentSync.automate(supabaseClient,id)'));assert(s.includes('CRMDocumentSync.showPreview(supabaseClient,id)'));
   const legacy=fs.readFileSync(path.join(root,'document-upload-fix.js'),'utf8');assert(!legacy.includes('.gte('));assert(legacy.includes('report.document.candidate_id !== candidateId'));
 });
 
@@ -134,4 +134,18 @@ test('Document transfer advances candidate and personal file versions to reject 
  assert(!/security definer|disable.*trigger|alter table/i.test(sql));
  const fileSql=fs.readFileSync(path.join(root,'supabase/migrations/20261013132800_document_file_sync_versions.sql'),'utf8');
  assert(fileSql.includes("if cp<>'{}' or fp<>'{}' then cp:=cp||jsonb_build_object('updated_at',clock_timestamp());end if;"));
+});
+
+test('Automatic pipeline fills safe blanks and persists recruiter escalation without overwriting mobilization',async()=>{
+ const m=memory(candidate(),{...document({...personal(),...service()}),ai_confidence:0.98});const r=await sync.automate(m.client,'d1');assert(r.needsRecruiter);assert(r.autoFilled>0);assert.equal(m.state.c.military_specialty,'225256А');assert.equal(m.state.c.profile_data.service_type,'За мобілізацією');assert.equal(m.state.d.verification_status,'Потребує перевірки');assert(m.state.d.ai_warnings.some(w=>w.startsWith('[Рекрутер]')));
+});
+test('Low confidence and unreadable evidence do not silently enter a card',async()=>{
+ const m=memory(candidate(),{...document({...personal(),military_specialty:'225256А'}),ai_confidence:0.4});const r=await sync.automate(m.client,'d1');assert(r.needsRecruiter);assert.equal(m.state.c.military_specialty,undefined);
+ const p=sync.plan(document({...personal(),military_specialty:'225256А',field_evidence:{military_specialty:{legibility:'unreadable'}}}),candidate());assert(!p.selections.some(s=>s.key==='military_specialty'));
+});
+test('Unmapped service-record sources explicitly request recruiter review',async()=>{
+ const m=memory(candidate(),document({...personal(),name_change:{previous_full_name:'Тестов Іван Петрович',new_full_name:'Тестенко Іван Петрович'}},'Свідоцтво про зміну імені / прізвища'));const r=await sync.automate(m.client,'d1');assert(r.needsRecruiter);assert.equal(m.state.rpcs,0);assert.equal(m.state.d.verification_status,'Потребує перевірки');
+});
+test('Clear source with no conflicting stored values does not trigger a recruiter exception',async()=>{
+ const m=memory(candidate(),{...document({...personal(),military_specialty:'225256А'}),ai_confidence:0.99});const r=await sync.automate(m.client,'d1');assert.equal(r.needsRecruiter,false);assert.equal(m.state.c.military_specialty,'225256А');assert.notEqual(m.state.d.verification_status,'Підтверджено');
 });
