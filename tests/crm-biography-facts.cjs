@@ -1,6 +1,15 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const facts=require('../biography-facts.js');
 const claim=(extra={})=>({employer:'Національна поліція України у м. Дніпрі',position:'поліцейський',start_date:{value:'2024-03-05',precision:'day'},end_date:{value:'2025-11-04',precision:'day'},source_document_id:'bio',requires_review:false,...extra});
+test('explicit police period prints in service only with exact institution, no military unit prefix',()=>{
+ const c={URL,structuredClone};c.window=c;vm.createContext(c);for(const f of ['biography-facts.js','candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),c);
+ const r={...claim(),kind:'police_service',start_date:'2024-03-05',end_date:'2025-11-04',order_number:null};
+ const candidate={full_name:'ТЕСТЕНКО Марія Іванівна',sex:'female',birth_date:'1990-01-01',rnokpp:'1234567890',birth_place:'Дніпро',worked_before:false,served_before:true,profile_data:{education_institution:'Школа',work_records:[r]}};
+ const fields=c.CRMServiceRecord.model(candidate).fields,value=k=>fields.find(f=>f.key===k)?.value;
+ assert.equal(value('work_0_0'),undefined);assert.equal(value('not_worked'),'Не працювала');
+ assert.equal(value('service_0_3'),r.employer);assert.equal(value('service_0_2'),'поліцейський');assert.equal(value('service_0_4'),'');
+ assert(c.CRMServiceReadiness.review(candidate).ready);
+});
 test('autobiography work enters shared output facts without mutation or military duplication',()=>{
  const p={work_records:[],bio_work_claims:[claim()],bio_service_claims:[{unit:'Національна поліція України',...claim()}]},old=JSON.stringify(p),out=facts.profile(p);
  assert.equal(JSON.stringify(p),old);assert.equal(out.work_records.length,1);assert.equal(out.work_records[0].kind,'employment');assert.equal(out.work_records[0].source_document_id,'bio');assert.equal(out.work_records[0].start_date,'2024-03-05');

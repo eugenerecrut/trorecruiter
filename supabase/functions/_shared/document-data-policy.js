@@ -68,7 +68,7 @@
     return { blocked: false, owner, relatives: [spouse] };
   }
   function serviceSummary(records) {
-    return (Array.isArray(records) ? records : []).filter(r => r.kind === 'military_service' && !r.requires_review)
+    return (Array.isArray(records) ? records : []).filter(r => ['military_service','police_service'].includes(r.kind) && !r.requires_review)
       .map(r => [r.start_date, r.end_date || 'триває / завершення не зазначене', r.employer, r.position, r.military_specialty && 'ВОС ' + r.military_specialty, r.order_number && 'наказ ' + r.order_number].filter(Boolean).join(' · ')).join('\n');
   }
   function cardExtras(profile) {

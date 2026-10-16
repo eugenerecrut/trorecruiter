@@ -37,7 +37,7 @@ function model(c,pf={}){
  const oath=obj(p.military_oath),discharge=obj(p.military_discharge);
  add('callup','Призов / початок служби',3,[222.6,39,510.3,70.7],served===false?'':p.service_start_date?words(p.service_start_date)+(p.previous_service_type?' '+p.previous_service_type:''):'','Військова служба');
  add('oath','Присяга',3,[312,75,510.3,105.9],served===false?'':[date(oath.date),oath.unit&&'в/ч '+oath.unit].filter(Boolean).join(', '),'Військова служба');
- const service=(p.work_records||[]).filter(r=>r.kind==='military_service'&&!r.requires_review);
+ const service=(p.work_records||[]).filter(r=>['military_service','police_service'].includes(r.kind)&&!r.requires_review);
  if(served===false)add('not_served','Відомості про службу',3,[28.6,262.3,510.1,289.3],c.sex==='female'?'Військову службу не проходила':'Військову службу не проходив','Військова служба',true);
  else service.forEach((r,i)=>{
   // First page plus the original three continuation pages; never add pages.
@@ -46,8 +46,9 @@ function model(c,pf={}){
   const grids={3:[28.6,70.7,120.4,324.8,445.2,510.1],4:[85.4,127.5,177.2,381.6,502,566.9],5:[28.6,70.8,120.5,318.9,446.6,510.1],6:[85.4,127.6,177.3,368.7,503.4,566.9]};
   const top0=page===3?262.3:162.4,total=page===3?345.4:620.6,count=page===3?Math.min(service.length,5):Math.min(8,service.length-5-(page-4)*8),top=top0+row*total/count,end=top0+(row+1)*total/count,cols=grids[page];
   const unit=r.unit||String(r.employer||'').replace(/^В[Іі]ЙСЬКОВА ЧАСТИНА\s*/iu,'');
-  const order=[unit&&'Ком. в/ч',unit,r.order_number&&'№'+r.order_number,date(r.order_date)].filter(Boolean).join('\n');
-  [stacked(r.start_date),stacked(r.end_date),[r.position,r.military_specialty&&'ВОС '+r.military_specialty].filter(Boolean).join(', '),unit&&'в/ч '+unit,order].forEach((v,j)=>add('service_'+i+'_'+j,['Початок','Завершення','Посада та ВОС','Частина','Наказ'][j]+' · '+(i+1),page,[cols[j],top,cols[j+1],end],v,'Військова служба',j!==2));
+  const police=r.kind==='police_service';
+  const order=[!police&&unit&&'Ком. в/ч',!police&&unit,r.order_number&&'№'+r.order_number,date(r.order_date)].filter(Boolean).join('\n');
+  [stacked(r.start_date),stacked(r.end_date),[r.position,!police&&r.military_specialty&&'ВОС '+r.military_specialty].filter(Boolean).join(', '),unit&&(police?unit:'в/ч '+unit),order].forEach((v,j)=>add('service_'+i+'_'+j,['Початок','Завершення','Посада та ВОС','Частина','Наказ'][j]+' · '+(i+1),page,[cols[j],top,cols[j+1],end],v,'Військова служба',j!==2));
  });
  if(served!==false)add('discharge','Звільнення в запас',3,[28.6,607.8,510.1,660.9],discharge.order_number?'Звільнений у запас '+(discharge.basis?'за '+discharge.basis+', ':'')+'наказ командира в/ч '+(discharge.unit||'')+' №'+discharge.order_number+' від '+date(discharge.order_date):'','Військова служба');
  (p.combat_records||[]).filter(r=>!r.requires_review).forEach((r,i,rows)=>{

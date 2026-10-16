@@ -24,7 +24,7 @@ function review(c,pf={},documents=[]){
  for(const r of education){if(!r||r.requires_review){add('education.civil','Запис освіти потребує звірки й не використовується у друці.',r);continue;}if(blank(r.institution))add('education.civil','У записі освіти бракує назви закладу.',r);if(r.graduation_year&&!/^\d{4}$/.test(String(r.graduation_year)))add('education.civil','Перевірте рік завершення навчання.',r);}
  function periods(kind,enabled,id){
   if(enabled!==true)return;
-  const records=list(p.work_records).filter(r=>r?.kind===kind);
+  const records=list(p.work_records).filter(r=>(r?.kind===kind||kind==='military_service'&&r?.kind==='police_service'));
   if(!records.length){add(id,'Немає структурованих періодів '+(kind==='employment'?'роботи.':'служби.'));return;}
   for(const [i,r] of records.entries()){
    const prefix='Запис '+(i+1)+': ';

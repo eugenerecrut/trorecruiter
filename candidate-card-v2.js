@@ -479,7 +479,7 @@
   function workEditor(profile){
     const rows=Array.isArray(profile.work_records)?profile.work_records:[];
     const row=(r={})=>'<div data-work-row class="cc-section"><div class="cc-grid">'+
-      select('Тип періоду','work_kind',r.kind||'employment',[['employment','Робота'],['military_service','Військова служба'],['unemployment','Облік безробітного']])+
+      select('Тип періоду','work_kind',r.kind||'employment',[['employment','Робота'],['military_service','Військова служба'],['police_service','Служба в Національній поліції'],['unemployment','Облік безробітного']])+
       input('Роботодавець / організація','work_employer',r.employer)+input('Код роботодавця','work_employer_code',r.employer_code)+input('Посада на початку періоду','work_position',r.position)+
       input('Початок','work_start_date',r.start_date,'date')+input('Завершення','work_end_date',r.end_date,'date')+
       input('Причина завершення','work_termination_reason',r.termination_reason)+input('Наказ про початок: номер','work_order_number',r.order_number)+input('Дата наказу про початок','work_order_date',r.order_date,'date')+
