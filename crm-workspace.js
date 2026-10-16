@@ -166,9 +166,7 @@ CRMWorkspace.loadHome=async function(){
     tasks.querySelectorAll('.task').forEach(el=>el.remove());
     const group=(title,items,destination='documents')=>'<section class="crm-home-attention"><h4>'+title+' · '+items.length+'</h4>'+items.slice(0,5).map(c=>'<button class="crm-button" onclick="crmNavigate(\''+destination+'\',\''+esc(c.id)+'\')">'+esc(c.name_nominative||c.full_name)+'</button>').join('')+(items.length>5?'<p>Ще '+(items.length-5)+' справ. Повний список у розділі «Кандидати».</p>':'')+'</section>';
     const owners=files=>candidates.filter(c=>files.some(d=>d.candidate_id===c.id));
-    const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Kyiv'});
-    const contacts=candidates.filter(c=>{const w=CRMWorkflow.wf(c);return !w.outcome&&w.paused&&w.next_contact_date&&w.next_contact_date<=today;});
-    tasks.insertAdjacentHTML('beforeend',group('Потрібен контакт сьогодні',contacts,'card')+group('Неповні комплекти документів',missing)+group('Неперевірені документи',owners(review))+group('Помилки розпізнавання',owners(errors)));
+    tasks.insertAdjacentHTML('beforeend',group('Неповні комплекти документів',missing)+group('Неперевірені документи',owners(review))+group('Помилки розпізнавання',owners(errors)));
   }
 };
 supabaseClient.auth.onAuthStateChange((event,session)=>{

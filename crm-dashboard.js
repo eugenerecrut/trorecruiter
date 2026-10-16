@@ -24,6 +24,14 @@
     return order[bucket(a,day)]-order[bucket(b,day)]||due(a).localeCompare(due(b))||String(a.full_name||'').localeCompare(String(b.full_name||''),'uk');
   }
   const active=c=>!CRMWorkflow.isArchived(c)&&!CRMWorkflow.profile(c).merged_into;
+  function documentStatus(s){
+    if(s.errors)return 'Помилка AI';
+    if(s.processing)return 'Розпізнавання';
+    if(s.review)return 'Потрібна перевірка';
+    if(s.unknown)return 'Уточнити відомості';
+    if(s.total&&s.verified===s.total)return 'Комплект перевірено';
+    return s.received?'Додати документи':'Очікуємо документи';
+  }
   async function load(mode='home') {
     const root=document.querySelector('.content');if(!root)return;
     CRMWorkspace.card=null;CRMWorkspace.setContext(null,'');CRMWorkspace.markMenu(mode==='documents'?'documents':'home');
@@ -42,17 +50,17 @@
       let owner=current?.role==='recruiter'?current.user_id:'all',view=mode==='documents'?'review':'all';
       const views=[['all','Усі справи'],['review','Потребують перевірки'],['errors','Помилки AI'],['missing','Неповний комплект']];
       const content=host.querySelector('[data-dashboard-content]');
-      content.innerHTML='<div class="crm-dashboard-filters"><label>Рекрутер<select data-dashboard-owner><option value="all">Усі рекрутери</option><option value="unassigned">Не призначено</option>'+staffIds.map(id=>'<option value="'+esc(id)+'">'+esc(CRMResponsibility.name(id))+'</option>').join('')+'</select></label><label>Пошук<input type="search" data-dashboard-search placeholder="ПІБ або телефон"></label><label>Вид оформлення<select data-dashboard-mode><option value="all">Усі</option><option value="contract">Контракт</option><option value="mobilization">Мобілізація</option><option value="unknown">Не уточнено</option></select></label></div><div class="crm-dashboard-metrics" data-dashboard-metrics></div><div class="crm-dashboard-table"><table><thead><tr><th>Кандидат</th><th>Етап</th><th>Дані AI / перевірка</th><th>Рекрутер</th><th>Комплект</th><th>Відкрити</th></tr></thead><tbody data-dashboard-rows></tbody></table></div><p class="muted" data-dashboard-empty hidden>Справ за цим фільтром немає.</p>';
+      content.innerHTML='<div class="crm-dashboard-filters"><label>Рекрутер<select data-dashboard-owner><option value="all">Усі рекрутери</option><option value="unassigned">Не призначено</option>'+staffIds.map(id=>'<option value="'+esc(id)+'">'+esc(CRMResponsibility.name(id))+'</option>').join('')+'</select></label><label>Пошук<input type="search" data-dashboard-search placeholder="ПІБ або телефон"></label><label>Вид оформлення<select data-dashboard-mode><option value="all">Усі</option><option value="contract">Контракт</option><option value="mobilization">Мобілізація</option><option value="unknown">Не уточнено</option></select></label></div><div class="crm-dashboard-metrics" data-dashboard-metrics></div><div class="crm-dashboard-table"><table><thead><tr><th>Кандидат</th><th>Стан документів</th><th>Дані AI / перевірка</th><th>Рекрутер</th><th>Комплект</th><th>Відкрити</th></tr></thead><tbody data-dashboard-rows></tbody></table></div><p class="muted" data-dashboard-empty hidden>Справ за цим фільтром немає.</p>';
       const ownerInput=content.querySelector('[data-dashboard-owner]');ownerInput.value=owner;
-      const matches=(c,key)=>key==='all'||key==='overdue'&&bucket(c,day)==='overdue'||key==='today'&&bucket(c,day)==='today'||key==='paused'&&CRMWorkflow.wf(c).paused||key==='review'&&totals.get(c.id).review>0||key==='errors'&&totals.get(c.id).errors>0||key==='missing'&&(totals.get(c.id).verified<totals.get(c.id).total||totals.get(c.id).unknown>0);
+      const matches=(c,key)=>key==='all'||key==='review'&&totals.get(c.id).review>0||key==='errors'&&totals.get(c.id).errors>0||key==='missing'&&(totals.get(c.id).verified<totals.get(c.id).total||totals.get(c.id).unknown>0);
       function render() {
         const query=content.querySelector('[data-dashboard-search]').value.trim().toLocaleLowerCase('uk'),type=content.querySelector('[data-dashboard-mode]').value;
         const base=candidates.filter(c=>(owner==='all'||(owner==='unassigned'?!c.responsible_recruiter_id:c.responsible_recruiter_id===owner))&&(!query||[c.full_name,c.name_nominative,c.phone].join(' ').toLocaleLowerCase('uk').includes(query))&&(type==='all'||type==='mobilization'&&CRMCandidateConditions.isMobilization(c)||type==='contract'&&CRMWorkflow.profile(c).service_type==='За контрактом'||type==='unknown'&&!CRMWorkflow.profile(c).service_type));
         content.querySelector('[data-dashboard-metrics]').innerHTML=views.map(([key,title])=>'<button type="button" class="crm-dashboard-metric '+(key===view?'active':'')+'" data-dashboard-view="'+key+'" aria-pressed="'+(key===view)+'"><span>'+title+'</span><strong>'+base.filter(c=>matches(c,key)).length+'</strong></button>').join('');
         const selected=base.filter(c=>matches(c,view)).sort((a,b)=>(totals.get(b.id).errors-totals.get(a.id).errors)||(totals.get(b.id).review-totals.get(a.id).review)||String(a.full_name||'').localeCompare(String(b.full_name||''),'uk'));
         content.querySelector('[data-dashboard-rows]').innerHTML=selected.map(c=>{
-          const s=totals.get(c.id),w=CRMWorkflow.wf(c),b=bucket(c,day);
-          return '<tr><td><button type="button" class="crm-name-link" data-dashboard-card="'+esc(c.id)+'">'+esc(c.name_nominative||c.full_name)+'</button><small>'+esc(CRMWorkflow.profile(c).service_type||'Вид оформлення не уточнено')+'</small></td><td>'+esc(CRMCandidateConditions.isUnit(c)?'Оформлює ВЧ':CRMWorkflow.label(c))+'</td><td>'+s.review+' на перевірку · '+s.errors+' помилок AI</td><td>'+esc(CRMResponsibility.name(c.responsible_recruiter_id))+'</td><td>'+s.verified+'/'+s.total+(s.unknown?'<small>Уточнити: '+s.unknown+'</small>':'')+'</td><td><button type="button" data-dashboard-plan="'+esc(c.id)+'">Справа</button><button type="button" data-dashboard-docs="'+esc(c.id)+'">Документи</button></td></tr>';
+          const s=totals.get(c.id);
+          return '<tr><td><button type="button" class="crm-name-link" data-dashboard-card="'+esc(c.id)+'">'+esc(c.name_nominative||c.full_name)+'</button><small>'+esc(CRMWorkflow.profile(c).service_type||'Вид оформлення не уточнено')+'</small></td><td>'+esc(documentStatus(s))+'</td><td>'+s.review+' на перевірку · '+s.errors+' помилок AI</td><td>'+esc(CRMResponsibility.name(c.responsible_recruiter_id))+'</td><td>'+s.verified+'/'+s.total+(s.unknown?'<small>Уточнити: '+s.unknown+'</small>':'')+'</td><td><button type="button" data-dashboard-plan="'+esc(c.id)+'">Справа</button><button type="button" data-dashboard-docs="'+esc(c.id)+'">Документи</button></td></tr>';
         }).join('');
         content.querySelector('[data-dashboard-empty]').hidden=selected.length>0;
         host.querySelector('[data-dashboard-status]').textContent='Справ: '+base.length+' · Без відповідального: '+base.filter(c=>!c.responsible_recruiter_id).length+' · '+date(day);
@@ -69,6 +77,6 @@
     }catch(error){if(host.isConnected){host.querySelector('[data-dashboard-status]').textContent='Не вдалося завантажити дашборд: '+error.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=()=>load(mode);host.append(retry);}}
   }
   window.CRMCaseTasks={today,date,due,bucket,next,compare,active};
-  window.CRMDashboard={load};
+  window.CRMDashboard={load,documentStatus};
   CRMWorkspace.loadHome=()=>load();
 })();
