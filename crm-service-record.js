@@ -103,21 +103,32 @@ async function create(state){
  function draw(f){if(!f.value.trim())return;const [x,top,right,bottom]=f.box,inset=bottom-top<20?1:pad,rows=lines(f.value,right-x-2*inset,f.label);if(size+(rows.length-1)*line+2*inset>bottom-top)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');const pg=pdf.getPage(f.page),textHeight=font.heightAtSize(size),blockHeight=textHeight+(rows.length-1)*line,firstY=f.verticalCenter?pg.getHeight()-(top+bottom)/2+blockHeight/2-textHeight:pg.getHeight()-top-inset-size;rows.forEach((row,i)=>pg.drawText(row,{font,size,x:f.center?(x+right-font.widthOfTextAtSize(row,size))/2:x+inset,y:firstY-i*line}));}
  function rect(page,box){const [x,t,r,b]=box;pdf.getPage(page).drawRectangle({x,y:pdf.getPage(page).getHeight()-b,width:r-x,height:b-t,color:PDFLib.rgb(1,1,1)});}
  function rule(page,x1,t1,x2,t2){const pg=pdf.getPage(page);pg.drawLine({start:{x:x1,y:pg.getHeight()-t1},end:{x:x2,y:pg.getHeight()-t2},thickness:.48});}
+ const printFields=state.fields.map(f=>({...f,box:[...f.box]}));
  if(state.worked===true){
   rect(2,[85.1,126.2,571.3,762.2]);for(const x of [85.34,156.86,228.41,493.06,571.08])rule(2,x,126.2,x,700);for(const t of [126.2,700,762.12])rule(2,85.34,t,571.08,t);for(const x of [85.34,571.08])rule(2,x,700,x,762.12);draw({label:'Підписний блок',page:2,box:[85.34,700,571.08,762.12],value:sign});
  }
  if(state.served===false){rect(3,[28.32,262.3,510.34,769.44]);for(const t of [262.3,289.3,342.5,769.44])rule(3,28.56,t,510.1,t);for(const x of [28.56,510.1])rule(3,x,262.3,x,769.44);for(const x of [70.7,120.4,324.8,445.2])rule(3,x,342.5,x,769.44);draw({label:'Підписний блок',page:3,box:[28.56,289.3,510.1,342.5],value:sign});}
  else if(!state.fields.find(f=>f.key==='discharge')?.value.trim()){
-  // No discharge entry: remove its empty row and raise the signature to the service table.
-  rect(3,[28.32,607.6,510.34,769.7]);
-  for(const t of [607.8,660.9,769.44])rule(3,28.56,t,510.1,t);
-  for(const x of [28.56,510.1])rule(3,x,607.8,x,769.44);
-  for(const x of [70.7,120.4,324.8,445.2])rule(3,x,660.9,x,769.44);
-  draw({label:'Підписний блок',page:3,box:[28.56,607.8,510.1,642],value:sign.split('\n')[0]});
-  draw({label:'Звання підписанта',page:3,box:[28.56,640,200,660.9],value:'капітан'});
-  draw({label:'Підписант',page:3,box:[245,640,510.1,660.9],value:'Володимир СОВІН'});
+  let signatureTop=607.8;
+  const serviceFields=printFields.filter(f=>/^service_\d+_\d+$/.test(f.key));
+  if(serviceFields.length&&serviceFields.every(f=>f.page===3)){
+   const rows=[...new Set(serviceFields.map(f=>f.key.split('_')[1]))].map(id=>serviceFields.filter(f=>f.key.split('_')[1]===id));
+   const heights=rows.map(row=>Math.max(...row.map(f=>size+(Math.max(1,lines(f.value,f.box[2]-f.box[0]-2*pad,f.label).length)-1)*line+2*pad))+2*line);
+   if(262.3+heights.reduce((a,b)=>a+b,0)<=607.8){
+    rect(3,[28.32,262.1,510.34,769.7]);let top=262.3;
+    rows.forEach((row,i)=>{rule(3,28.56,top,510.1,top);row.forEach(f=>{f.box[1]=top+line;f.box[3]=top+heights[i]-line;});top+=heights[i];});
+    signatureTop=top;for(const x of [28.56,70.7,120.4,324.8,445.2,510.1])rule(3,x,262.3,x,signatureTop);
+   }
+  }
+  rect(3,[28.32,signatureTop-.2,510.34,769.7]);const signatureEnd=signatureTop+53.1;
+  for(const t of [signatureTop,signatureEnd,769.44])rule(3,28.56,t,510.1,t);
+  for(const x of [28.56,510.1])rule(3,x,signatureTop,x,769.44);
+  for(const x of [70.7,120.4,324.8,445.2])rule(3,x,signatureEnd,x,769.44);
+  draw({label:'Підписний блок',page:3,box:[28.56,signatureTop,510.1,signatureTop+34.2],value:sign.split('\n')[0]});
+  draw({label:'Звання підписанта',page:3,box:[28.56,signatureTop+32.2,200,signatureEnd],value:'капітан'});
+  draw({label:'Підписант',page:3,box:[245,signatureTop+32.2,510.1,signatureEnd],value:'Володимир СОВІН'});
  }
- for(const f of state.fields)draw(f);
+ for(const f of printFields)draw(f);
  pdf.setTitle('Послужний список — '+state.name);pdf.setAuthor('');pdf.setCreator('PSK_RECRUTER CRM');return new Blob([await pdf.save()],{type:'application/pdf'});
 }
 async function open(c,pf,{save}){
