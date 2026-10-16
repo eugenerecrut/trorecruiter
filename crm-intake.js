@@ -2,9 +2,10 @@
 'use strict';
 const esc=v=>CRMWorkspace.escape(v),object=v=>{if(typeof v==='string'){try{return JSON.parse(v)||{}}catch{return {}}}return v||{}};
 function items(candidate,docs){return CRMResponsibility.latest(docs).map(doc=>{
- let plan=null,error=null;try{if(doc.ai_extracted)plan=CRMDocumentSync.plan(doc,candidate);}catch(e){error=e.message;}
+ const pending=doc.processing_status==='AI обробка',failed=doc.processing_status==='AI помилка';
+ let plan=null,error=null;try{if(doc.ai_extracted&&!pending&&!failed)plan=CRMDocumentSync.plan(doc,candidate);}catch(e){error=e.message;}
  const conflicts=plan?.rows.filter(r=>r.action==='conflict')||[],fills=plan?.rows.filter(r=>r.action==='fill')||[];
- return {doc,plan,error,conflicts,fills,pending:doc.processing_status==='AI обробка',failed:doc.processing_status==='AI помилка',review:!!error||conflicts.length>0||doc.verification_status==='Потребує перевірки'||!!plan&&!plan.supported};
+ return {doc,plan,error,conflicts,fills,pending,failed,review:!pending&&(!!error||conflicts.length>0||doc.verification_status==='Потребує перевірки'||!!plan&&!plan.supported)};
 });}
 function renderValue(value,key){if(value==null||value==='')return 'Не заповнено';if(typeof value==='object'&&window.CRMHistoryFormat)return CRMHistoryFormat.fields({[key]:value});return esc(typeof value==='object'?JSON.stringify(value):value);}
 async function review(host,candidate,documents){

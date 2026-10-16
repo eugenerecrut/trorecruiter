@@ -131,6 +131,14 @@
         else if(!(['driver_license','ubd_certificate','registration_records','marriage_record','education_records','work_records','work_events'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
         else if(target==='profile'&&['education_records','work_records','work_events'].includes(key)&&empty(legacy)){
+          if(key!=='education_records'&&Array.isArray(value))value=value.filter(row=>{
+            if((Array.isArray(current)?current:[]).some(old=>equal(old,row)))return true;
+            const kind=row?.kind,employment=key==='work_events'?['hire','dismissal','transfer'].includes(kind):kind==='employment',military=key==='work_events'?['service_start','service_end'].includes(kind):kind==='military_service';
+            const noWork=candidate.worked_before??p.worked_before,noService=candidate.served_before??p.served_before;
+            const issue=employment&&(noWork===false||noWork==='false')?'У картці вказано «Не працював». Звірте суперечність із документом.':military&&(noService===false||noService==='false')?'У картці вказано «Не служив». Звірте суперечність із документом.':'';
+            if(issue)add(target,key,row,'conflict',issue,current);
+            return !issue;
+          });
           const merged=document.verification_status!=='Підтверджено'&&(!Number.isFinite(Number(document.ai_confidence))||Number(document.ai_confidence)<0.85||Number(document.ai_confidence)>1)?{error:'Потрібна звірка впевненості розпізнавання.'}:appendRecords(key,current,value,document.id);
           if(merged.error){action='conflict';reason=merged.error;}
           else{for(const issue of merged.conflicts)add(target,key,null,'conflict',issue,current);value=merged.value;structured=true;action=equal(current||[],value)?'leave':'fill';}
