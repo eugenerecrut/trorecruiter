@@ -65,7 +65,8 @@ function model(c,pf={}){
  add('foreign_trips_end','Завершення відрядження',8,[471.3,391.3,566.9,475.9],'','Додаткові відомості');
  add('elected_bodies','Виборчі органи',8,[85.4,498,566.9,573.3],p.elected_bodies||'','Додаткові відомості');
  add('captivity','Полон, заручники, інтернування',8,[85.4,625,566.9,770.3],p.captivity||'','Додаткові відомості');
- const relatives=p.relatives||[],parents=['Батько','Мати'].flatMap(role=>relatives.filter(r=>normalize(r.relationship||r.relation)===normalize(role)).map(r=>role+': '+r.full_name+(r.address?'. '+r.address:'')));
+ const relativeName=v=>window.CRMCandidateName?.proper(v)??v;
+ const relatives=p.relatives||[],parents=['Батько','Мати'].flatMap(role=>relatives.filter(r=>normalize(r.relationship||r.relation)===normalize(role)).map(r=>role+': '+relativeName(r.full_name)+(r.address?'. '+r.address:'')));
  add('parents','Батько та мати',9,[241.4,28.6,517.4,91.1],parents.join('\n'),'Родина');
  const spouses=relatives.filter(r=>['дружина','чоловік'].includes(normalize(r.relationship||r.relation))),m=obj(p.marriage_record),children=bool(c.has_children??p.has_children)===false?[]:relatives.filter(r=>/^(?:Син|Донька|Дочка|Дитина)$/iu.test(r.relationship||''));
  const family=[c.marital_status||p.marital_status,...spouses.map(r=>[r.full_name,r.birth_date&&r.birth_date.slice(0,4)+' р.н.'].filter(Boolean).join(', ')),m.certificate_number&&'Свідоцтво '+m.certificate_number+(m.registration_date?' від '+date(m.registration_date):''),m.registration_authority,...children.map(r=>[r.full_name,date(r.birth_date)].filter(Boolean).join(', ')),p.dependants].filter(Boolean).join('\n');

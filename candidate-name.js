@@ -1,6 +1,8 @@
 (function(){
   'use strict';
   const clean=v=>typeof v==='string'?v.trim().replace(/\s+/g,' '):'';
+  // Apostrophes stay inside a name; hyphenated parts and parenthesized maiden names capitalize separately.
+  const proper=value=>clean(value).replace(/\p{L}[\p{L}\p{M}'’ʼ`]*/gu,word=>{const lower=word.toLocaleLowerCase('uk-UA');return lower[0].toLocaleUpperCase('uk-UA')+lower.slice(1);});
   const casing=(original,value)=>original===original.toLocaleUpperCase('uk-UA')?value.toLocaleUpperCase('uk-UA'):value.charAt(0).toLocaleUpperCase('uk-UA')+value.slice(1);
   function first(name,gender){
     const n=name.toLocaleLowerCase('uk-UA');
@@ -54,5 +56,5 @@
     target.addEventListener('input',()=>{if(target.value!==auto)auto=null});
     source.addEventListener('input',()=>fill(false));sex?.addEventListener('change',()=>fill(false));button.addEventListener('click',()=>fill(true));fill(false);
   }
-  window.CRMCandidateName={genitive,stored,bind};
+  window.CRMCandidateName={genitive,stored,bind,proper};
 })();
