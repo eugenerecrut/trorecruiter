@@ -5,14 +5,14 @@ const script=typeof document!=='undefined'&&document.currentScript?.src||'http:/
 const asset=path=>new URL(path,script).href;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const obj=v=>{if(typeof v==='string'){try{return JSON.parse(v)||{}}catch{return {}}}return v||{}};
-const date=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v.slice(8)+'.'+v.slice(5,7)+'.'+v.slice(0,4):String(v||'');
+const date=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v.slice(8)+'.'+v.slice(5,7)+'.'+v.slice(0,4):/^\d{4}-\d{2}$/.test(v||'')?v.slice(5,7)+'.'+v.slice(0,4):String(v||'');
 const stacked=v=>date(v).replace(/\.(\d{4})$/u,'.\n$1');
 const bool=v=>v===true||v==='true'?true:v===false||v==='false'?false:null;
 const months=['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'];
 const words=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v.slice(8)+' '+months[Number(v.slice(5,7))-1]+' '+v.slice(0,4)+' року':'';
 const sign='Начальник регіональної мобільної групи “Схід” секції територіального рекрутингу 4 центру рекрутингу Сил територіальної оборони ЗС України\nкапітан                                      Володимир СОВІН';
 function model(c,pf={}){
- const p=obj(c.profile_data),fields=[];
+ const raw=obj(c.profile_data),p=window.CRMBiographyFacts?window.CRMBiographyFacts.profile(raw):raw,fields=[];
  const add=(key,label,page,box,value,group='Основне',center=false)=>{fields.push({key,label,page,box,value:String(value??''),group,center});};
  const name=String(c.name_nominative||c.full_name||'').trim().split(/\s+/);
  add('personal_number','Особистий номер',0,[85,123,567,139],c.rnokpp,'Основне',true);

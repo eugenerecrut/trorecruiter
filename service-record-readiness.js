@@ -8,10 +8,10 @@ const bool=v=>v===true||v==='true'?true:v===false||v==='false'?false:null;
 const norm=v=>String(v||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
 function date(v){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')))return false;const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v;}
 function review(c,pf={},documents=[]){
- const p=object(c.profile_data),issues=[],notes=[];
+ const raw=object(c.profile_data),p=root.CRMBiographyFacts?root.CRMBiographyFacts.profile(raw):raw,issues=[],notes=[];
  const docs=(root.CRMResponsibility?.latest(documents)||documents.filter(d=>!d.deleted_at)).filter(d=>!d.candidate_id||d.candidate_id===c.id);
  function add(fieldId,text,record){const field=root.CRMFieldRegistry.fields.find(f=>f.id===fieldId);const ids=record?.source_document_id?[record.source_document_id]:[];issues.push({fieldId,label:field?.label||fieldId,text,sources:field?.sources||[],documents:docs.filter(d=>ids.includes(d.id)).map(d=>({id:d.id,name:d.file_name||d.document_type}))});}
- for(const [key,id] of [['education_records','education.civil'],['work_records','service.records'],['military_rank_records','military.rank_order'],['relatives','family.members'],['awards','combat.awards'],['combat_records','combat.periods'],['reserve_training_records','service.reserve_training']])if(p[key]!=null&&!Array.isArray(p[key]))add(id,'Некоректний формат збережених записів: потрібна звірка.');
+ for(const [key,id] of [['education_records','education.civil'],['work_records','service.records'],['military_rank_records','military.rank_order'],['relatives','family.members'],['awards','combat.awards'],['combat_records','combat.periods'],['reserve_training_records','service.reserve_training']])if(raw[key]!=null&&!Array.isArray(raw[key]))add(id,'Некоректний формат збережених записів: потрібна звірка.');
  if(blank(c.name_nominative||c.full_name)||String(c.name_nominative||c.full_name).trim().split(/\s+/).length<2)add('identity.name','Уточніть чинне ПІБ.');
  if(!/^\d{10}$/.test(String(c.rnokpp||'')))add('identity.tax_number','Потрібен РНОКПП із 10 цифр або ручна звірка підстави його відсутності.');
  if(!date(c.birth_date)||c.birth_date>new Date().toISOString().slice(0,10))add('identity.birth_date','Уточніть повну дату народження.');
@@ -29,8 +29,10 @@ function review(c,pf={},documents=[]){
   for(const [i,r] of records.entries()){
    const prefix='Запис '+(i+1)+': ';
    if(r.requires_review||r.crossed_out){add(id,prefix+'запис потребує звірки або закреслений у джерелі.',r);continue;}
-   if(!date(r.start_date))add(id,prefix+'уточніть дату початку.',r);
-   if(r.end_date&&(!date(r.end_date)||date(r.start_date)&&r.end_date<r.start_date))add(id,prefix+'перевірте дату завершення.',r);
+   const start=r.source_type==='autobiography'?root.CRMBiographyFacts?.partial(r.start_date):date(r.start_date)?{min:r.start_date,max:r.start_date}:null;
+   const end=r.source_type==='autobiography'?root.CRMBiographyFacts?.partial(r.end_date):date(r.end_date)?{min:r.end_date,max:r.end_date}:null;
+   if(!start)add(id,prefix+'уточніть дату початку.',r);
+   if(r.end_date&&(!end||start&&end.max<start.min))add(id,prefix+'перевірте дату завершення.',r);
    if(blank(kind==='employment'?r.employer:r.unit||r.employer))add(id,prefix+(kind==='employment'?'немає підприємства.':'немає військової частини.'),r);
    if(blank(r.position)&&blank(r.disposition))add(id,prefix+'немає посади.',r);
   }
