@@ -18,3 +18,10 @@ assert.equal(wrap('Електрогазозварювальник',8,s=>s.length
 candidate.worked_before=true;candidate.profile_data.work_records=[{kind:'employment',employer:'Підприємство',position:'Продавець-конс.'}];
 state=model(candidate,{});assert.ok(state.fields.filter(f=>f.key.startsWith('work_')).every(f=>f.center&&f.verticalCenter));
 console.log('Long words/hyphens and centered employment rows: PASS');
+
+const audited={full_name:'ТЕСТЕНКО Іван Петрович',military_rank:'Солдат',profile_data:{relatives:[{relationship:'мати',full_name:'ТЕСТЕНКО Олена'},{relation:'БАТЬКО',full_name:'ТЕСТЕНКО Петро'},{relationship:'дружина',full_name:'ТЕСТЕНКО Марія'}],military_rank_records:[{rank:'Сержант',confirmed_by_user:true,order_number:'WRONG'},{rank:'солдат',confirmed_by_user:true,order_number:'RIGHT',order_date:'2020-01-01'}],education_records:[{institution:'Нечіткий заклад',requires_review:true},{institution:'Перевірений заклад',requires_review:false}]}};
+state=model(audited,{});assert(value(state,'parents').includes('ТЕСТЕНКО Олена'));assert(value(state,'parents').includes('ТЕСТЕНКО Петро'));assert(value(state,'family').includes('ТЕСТЕНКО Марія'));assert(value(state,'rank_order').includes('RIGHT'));assert(!value(state,'rank_order').includes('WRONG'));assert(!value(state,'education_civil').includes('Нечіткий заклад'));
+audited.profile_data.military_rank_records.push({rank:'Солдат',confirmed_by_user:true,order_number:'OTHER'});assert.equal(value(model(audited,{}),'rank_order'),'','Ambiguous rank orders must not be selected silently');
+console.log('Audit repairs: case-insensitive relatives, matching rank orders, ambiguous order held, reviewed education only: PASS');
+
+assert.equal(model(audited,{}).issues.length,1,'Ambiguity is reported to the recruiter');
