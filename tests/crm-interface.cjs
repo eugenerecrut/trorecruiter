@@ -30,9 +30,8 @@ check('missing','медичний',[]);
 check('missing','',['Припис про направлення']);
 check('all','',rows.map(r=>r.title));
 const settings=read('scanner-settings.html');
-const release=read('index.html').match(/1\.1\.0\.\d+/)[0];
-assert(settings.includes('crm-mobile.css?v='+release));
-assert(settings.includes('crm-release.js?v='+release));
+const mobileTag=read('index.html').split('crm-mobile.css?v=')[1].split(/[\"']/)[0];assert(settings.includes('crm-mobile.css?v='+mobileTag));
+const release=read('crm-release.js').match(/version:'([^']+)'/)[1];assert(settings.includes('crm-release.js?v='+release));
 assert(settings.includes('<details class="scanner-help">'));
 console.log('PASS: unique creation fields, preserved data inputs, combined document search/filters, settings assets; no database writes.');
 
