@@ -20,7 +20,7 @@ function model(c,pf={}){
  add('given_names','Ім’я та по батькові',0,[85,172,567,188],name.join(' '),'Основне',true);
  add('rank','Чинне військове звання',0,[85.4,262,156.2,309.7],String(c.military_rank||'').toLocaleLowerCase('uk-UA').replace(/^./u,ch=>ch.toLocaleUpperCase('uk-UA')));
  const normalize=v=>String(v||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
- const rankMatches=(p.military_rank_records||[]).filter(r=>r.confirmed_by_user===true&&!r.requires_review&&normalize(r.rank)===normalize(c.military_rank)&&normalize(c.military_rank));
+ const rankMatches=(p.military_rank_records||[]).filter(r=>(r.confirmed_by_user===true||r.accepted_by_ai===true)&&!r.requires_review&&normalize(r.rank)===normalize(c.military_rank)&&normalize(c.military_rank));
  const rankOrders=[...new Map(rankMatches.map(r=>[JSON.stringify([r.order_issuer||'',r.order_number||'',r.order_date||'']),r])).values()];
  const rank=rankOrders.length===1?rankOrders[0]:null;
  add('rank_order','Наказ про присвоєння звання',0,[156.3,262,326.5,309.7],rank?[rank.order_issuer,rank.order_number&&'№'+rank.order_number,date(rank.order_date)].filter(Boolean).join(' '):'');

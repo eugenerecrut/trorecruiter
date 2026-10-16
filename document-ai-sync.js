@@ -69,8 +69,9 @@
     const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
     const identity=/паспорт|ID[\s-]*карт/iu.test(type),military=!!root.CRMMilitary?.isDocument(type),work=!!root.CRMWork?.isDocument(type),vlk=!!root.CRMVLK?.isDocument(type);
     const registry=/Резерв\s*\+|приписн|військовий облік/iu.test(type);
+    const militaryFacts=!!root.CRMMilitaryFacts?.isDocument(type);
     const ancillary=['education','residence','driver','ubd'].includes(policy?.category)||/довідка.*МВС|несудиміст/i.test(type);
-    if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary&&!identity&&!military&&!work&&!vlk&&!registry)return {document,candidate,rows,selections,supported:false};
+    if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary&&!identity&&!military&&!work&&!vlk&&!registry&&!militaryFacts)return {document,candidate,rows,selections,supported:false};
     const marriageCheck=marriage?root.CRMDocumentPolicy?.marriage(e,candidate):null;
     if(marriageCheck&&!marriageCheck.blocked){
       if(empty(e.full_name))e.full_name=marriageCheck.owner.full_name;
@@ -121,7 +122,7 @@
       if(birth&&!['full_name','birth_date','birth_place'].includes(key))continue;
       if(tax&&!['full_name','birth_date','rnokpp'].includes(key))continue;
       if(marriage&&!['full_name','birth_date','rnokpp'].includes(key))continue;
-      if(ancillary)continue;
+      if(ancillary||(militaryFacts&&!military&&!registry))continue;
       let v=e[key];if(key==='phone'&&!empty(v)&&root.CRMPhone)v=root.CRMPhone.normalize(v);
       propose('candidate',key,v);
     }
@@ -144,8 +145,23 @@
     if(registry){
       for(const key of ['military_document_number','military_document_type','military_registration_date','military_registration_category','military_registration_status','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status'])propose('profile',key,e[key]);
     }
-    if(military||registry){
-      for(const key of ['military_rank_records','military_oath','military_discharge','combat_records','awards','reserve_training_records'])if(!empty(e[key])&&!equal(p[key],e[key]))add('profile',key,e[key],'conflict','Потрібна звірка рекрутера перед перенесенням до послужного списку',p[key]);
+    if(militaryFacts){
+      const facts=root.CRMMilitaryFacts.review(e,p,document);
+      for(const row of facts.conflicts)add('profile',row.key,row.incoming,'conflict',row.reason,p[row.key]);
+      for(const row of facts.proposals){
+        const noService=(candidate.served_before??p.served_before);
+        const issue=ownerIssue||(e._sync_format_conflicts.includes(row.key)?'Плоске і вкладене значення AI не збігаються':'')||((noService===false||noService==='false')&&['military_oath','military_discharge','combat_records'].includes(row.key)?'У картці підтверджено відсутність служби. Звірте суперечність із документом.':'')||(!empty(p.form_data?.[row.key])?'Раніше заповнені відомості мають пріоритет':'');
+        if(issue){add('profile',row.key,row.incoming,'conflict',issue,p[row.key]);continue;}
+        add('profile',row.key,row.incoming,'fill','',p[row.key]);
+        selections.push({target:'profile',key:row.key,incoming:row.incoming,expected_current:row.current,expected_ai:document.ai_extracted,fill_only:true,merge_records:row.merge_records,structured_military:true});
+      }
+    }else if(military||registry){
+      for(const key of ['military_rank_records','military_oath','military_discharge','combat_records','awards','reserve_training_records'])if(!empty(e[key]))add('profile',key,null,'conflict','Модуль перевірки військових відомостей недоступний.',p[key]);
+    }
+    if(militaryFacts&&!military&&Array.isArray(e.military_service_records)&&e.military_service_records.length){
+      const checked=root.CRMMilitary?.review(e,candidate,p,document.id);
+      if(!checked||checked.blocked)add('profile','work_records',null,'conflict','Періоди служби з наказу потребують звірки власника документа.');
+      else{if(checked.accepted)propose('profile','work_records',checked.records);for(const issue of checked.issues||[])add('profile','work_records',null,'conflict',issue);}
     }
     if(work){
       const checked=root.CRMWork.review(e,candidate,p,document.id);
@@ -197,7 +213,7 @@
     const conflicts=report.rows.filter(r=>r.action==='conflict').map(r=>({target:'sync_conflict',key:r.key,incoming:JSON.stringify({field:r.key,current:r.current,ai:r.incoming,reason:r.reason}),expected_ai:report.document.ai_extracted}));
     const selections=[...report.selections,...conflicts];if(!selections.length)return report;
     // An old RPC must reject the request before it can ignore compare-and-set metadata.
-    selections.unshift({target:'sync_guard',key:'version',incoming:'1',expected_ai:report.document.ai_extracted});
+    selections.unshift({target:'sync_guard',key:'version',incoming:report.selections.some(s=>s.structured_military)?'2':'1',expected_ai:report.document.ai_extracted});
     const result=await client.rpc('crm_apply_document_fields',{document_id:report.document.id,selections});if(result.error)throw result.error;
     const after=await preview(client,report.document.id);
     for(const row of report.rows.filter(r=>r.action==='fill'&&!r.key.startsWith('relatives.'))){

@@ -38,7 +38,7 @@ function review(c,pf={},documents=[]){
  }
  periods('employment',worked,'employment.records');periods('military_service',served,'service.records');
  if(served===true){for(const [key,id] of [['military_oath','service.oath'],['military_discharge','service.discharge']]){const r=p[key];if(r?.requires_review)add(id,'Відомості потребують перевірки.',r);for(const dateKey of ['date','order_date'])if(r?.[dateKey]&&!date(r[dateKey]))add(id,'Некоректна дата в документі.',r);}}
- const rankOrders=list(p.military_rank_records).filter(r=>r?.confirmed_by_user===true&&!r.requires_review&&norm(r.rank)===norm(c.military_rank)&&norm(c.military_rank));
+ const rankOrders=list(p.military_rank_records).filter(r=>(r?.confirmed_by_user===true||r?.accepted_by_ai===true)&&!r.requires_review&&norm(r.rank)===norm(c.military_rank)&&norm(c.military_rank));
  if(new Set(rankOrders.map(r=>JSON.stringify([r.order_issuer||'',r.order_number||'',r.order_date||'']))).size>1)add('military.rank_order','До чинного звання є кілька різних наказів: виберіть підтверджений.');
  for(const [key,id] of [['combat_records','combat.periods'],['awards','combat.awards'],['reserve_training_records','service.reserve_training']])for(const r of list(p[key])){
   if(!r||r.requires_review||r.crossed_out){add(id,'Є запис, що потребує звірки перед формуванням.',r);continue;}
