@@ -6,6 +6,7 @@ test('zones reject invalid coordinates, clamp floating point edges, preserve glo
 });
 test('review output strips candidate merge fields and never accepts uncertain values as facts',()=>{
  const out=contract.result('zone',{full_name:'DO NOT MERGE',extracted:{military_specialty:'123456А'},raw_text:'Наказ 18?',rows:[{fields:[{key:'order_number',raw_text:'18?',value:'182',legibility:'uncertain',alternatives:['182','192']},{key:'position',raw_text:'оператор',value:'оператор',legibility:'clear'},{key:'military_specialty',value:'123456А',legibility:'clear'},{key:'full_name',value:'DO NOT MERGE'}]}]}, {page:3});
+ assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,3);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
 function server({auth=true,staff=true,doc=true,type='Копія військового квитка',newer=false,provider=true}={}){
@@ -15,6 +16,7 @@ function server({auth=true,staff=true,doc=true,type='Копія військов
   if(url.endsWith('/auth/v1/user'))return Response.json({id:'user'},{status:auth?200:401});
   if(url.includes('crm_staff?'))return Response.json(staff?[{user_id:'user'}]:[]);
   if(url.includes('version_number=gt.'))return Response.json(newer?[{id:'new'}]:[]);
+  if(url.includes('/rpc/crm_military_zone_examples'))return Response.json([]);
   if(url.includes('/documents?'))return Response.json(doc?[{id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',candidate_id:'c',storage_path:'c/original.pdf',document_type:type,version_group_id:'g',version_number:1}]:[]);
   if(url.includes('api.openai.com'))return provider?Response.json({output:[{content:[{text:JSON.stringify({raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
   throw Error('Unexpected request '+url);

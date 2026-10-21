@@ -1,0 +1,17 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{PGlite}=require(process.env.CRM_PGLITE_MODULE||'D:/CRM/tmp/pglite-0.5.10/package/dist/index.cjs');
+(async()=>{const db=new PGlite(),U='00000000-0000-4000-8000-000000000001',D='00000000-0000-4000-8000-000000000002';try{
+ await db.exec(`create schema auth;create role authenticated;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create table crm_staff(user_id uuid,active boolean);create table documents(id uuid primary key,document_type text,deleted_at timestamptz,version_group_id uuid,version_number integer,ai_extracted jsonb,created_at timestamptz default now());insert into crm_staff values('${U}',true);insert into documents(id,document_type,ai_extracted) values('${D}','Копія військового квитка','{"military_specialty":"existing"}');grant usage on schema public,auth to authenticated;grant select,update on all tables in schema public to authenticated;alter table documents enable row level security;create policy visible_doc on documents for all to authenticated using(auth.uid()='${U}') with check(auth.uid()='${U}');`);
+ await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261021133718_military_zone_learning.sql'),'utf8'));
+ await db.query("select set_config('request.jwt.claim.sub',$1,false)",[U]);await db.exec('set role authenticated');
+ const source={document_id:D,page:1,render_sha256:'a'.repeat(64),box:{x:0,y:0,w:1,h:1}},example={key:'position',raw_text:'ком. відд.',value:'командир відділення'};
+ const save=(src,items)=>db.query('select crm_confirm_military_zone_examples($1,$2,$3) n',[D,JSON.stringify(src),JSON.stringify(items)]);
+ assert.equal((await save(source,[example])).rows[0].n,1);assert.equal((await save(source,[example])).rows[0].n,0);
+ let row=(await db.query('select ai_extracted from documents')).rows[0].ai_extracted;assert.equal(row.military_specialty,'existing');assert.equal(row._military_zone_learning[0].confirmed_by,U);await db.query("update documents set ai_extracted='{}' where id=$1",[D]);assert.equal((await db.query('select ai_extracted from documents')).rows[0].ai_extracted._military_zone_learning.length,1);
+ assert.equal((await db.query('select crm_military_zone_examples() e')).rows[0].e.length,1);
+ await save(source,[{...example,value:'інший варіант'}]);assert.equal((await db.query('select crm_military_zone_examples() e')).rows[0].e.length,0);
+ await assert.rejects(save(source,[{...example,key:'full_name'}]),/Некоректний навчальний/);
+ await assert.rejects(save({...source,box:{x:0,y:0,w:2,h:1}},[example]),/Некоректна зона/);
+ await db.exec('reset role');await db.exec('update crm_staff set active=false');await db.exec('set role authenticated');await assert.rejects(save(source,[example]),/активна сесія/);
+ await db.exec('reset role');await db.exec('update crm_staff set active=true');await db.exec('set role authenticated');await db.query("select set_config('request.jwt.claim.sub',$1,false)",['00000000-0000-4000-8000-000000000099']);await assert.rejects(save(source,[example]),/активна сесія|Документ недоступний/);
+ console.log('PASS learning PostgreSQL: migrations, RLS, active staff, human actor, duplicate protection, conflicting examples excluded, existing facts preserved');
+ }finally{await db.close()}})().catch(e=>{console.error(e);process.exit(1)});
