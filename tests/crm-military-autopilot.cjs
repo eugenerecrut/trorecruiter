@@ -9,3 +9,7 @@ test('stop pauses after current call; failures remain visible and no infinite re
  const p=pilot.create(2);let count=0;await p.run({read:async()=>{count++;p.stop();return{zones:[]}}});assert.equal(count,1);assert.equal(p.tasks.length,1);
  let last;await p.run({read:async()=>{throw Error('offline')},show:s=>last=s});assert.equal(p.errors.length,1);assert.equal(last.errors[0].error,'offline');assert.equal(last.done,true);
 });
+
+ test('one default run crosses the old 12-step boundary and finishes all pages without confirmation',async()=>{
+  const p=pilot.create(16);let calls=0;await p.run({read:async task=>{calls++;return task.mode==='overview'?{zones:[{label:'Текст',box:{x:0,y:0,w:1,h:1}}]}:{rows:[{fields:[{value:'читабельно',legibility:'clear'}]}]}}});assert.equal(calls,32);assert.equal(p.tasks.length,0);
+ });
