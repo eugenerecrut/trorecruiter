@@ -24,3 +24,8 @@ test('pending and failed AI never offer stale extraction for transfer',()=>{
  const rows=c.CRMIntake.items({},['AI обробка','AI помилка','Завершено'].map(processing_status=>({processing_status,ai_extracted:{full_name:'Тест'},verification_status:'Потребує перевірки'})));
  assert.equal(calls,1);assert.equal(rows[0].fills.length,0);assert.equal(rows[0].review,false);assert.equal(rows[1].fills.length,0);assert.equal(rows[1].failed,true);assert.equal(rows[2].fills.length,1);
 });
+
+test('keep-card decision closes only the exact saved question and reopens on changed evidence',()=>{
+ const c=context([]);c.CRMResponsibility={latest:docs=>docs};const conflict={target:'candidate',key:'phone',action:'conflict',current:'111',incoming:'222',reason:'Збережене значення має пріоритет'};c.CRMDocumentSync={plan:()=>({supported:true,selections:[],rows:[{...conflict}]})};vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-intake.js'),'utf8'),c);
+ const doc={ai_extracted:{_crm_review_decisions:[{...conflict,action:'keep_card',reviewed_by:'user',reviewed_at:'now'}]}};assert.equal(c.CRMIntake.items({},[doc])[0].conflicts.length,0);conflict.incoming='333';assert.equal(c.CRMIntake.items({},[doc])[0].conflicts.length,1);
+});
