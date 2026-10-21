@@ -19,8 +19,12 @@ function profile(input={}){
   work.push({...r,kind:'employment',start_date:start.value,end_date:end?.value||null,source_type:'autobiography',date_precision:{start:start.value.length===4?'year':start.value.length===7?'month':'day',end:!end?null:end.value.length===4?'year':end.value.length===7?'month':'day'}});
  }
  // A diploma remains authoritative; fallback does not invent additional degrees.
- if(!education.some(r=>r&&!r.requires_review))for(const r of list(p.bio_education_claims)){
+ for(const r of list(p.bio_education_claims)){
   if(!usable(r)||!r.institution)continue;
+  const accepted=education.filter(e=>e&&!e.requires_review),year=partial(r.end_date)?.value.slice(0,4);
+  if(accepted.some(e=>norm(e.institution)===norm(r.institution)&&(!e.graduation_year||!year||String(e.graduation_year)===year)))continue;
+  // An incomplete existing diploma cannot safely be distinguished from the biography claim.
+  if(accepted.some(e=>!e.degree&&!e.graduation_year))continue;
   const end=partial(r.end_date);education.push({...r,study_start_date:partial(r.start_date)?.value||null,study_end_date:end?.value||null,graduation_year:end?.value.slice(0,4)||null,source_type:'autobiography'});
  }
  p.work_records=work;p.education_records=education;return p;

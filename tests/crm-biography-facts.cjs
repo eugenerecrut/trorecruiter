@@ -30,3 +30,5 @@ test('service record and readiness use the same autobiography periods and partia
  const candidate={full_name:'ТЕСТЕНКО Іван Петрович',birth_date:'1990-01-01',rnokpp:'1234567890',birth_place:'Дніпро',worked_before:true,served_before:false,profile_data:{education_institution:'Школа',bio_work_claims:[claim({start_date:{value:'2021-10'},end_date:{value:'2022-05'}})]}};
  const model=c.CRMServiceRecord.model(candidate,{}),value=k=>model.fields.find(f=>f.key===k)?.value;assert.equal(value('work_0_0'),'10.\n2021');assert.equal(value('work_0_2'),claim().employer);assert(c.CRMServiceReadiness.review(candidate).ready);
 });
+
+test('distinct biography education survives a different complete diploma without duplicates',()=>{const p={education_records:[{institution:'Університет',degree:'бакалавр',graduation_year:'2023'}],bio_education_claims:[{institution:'Школа',degree:'середня',end_date:'2019',source_document_id:'bio'}]};const out=facts.profile(p);assert.equal(out.education_records.length,2);assert.deepEqual(facts.profile(out),out)});

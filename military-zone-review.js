@@ -66,6 +66,14 @@ async function open(doc,{autostart=false}={}){
   }});
   if(!autopilot.tasks.length)await saveFinal();
  }catch(e){status('Не завершено: '+e.message)}finally{autoActive=false;$('[data-auto]').textContent=autopilot.tasks.length?'Продовжити опрацювання':'Опрацювати автоматично';lock(false)}};
+ async function crosscheck(){
+  if(!window.CRMDocumentCrosscheck)return;
+  const c=await supabaseClient.from('candidates').select('*').eq('id',doc.candidate_id).single();if(c.error)throw c.error;
+  const evidence=await CRMDocumentCrosscheck.load(supabaseClient,c.data),section=document.createElement('details');
+  section.innerHTML='<summary>Зіставлення з іншими документами</summary>'+evidence.map(e=>'<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+'</strong> · '+esc({conflict:'Розбіжність',corroborated:'Збігається в кількох документах',single_source:'Одне джерело',missing:'Немає придатних джерел'}[e.status])+'</p>'+e.sources.map(v=>'<p>'+esc(v.value)+' · <button data-evidence-document="'+esc(v.document_id)+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('')).join('');
+  section.onclick=async event=>{const b=event.target.closest('[data-evidence-document]');if(!b)return;try{const r=await supabaseClient.from('documents').select('storage_path').eq('id',b.dataset.evidenceDocument).single();if(r.error)throw r.error;const link=await supabaseClient.storage.from('candidate-documents').createSignedUrl(r.data.storage_path,300);if(link.error)throw link.error;window.open(link.data.signedUrl,'_blank','noopener');}catch(e){status(e.message)}};
+  $('[data-result]').append(section);
+ }
  async function saveFinal(){
   const errors=autopilot?.errors||[],unclear=reports.filter(r=>r.mode==='zone').flatMap(r=>r.rows||[]).flatMap(r=>r.fields||[]).filter(f=>f.value===null||f.legibility!=='clear').length;
   const qualityGaps=reports.filter(r=>r.mode==='overview'&&r.quality_issues?.length||r.mode==='zone'&&!(r.rows||[]).some(row=>row.fields?.length)).length;
@@ -73,7 +81,7 @@ async function open(doc,{autostart=false}={}){
   let failure;
   for(let attempt=0;attempt<3;attempt++){
    const {data,error}=await supabaseClient.rpc('crm_save_military_zone_report',{p_document_id:doc.id,p_storage_path:doc.storage_path,p_report:report});
-   if(!error){doc.ai_extracted={...(doc.ai_extracted||{}),_military_zone_report:{...report,...data}};$('[data-auto-progress]').textContent='Готово. Кінцевий результат збережено. Не визначено значень: '+unclear+'. Помилок обробки: '+errors.length+'.';$('[data-auto]').hidden=true;return;}
+   if(!error){doc.ai_extracted={...(doc.ai_extracted||{}),_military_zone_report:{...report,...data}};$('[data-auto-progress]').textContent='Готово. Кінцевий результат збережено. Не визначено значень: '+unclear+'. Помилок обробки: '+errors.length+'.';$('[data-auto]').hidden=true;try{await crosscheck()}catch(e){status('Звіт збережено. Зіставлення не завершено: '+e.message)}return;}
    failure=error;await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));
   }
   throw Error('Результат отримано, але не збережено: '+(failure?.message||'помилка зв’язку'));
@@ -100,7 +108,7 @@ async function open(doc,{autostart=false}={}){
   if(/pdf/i.test(doc.mime_type||'')||/\.pdf$/i.test(doc.file_name||'')){
    await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';pdf=await pdfjsLib.getDocument({data:new Uint8Array(await blob.arrayBuffer())}).promise;total=pdf.numPages;if(total>200)throw Error('Поглиблене читання підтримує до 200 сторінок на файл.');
   }else if(blob.type.startsWith('image/'))bitmap=await createImageBitmap(blob);else throw Error('Потрібен PDF або зображення');
-  await render();const saved=doc.ai_extracted?._military_zone_report;if(saved&&Array.isArray(saved.reports)&&['complete','complete_with_gaps'].includes(saved.status)){reports.push(...saved.reports);for(const report of saved.reports)if(report.mode==='zone')showReport(report,report.source.page);$('[data-auto-progress]').textContent='Готовий результат збережено '+(saved.saved_at||'')+'. Повторне розпізнавання не запускалося.';$('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));}else if(autostart&&sourceReady)$('[data-auto]').onclick();
+  await render();const saved=doc.ai_extracted?._military_zone_report;if(saved&&Array.isArray(saved.reports)&&['complete','complete_with_gaps'].includes(saved.status)){reports.push(...saved.reports);for(const report of saved.reports)if(report.mode==='zone')showReport(report,report.source.page);$('[data-auto-progress]').textContent='Готовий результат збережено '+(saved.saved_at||'')+'. Повторне розпізнавання не запускалося.';$('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));try{await crosscheck()}catch(e){status('Зіставлення не завершено: '+e.message)}}else if(autostart&&sourceReady)$('[data-auto]').onclick();
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }

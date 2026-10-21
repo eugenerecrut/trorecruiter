@@ -76,9 +76,10 @@ function model(c,pf={}){
   const cols=[28.6,99.5,170.3,266.1,432.8,517.4],top=389+i*145.3/rows.length,end=389+(i+1)*145.3/rows.length;
   [stacked(r.start_date),stacked(r.end_date),[r.position,r.military_specialty].filter(Boolean).join(', '),r.unit,[r.order_issuer,r.order_number,date(r.order_date)].filter(Boolean).join(' ')].forEach((v,j)=>add('training_'+i+'_'+j,['Початок','Завершення','Посада та ВОС','Частина','Наказ'][j]+' зборів · '+(i+1),9,[cols[j],top,cols[j+1],end],v,'Збори в запасі'));
  });
- for(const f of fields)if(typeof p.service_record_print?.[f.key]==='string')f.value=p.service_record_print[f.key];
+ const printWarnings=[];
+ for(const f of fields)if(typeof p.service_record_print?.[f.key]==='string'){const override=p.service_record_print[f.key];if(override!==f.value)printWarnings.push('Друкована правка «'+f.label+'» відрізняється від картки. Звірте перед формуванням.');f.source_value=f.value;f.print_override=true;f.value=override;}
  for(const field of fields)if(field.key.startsWith('work_')){field.center=true;field.verticalCenter=true;}
- return {fields,worked,served,name:c.name_nominative||c.full_name,issues:rankOrders.length>1?['Для чинного звання є кілька різних наказів. Звірте поле «Наказ про присвоєння звання» за документами.']:[]};
+ return {fields,worked,served,name:c.name_nominative||c.full_name,issues:[...printWarnings,...(rankOrders.length>1?['Для чинного звання є кілька різних наказів. Звірте поле «Наказ про присвоєння звання» за документами.']:[])]};
 }
 function wrapText(value,width,measure){
  const out=[];
@@ -136,6 +137,7 @@ async function open(c,pf,{save}){
  const state=model(c,pf),dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';
  const readiness=window.CRMServiceReadiness?.review(c,pf,window.CRMWorkspace?.card?.documents||[]);
  if(readiness)state.issues=[...new Set([...state.issues,...readiness.issues.map(r=>r.label+': '+r.text)])];
+ if(window.CRMDocumentCrosscheck){try{const evidence=await CRMDocumentCrosscheck.load(supabaseClient,c);for(const e of evidence.filter(e=>e.status==='conflict'))state.issues.push('Розбіжність між документами: '+({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич '+(e.subject||''),education_records:'Освіта',work_records:'Періоди роботи / служби'}[e.key]||e.key)+'. Джерела: '+e.sources.map(s=>s.file_name||s.document_type).join('; '));}catch(e){state.issues.push('Не вдалося звірити пакет документів: '+e.message)}}
  const groups=[...new Set(state.fields.map(f=>f.group))];
  dialog.innerHTML='<h2>Послужний список</h2><p>'+esc(state.name)+'</p>'+state.issues.map(text=>'<p class="crm-notice" role="alert">'+esc(text)+'</p>').join('')+'<p>10 сторінок для двостороннього друку. Змінюється лише текст для цього PDF. Повні дані картки зберігаються. Тексти можна уточнити за підтвердженими документами. Зміни в редакторі діють лише для поточного PDF.</p><p>Рядки жетона, складання документа та підписів залишаються порожніми. Реквізити наказу про звання вносьте лише за військовим документом.</p>'+groups.map((g,i)=>'<details '+(!i?'open':'')+'><summary>'+esc(g)+'</summary>'+state.fields.filter(f=>f.group===g).map(f=>'<label style="display:block;margin:10px 0">'+esc(f.label)+'<textarea data-service-field="'+esc(f.key)+'" rows="'+(f.box[3]-f.box[1]>70?4:2)+'" style="display:block;width:100%;box-sizing:border-box">'+esc(f.value)+'</textarea></label>').join('')+'</details>').join('')+'<p data-service-status role="status"></p><div class="crm-actions"><button type="button" data-service-preview>Переглянути PDF</button><button type="button" data-service-save>Зберегти у справі та завантажити PDF</button><button type="button" data-service-close>Закрити</button></div>';
  document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null;const status=dialog.querySelector('[data-service-status]');

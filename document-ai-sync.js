@@ -245,7 +245,9 @@
   async function preview(client,id){
     const dr=await client.from('documents').select('*').eq('id',id).single();if(dr.error)throw dr.error;
     const cr=await client.from('candidates').select('*').eq('id',dr.data.candidate_id).single();if(cr.error)throw cr.error;
-    return plan(dr.data,cr.data);
+    const report=plan(dr.data,cr.data);
+    if(root.CRMDocumentCrosscheck)root.CRMDocumentCrosscheck.guard(report,await root.CRMDocumentCrosscheck.load(client,cr.data));
+    return report;
   }
   async function apply(client,report){
     const conflicts=report.rows.filter(r=>r.action==='conflict').map(r=>({target:'sync_conflict',key:r.key,incoming:JSON.stringify({field:r.key,current:r.current,ai:r.incoming,reason:r.reason}),expected_ai:report.document.ai_extracted}));
