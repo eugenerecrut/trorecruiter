@@ -159,7 +159,7 @@
     window.CRMCaseAssistant?.mount(form,id);
     const reviewHost=document.createElement('section');reviewHost.className='cc-v3-intake-review';reviewHost.hidden=true;form.before(reviewHost);
     const caseHost=document.createElement('section');caseHost.dataset.workflow='';caseHost.hidden=true;form.after(caseHost);
-    const manual=document.createElement('button');manual.type='button';manual.textContent='Додатково: редагувати картку';manual.setAttribute('aria-expanded','false');manual.onclick=()=>{manualEditing=!manualEditing;manual.setAttribute('aria-expanded',String(manualEditing));select('review');};reviewHost.after(manual);manual.hidden=true;
+    const manual=document.createElement('button');manual.type='button';manual.textContent='Додатково: редагувати картку';manual.setAttribute('aria-expanded','false');manual.onclick=()=>{manualEditing=!manualEditing;manual.setAttribute('aria-expanded',String(manualEditing));select('review');if(manualEditing&&!window.CRMWorkspace?.card?.dirty)requestAnimationFrame(()=>{if(window.CRMWorkspace?.card?.dirty)return;form.querySelectorAll('[data-relative-row] [name=full_name]').forEach(input=>{input.value=input.defaultValue;const row=input.closest('[data-relative-row]'),summary=row.querySelector('summary');if(summary){const role=row.querySelector('[name=relationship]')?.value||'Родич';const birth=row.querySelector('[name=birth_date]')?.value||'';summary.textContent=[role,input.value,date(birth)].filter(Boolean).join(' · ');}});});};reviewHost.after(manual);manual.hidden=true;
     let managerLoading=false,managerLoaded=false;
     function loadManager(){
       if(managerLoaded||managerLoading||typeof showDocuments!=='function')return;managerLoading=true;manager.textContent='Завантажуємо документи…';
