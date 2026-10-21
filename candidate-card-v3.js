@@ -64,9 +64,9 @@
       const content = document.createElement('div'); content.className = 'cc-v3-record-body';
       while (row.firstChild) content.append(row.firstChild);
       details.append(content); row.append(details);
-      details.open = !row.querySelector('[name="'+(kind === 'relative' ? 'full_name' : 'work_employer')+'"]')?.value;
+      details.open = !row.querySelector(kind === 'relative' ? '[data-relative-field=full_name],[name=full_name]' : '[name=work_employer]')?.value;
     }
-    const value = n => row.querySelector('[name="'+n+'"]')?.value || '';
+    const value = n => row.querySelector('[data-relative-field="'+n+'"],[name="'+n+'"]')?.value || '';
     const title = kind === 'relative'
       ? [value('relationship') || 'Родич', value('full_name') || 'Новий запис', date(value('birth_date'))]
       : [date(value('work_start_date')) || '…', date(value('work_end_date')) || '…', value('work_employer') || 'Новий період', value('work_position')];
@@ -159,7 +159,7 @@
     window.CRMCaseAssistant?.mount(form,id);
     const reviewHost=document.createElement('section');reviewHost.className='cc-v3-intake-review';reviewHost.hidden=true;form.before(reviewHost);
     const caseHost=document.createElement('section');caseHost.dataset.workflow='';caseHost.hidden=true;form.after(caseHost);
-    const manual=document.createElement('button');manual.type='button';manual.textContent='Додатково: редагувати картку';manual.setAttribute('aria-expanded','false');manual.onclick=()=>{manualEditing=!manualEditing;manual.setAttribute('aria-expanded',String(manualEditing));select('review');if(manualEditing&&!window.CRMWorkspace?.card?.dirty)requestAnimationFrame(()=>{if(window.CRMWorkspace?.card?.dirty)return;form.querySelectorAll('[data-relative-row] [name=full_name]').forEach(input=>{input.value=input.defaultValue;const row=input.closest('[data-relative-row]'),summary=row.querySelector('summary');if(summary){const role=row.querySelector('[name=relationship]')?.value||'Родич';const birth=row.querySelector('[name=birth_date]')?.value||'';summary.textContent=[role,input.value,date(birth)].filter(Boolean).join(' · ');}});});};reviewHost.after(manual);manual.hidden=true;
+    const manual=document.createElement('button');manual.type='button';manual.textContent='Додатково: редагувати картку';manual.setAttribute('aria-expanded','false');manual.onclick=()=>{manualEditing=!manualEditing;manual.setAttribute('aria-expanded',String(manualEditing));select('review');if(manualEditing&&!window.CRMWorkspace?.card?.dirty)requestAnimationFrame(()=>{if(window.CRMWorkspace?.card?.dirty)return;form.querySelectorAll('[data-relative-row] [data-relative-field=full_name],[data-relative-row] [name=full_name]').forEach(input=>{input.value=input.defaultValue;const row=input.closest('[data-relative-row]'),summary=row.querySelector('summary');if(summary){const role=row.querySelector('[name=relationship]')?.value||'Родич';const birth=row.querySelector('[name=birth_date]')?.value||'';summary.textContent=[role,input.value,date(birth)].filter(Boolean).join(' · ');}});});};reviewHost.after(manual);manual.hidden=true;
     let managerLoading=false,managerLoaded=false;
     function loadManager(){
       if(managerLoaded||managerLoading||typeof showDocuments!=='function')return;managerLoading=true;manager.textContent='Завантажуємо документи…';
@@ -201,7 +201,7 @@
         if (label) { hint(label,node.textContent); node.hidden = true; }
         else { const details = document.createElement('details'); details.className = 'cc-v3-explanation'; const summary = document.createElement('summary'); summary.textContent = 'ⓘ Пояснення'; node.before(details); details.append(summary,node); }
       });
-      form.querySelectorAll('[data-relative-row]').forEach(row => {const input=row.querySelector('[name=full_name]');if(input&&!input.dataset.v3NameHydrated){input.autocomplete='off';input.value=input.defaultValue;input.dataset.v3NameHydrated='true';}fold(row,'relative');});
+      form.querySelectorAll('[data-relative-row]').forEach(row => {const input=row.querySelector('[data-relative-field=full_name],[name=full_name]');if(input&&!input.dataset.v3NameHydrated){input.autocomplete='off';input.value=input.defaultValue;input.dataset.v3NameHydrated='true';}fold(row,'relative');});
       form.querySelectorAll('[data-work-row]').forEach(row => fold(row,'work'));
       form.querySelectorAll('section[data-section]').forEach(section => {
         const number = Number(section.dataset.section), heading = section.querySelector('h3');
@@ -301,9 +301,9 @@
     form.querySelectorAll('[data-relative-row]').forEach(row=>{
       const record=relativeRecords[Number(row.dataset.relativeRow)];if(!record)return;
       row.querySelectorAll('[name]').forEach(input=>{
-        const source=Object.prototype.hasOwnProperty.call(record.field_sources||{},input.name)?record.field_sources[input.name]:record.source_document_id;
+        const fieldName=input.dataset.relativeField||input.name;const source=Object.prototype.hasOwnProperty.call(record.field_sources||{},fieldName)?record.field_sources[fieldName]:record.source_document_id;
         const doc=documents.find(d=>d.id===source),label=input.closest('.cc-field')?.querySelector('label');
-        if(doc&&label&&String(record[input.name]??'')===String(input.value)&&String(input.value).trim())sourceButton(label,doc);
+        if(doc&&label&&String(record[input.dataset.relativeField||input.name]??'')===String(input.value)&&String(input.value).trim())sourceButton(label,doc);
       });
     });
 

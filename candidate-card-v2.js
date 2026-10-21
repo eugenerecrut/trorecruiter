@@ -62,7 +62,7 @@
       <div class="cc-relative-head"><strong>Близький родич</strong><button type="button" class="cc-relative-remove" data-remove-relative>Видалити</button></div>
       <div class="cc-grid">
         ${select('Ступінь споріднення','relationship',RELATIONSHIP_OPTIONS.find(x=>x.toLocaleLowerCase('uk-UA')===String(item.relationship||item.relation||'').toLocaleLowerCase('uk-UA'))||item.relationship||item.relation||'',options)}
-        ${input('ПІБ','full_name',window.CRMCandidateName.proper(item.full_name || ''))}
+        ${input('ПІБ','relative_name_'+index,window.CRMCandidateName.proper(item.full_name || '')).replace('<input ', '<input id="relative-name-'+index+'-'+esc(item.source_document_id||'manual')+'" data-relative-field="full_name" autocomplete="off" ')}
         ${input('Дата народження','birth_date',item.birth_date || '','date')}
         ${select('Стан родича','deceased',item.deceased===true?'true':item.deceased===false?'false':'',[['','Не визначено'],['false','Живий / Жива'],['true','Помер / Померла']])}${input('Дата смерті: рік, рік-місяць або повна дата','death_date',item.death_date||'')}${item.birth_date_partial?'<p class="cc-hint">Неповна дата народження: '+esc(item.birth_date_partial.value)+'</p>':''}${input('Місце народження','birth_place',item.birth_place || '')}
         ${input('Громадянство','citizenship',item.citizenship || '')}
@@ -325,7 +325,7 @@
       relBox.insertAdjacentHTML('beforeend', relativeRow({}, relativeIndex++));updateRelativeConditions(relBox.lastElementChild);cardState.dirty=true;
     });
     relBox?.querySelectorAll('[data-relative-row]').forEach(updateRelativeConditions);
-    relBox?.addEventListener('change',event=>{const row=event.target.closest('[data-relative-row]');if(event.target.name==='full_name')event.target.value=window.CRMCandidateName.proper(event.target.value);if(row)updateRelativeConditions(row)});
+    relBox?.addEventListener('change',event=>{const row=event.target.closest('[data-relative-row]');if(event.target.name==='full_name'||event.target.dataset.relativeField==='full_name')event.target.value=window.CRMCandidateName.proper(event.target.value);if(row)updateRelativeConditions(row)});
     relBox?.addEventListener('input',event=>{const row=event.target.closest('[data-relative-row]');if(row&&event.target.name==='birth_date')updateRelativeConditions(row)});
     relBox?.addEventListener('click', event => {
       const remove = event.target.closest('[data-remove-relative]');
@@ -375,7 +375,7 @@
       if (!unit && typeof form.__crmEducationRecords === 'function') oldProfile.education_records = form.__crmEducationRecords();
 
       const savedRelatives = [...form.querySelectorAll('[data-relative-row]')].map(row => {
-        const get = key => row.querySelector(`[name="${key}"]`)?.value?.trim() || '';
+        const get = key => row.querySelector(`[data-relative-field="${key}"],[name="${key}"]`)?.value?.trim() || '';
         const original=(Array.isArray(oldProfile.relatives)?oldProfile.relatives:[])[Number(row.dataset.relativeRow)]||{};
         const saved = {
           ...original, deceased:get('deceased')==='true'?true:get('deceased')==='false'?false:null,death_date:get('death_date')||null,death_date_precision:CRMBiography.partial(get('death_date'))?.precision||null,
