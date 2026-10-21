@@ -23,9 +23,10 @@ Deno.serve(async req=>{
     if(doc.deleted_at)return json({error:'Видалений документ не можна розпізнавати'},409);
     const newer=await sb.from('documents').select('id').eq('version_group_id',doc.version_group_id).gt('version_number',doc.version_number).limit(1);
     if(newer.error)throw newer.error;if(newer.data?.length)return json({error:'Архівну версію не можна розпізнавати повторно'},409);
-    const {data:s,error:se}=await sb.storage.from('candidate-documents').createSignedUrl(doc.storage_path,600);
-    if(se||!s?.signedUrl)throw new Error('Не вдалося відкрити оригінал');
-    const r=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-classify-document`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':authorization,'apikey':key},body:JSON.stringify({file_url:s.signedUrl,file_name:doc.file_name,mime_type:doc.mime_type,text:''})});
+    const crActive=await sb.from('candidates').select('profile_data').eq('id',doc.candidate_id).single();if(crActive.error||!crActive.data)return json({error:'Картка кандидата недоступна'},403);
+    const profile=crActive.data.profile_data||{};if(profile.merged_into||profile.workflow?.archived_at)return json({error:'Об’єднана або архівна картка: потрібна окрема звірка'},409);
+    const requirementGuard=doc.requirement_id?await sb.from('document_requirements').select('ai_enabled').eq('id',doc.requirement_id).maybeSingle():{data:null,error:null};if(requirementGuard.error)throw requirementGuard.error;if(requirementGuard.data?.ai_enabled===false)return json({error:'Для цього документа AI вимкнено'},409);
+    const r=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-classify-document`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':authorization,'apikey':key},body:JSON.stringify({document_id:doc.id})});
     const raw=await r.text();let result:any;
     try{result=JSON.parse(raw)}catch{result={error:'AI повернув неструктуровану відповідь',http_status:r.status,raw_text:raw}}
     if(!r.ok||result.error){
@@ -47,11 +48,12 @@ Deno.serve(async req=>{
       candidate=cr.data;
     }
     const check=reviewID({...result,extracted:ex,document_type:normalizedType},candidate);
+    if(result.review_required){ex.meta={...(ex.meta||{}),requires_review:true};}
     const warnings=[...new Set([...(Array.isArray(result.warnings)?result.warnings:[]),...policy.warnings,...check.issues])];
-    const patch={ai_raw_response:result,ai_model:result.model||null,ai_processed_at:new Date().toISOString(),ai_document_type:normalizedType,ai_confidence:result.confidence??null,ai_candidate_name:result.candidate_name||ex.full_name||null,ai_extracted:ex,ai_warnings:warnings,processing_status:'AI оброблено',verification_status:check.blocked?'Потребує перевірки':'Не перевірено',notes:`${check.blocked?'AI REVIEW REQUIRED':'AI OK'} model=${result.model||''}`};
-    const update=await sb.from('documents').update(patch).eq('id',id).select('id');
+    const patch={ai_raw_response:result,ai_model:result.model||null,ai_processed_at:new Date().toISOString(),ai_document_type:normalizedType,ai_confidence:result.confidence??null,ai_candidate_name:result.candidate_name||ex.full_name||null,ai_extracted:ex,ai_warnings:warnings,processing_status:'AI оброблено',verification_status:check.blocked||result.review_required?'Потребує перевірки':'Не перевірено',notes:`${check.blocked||result.review_required?'AI REVIEW REQUIRED':'AI OK'} model=${result.model||''}`};
+    const update=await sb.from('documents').update(patch).eq('id',id).eq('storage_path',doc.storage_path).is('deleted_at',null).select('id');
     if(update.error)throw update.error;if(!update.data?.length)throw new Error('Результат не збережено');
-    return json({ok:true,documentId:id,...result,document_type:normalizedType,extracted:ex,warnings,review_required:check.blocked});
+    return json({ok:true,documentId:id,...result,document_type:normalizedType,extracted:ex,warnings,review_required:check.blocked||!!result.review_required});
   }catch(error){
     console.error('process-id-document',error);
     if(id)await sb.from('documents').update({processing_status:'AI помилка',notes:'Обробку не завершено',ai_raw_response:{error:'Обробку не завершено'},ai_model:null,ai_processed_at:new Date().toISOString()}).eq('id',id);

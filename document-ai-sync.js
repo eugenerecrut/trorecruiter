@@ -43,8 +43,16 @@
       const raw=object(rawValue);
       const r={...object(raw),relationship:relation(raw.relationship||raw.relation),full_name:raw.full_name||raw.name};
       delete r.relation;delete r.name;
-      if(raw.requires_review||!r.relationship||!valid('full_name',r.full_name)){add('profile','relatives',raw,'conflict','Некоректні ПІБ або спорідненість');continue;}
+      if(raw.requires_review||!r.relationship||!valid('full_name',String(r.full_name||'').replace(/[()]/g,' '))){add('profile','relatives',raw,'conflict','Некоректні ПІБ або спорідненість');continue;}
       let i=merged.findIndex(x=>relativeKey(x)===relativeKey(r));
+      if(i<0){const matches=merged.map((x,index)=>({x,index})).filter(({x})=>relation(x.relationship||x.relation)===r.relationship&&norm(r.full_name).startsWith(norm(x.full_name||x.name)+' '));
+        if(matches.length===1){const {x,index}=matches[0],manual=x.confirmed_by_user||x.manually_confirmed||x.field_confirmations?.full_name||x.field_sources?.full_name===null;
+          const dates=x.birth_date&&r.birth_date&&String(x.birth_date)!==String(r.birth_date),sameSource=x.source_document_id===documentId||x.field_sources?.full_name===documentId;
+          if(!manual&&!dates&&(sameSource||x.birth_date&&r.birth_date&&String(x.birth_date)===String(r.birth_date)))add('profile','relatives.'+index+'.full_name',r.full_name,'conflict','Документ містить повніше ПІБ цього родича. Можна доповнити після підтвердження.',x.full_name);
+          else add('profile','relatives',r,'conflict',manual?'ПІБ родича підтверджено вручну; автоматичне доповнення заборонено':'Неоднозначне доповнення ПІБ родича: звірте дату та джерело');
+          continue;
+        }
+      }
       // A differently OCR-spelled parent must never silently become a second parent.
       if(i<0&&['мати','батько','дружина','чоловік'].includes(r.relationship)&&merged.some(x=>relation(x.relationship||x.relation)===r.relationship)){
         add('profile','relatives',raw,'conflict','Інші ПІБ уже записаного родича');continue;
@@ -86,13 +94,15 @@
   }
   function plan(document,candidate){
     const policy=root.CRMDocumentPolicy?.normalize(document),p=object(candidate.profile_data),e=flatten(policy?.extracted||document.ai_extracted),rows=[],selections=[];
+    if(document.candidate_id&&candidate.id&&document.candidate_id!==candidate.id||p.merged_into||p.workflow?.archived_at)return {document,candidate,rows:[],selections:[],supported:false};
     const type=String(policy?.type||document.ai_document_type||document.document_type||'');
     const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
     const identity=/паспорт|ID[\s-]*карт/iu.test(type),military=!!root.CRMMilitary?.isDocument(type),work=!!root.CRMWork?.isDocument(type),vlk=!!root.CRMVLK?.isDocument(type);
     const registry=/Резерв\s*\+|приписн|військовий облік/iu.test(type);
     const militaryFacts=!!root.CRMMilitaryFacts?.isDocument(type);
+    const biography=/автобіограф/iu.test(type);
     const ancillary=['education','residence','driver','ubd'].includes(policy?.category)||/довідка.*МВС|несудиміст/i.test(type);
-    if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary&&!identity&&!military&&!work&&!vlk&&!registry&&!militaryFacts)return {document,candidate,rows,selections,supported:false};
+    if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary&&!identity&&!military&&!work&&!vlk&&!registry&&!militaryFacts&&!biography)return {document,candidate,rows,selections,supported:false};
     const marriageCheck=marriage?root.CRMDocumentPolicy?.marriage(e,candidate):null;
     if(marriageCheck&&!marriageCheck.blocked){
       if(empty(e.full_name))e.full_name=marriageCheck.owner.full_name;
@@ -157,6 +167,7 @@
       if(action==='fill')selections.push({target,key,incoming:value,expected_current:current??null,fill_only:structured||!(Array.isArray(current)&&current.length===0),...(structured?{merge_records:true,structured_records:true}:{}),expected_ai:document.ai_extracted});
     };
     for(const key of ['full_name','name_nominative','name_genitive','birth_date','birth_place','rnokpp','phone','sex','military_rank','civilian_profession','desired_position','tcc','military_specialty']){
+      if(biography)continue;
       if(birth&&!['full_name','birth_date','birth_place'].includes(key))continue;
       if(tax&&!['full_name','birth_date','rnokpp'].includes(key))continue;
       if(marriage&&!['full_name','birth_date','rnokpp'].includes(key))continue;

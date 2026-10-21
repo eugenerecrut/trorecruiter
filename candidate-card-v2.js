@@ -385,6 +385,7 @@
         };
         const sources={...(original.field_sources||{})};
         for(const key of ['relationship','full_name','birth_date','birth_place','citizenship','address','phone','workplace','position','notes','deceased','death_date'])if((key==='full_name'?window.CRMCandidateName.proper(original[key]):String(original[key]??''))!==String(saved[key]??''))sources[key]=null;
+        if(window.CRMCandidateName.proper(original.full_name)!==saved.full_name)saved.field_confirmations={...(original.field_confirmations||{}),full_name:true};
         if(Object.keys(sources).length)saved.field_sources=sources;
         return saved;
       }).filter(r => r.full_name||r.relationship);
