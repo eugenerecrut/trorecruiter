@@ -33,7 +33,7 @@ function compare(documents,candidate){
   const values=new Set(sources.map(s=>norm(s.value))),current=candidate[key];
   return {key,current:current??null,sources,status:values.size>1||current!=null&&String(current).trim()&&sources.some(s=>norm(s.value)!==norm(current))?'conflict':new Set(sources.map(s=>s.fingerprint)).size>1?'corroborated':sources.length?'single_source':'missing',learning_eligible:false};
  });
- return [...scalar,...structured(eligible,candidate)];
+ return [...scalar,...structured(eligible,candidate),...periodLinks(eligible)];
 }
 function structured(documents,candidate){
  const groups=new Map(),current=candidate.profile_data||{};
@@ -52,10 +52,43 @@ function structured(documents,candidate){
  }
  return [...groups.values()].map(entry=>{const unique=new Map();for(const s of entry.sources)unique.set((s.fingerprint||s.document_id)+'|'+norm(s.value),s);entry.sources=[...unique.values()];if(entry.key==='relatives'){const stored=(current.relatives||[]).find(r=>role(r.relationship||r.relation)===entry.subject);entry.current=stored?.full_name||null;}const values=new Set(entry.sources.map(s=>norm(s.value)));entry.status=values.size>1||entry.current&&entry.sources.some(s=>norm(s.value)!==norm(entry.current))?'conflict':new Set(entry.sources.map(s=>s.fingerprint||s.document_id)).size>1?'corroborated':'single_source';return entry;});
 }
+// A partial date is an interval, never a guessed first day.
+function dateRange(value){
+ const v=typeof value==='object'&&value?value.value:value;
+ if(typeof v!=='string'||!/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/.test(v))return null;
+ const [y,m=1,d=1]=v.split('-').map(Number),dt=new Date(Date.UTC(y,m-1,d));
+ if(y<1800||dt.getUTCFullYear()!==y||dt.getUTCMonth()!==m-1||dt.getUTCDate()!==d)return null;
+ const min=dt.toISOString().slice(0,10),max=v.length===4?String(y)+'-12-31':v.length===7?String(y)+'-'+String(m).padStart(2,'0')+'-'+new Date(Date.UTC(y,m,0)).getUTCDate():min;
+ return {value:v,min,max};
+}
+function periodLinks(documents){
+ const records=[],links=[];
+ for(const d of documents){const e=obj(d.ai_extracted);
+  for(const key of ['work_events','work_records','military_service_records'])for(const r of Array.isArray(e[key])?e[key]:[]){
+   if(!r||r.requires_review||r.crossed_out)continue;
+   const kind=key==='military_service_records'?'military_service':r.kind;
+   if(!['employment','military_service','police_service'].includes(kind))continue;
+   const start=dateRange(r.start_date),end=r.end_date?dateRange(r.end_date):null,unit=norm(r.unit||r.employer),position=norm(r.position);
+   if(!start||r.end_date&&!end||end&&end.max<start.min||!unit||!position)continue;
+   records.push({d,r,kind,start,end,unit,position});
+  }
+ }
+ for(let i=0;i<records.length;i++)for(let j=i+1;j<records.length;j++){
+  const a=records[i],b=records[j];
+  if(a.d.id===b.d.id||a.kind!==b.kind||a.unit!==b.unit||a.position!==b.position||a.d.file_hash&&a.d.file_hash===b.d.file_hash)continue;
+  // Separate non-overlapping appointments at the same employer remain separate.
+  if((a.end?.max||'9999-12-31')<b.start.min||(b.end?.max||'9999-12-31')<a.start.min)continue;
+  const same=a.start.value===b.start.value&&a.end?.value===b.end?.value;
+  if(same)continue; // Existing exact-event comparison handles this case.
+  const compatible=a.start.min<=b.start.max&&b.start.min<=a.start.max&&(!a.end||!b.end||a.end.min<=b.end.max&&b.end.min<=a.end.max);
+  links.push({key:'work_records',subject:a.kind+' · '+(a.r.unit||a.r.employer)+' · '+a.r.position,status:'needs_review',reason:compatible?'Ймовірно один період із різною точністю дат. Не об’єднано автоматично.':'Періоди перекриваються, але дати різні. Можливе уточнення або окремі події.',learning_eligible:false,current:null,sources:[a,b].map(v=>({document_id:v.d.id,document_type:v.d.document_type,file_name:v.d.file_name,value:[v.start.value,v.end?.value||'завершення не визначено',v.r.position,v.r.unit||v.r.employer].join(' · '),page:v.r.page||v.r.source_pages||null,raw_text:v.r.raw_text||null}))});
+ }
+ return links;
+}
 async function load(client,candidate){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return compare(r.data,candidate);}
-function guard(report,evidence){report.crosscheck=evidence;const conflicts=evidence.filter(e=>e.status==='conflict');
+function guard(report,evidence){report.crosscheck=evidence;const conflicts=evidence.filter(e=>['conflict','needs_review'].includes(e.status));
  for(const row of report.rows){if(!conflicts.some(e=>e.key===row.key)||!['candidate','profile'].includes(row.target))continue;row.action='conflict';row.reason='Розбіжність між документами кандидата';}
  report.selections=report.selections.filter(s=>!(['candidate','profile'].includes(s.target)&&conflicts.some(e=>e.key===s.key)));return report;
 }
-const api={compare,load,guard};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={compare,load,guard,dateRange,periodLinks};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
