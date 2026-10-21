@@ -201,7 +201,7 @@
         if (label) { hint(label,node.textContent); node.hidden = true; }
         else { const details = document.createElement('details'); details.className = 'cc-v3-explanation'; const summary = document.createElement('summary'); summary.textContent = 'ⓘ Пояснення'; node.before(details); details.append(summary,node); }
       });
-      form.querySelectorAll('[data-relative-row]').forEach(row => fold(row,'relative'));
+      form.querySelectorAll('[data-relative-row]').forEach(row => {const input=row.querySelector('[name=full_name]');if(input&&!input.dataset.v3NameHydrated){input.autocomplete='off';input.value=input.defaultValue;input.dataset.v3NameHydrated='true';}fold(row,'relative');});
       form.querySelectorAll('[data-work-row]').forEach(row => fold(row,'work'));
       form.querySelectorAll('section[data-section]').forEach(section => {
         const number = Number(section.dataset.section), heading = section.querySelector('h3');

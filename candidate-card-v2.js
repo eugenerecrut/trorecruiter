@@ -39,7 +39,7 @@
 
   function input(label, name, value, type = 'text', cls = '') {
     if(name==='phone'||name==='phone_secondary'){value=window.CRMPhone.normalize(value);type='tel';}
-    return `<div class="cc-field ${cls}"><label>${esc(label)}</label><input name="${esc(name)}" type="${type}" value="${esc(value ?? '')}"></div>`;
+    return `<div class="cc-field ${cls}"><label>${esc(label)}</label><input name="${esc(name)}" ${name==='full_name'?'autocomplete="off"':''} type="${type}" value="${esc(value ?? '')}"></div>`;
   }
 
   function select(label, name, value, options, cls = '') {
