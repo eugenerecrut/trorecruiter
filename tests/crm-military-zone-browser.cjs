@@ -1,0 +1,24 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium}=require('C:/Users/eugen/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});try{
+ const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.setContent('<main></main><script>'+read('supabase/functions/_shared/military-zone.js')+'</script><script>'+read('military-zone-review.js')+'</script>');
+ await page.evaluate(async()=>{
+  const canvas=document.createElement('canvas');canvas.width=800;canvas.height=1000;const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,800,1000);ctx.fillStyle='black';ctx.font='24px serif';ctx.fillText('Тестовий військовий квиток',50,100);const url=canvas.toDataURL();
+  window.requests=[];window.savedFacts={rank:'Чинне звання'};
+  window.supabaseClient={storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:url}})})},functions:{invoke:async(name,{body})=>{window.requests.push({name,body});return {data:body.mode==='overview'?{review_only:true,quality_issues:['Перевірити штамп'],zones:[{label:'Рядок служби',box:{x:.1,y:.2,w:.8,h:.2}}]}:{review_only:true,source:{provider:'Mock'},raw_text:'оператор',rows:[{raw_text:'оператор',fields:[{key:'position',raw_text:'оператор',value:'оператор',requires_review:true}]}],warnings:[]}};}}};
+  // about:blank lacks SubtleCrypto: deterministic test digest only, never production code.
+  if(!crypto.subtle)Object.defineProperty(crypto,'subtle',{value:{digest:async()=>new Uint8Array(32).buffer}});
+  await CRMMilitaryZoneReview.open({id:'doc',file_name:'test.png',mime_type:'image/png',storage_path:'candidate/test.png'});
+ });
+ await page.getByRole('button',{name:'Оглянути сторінку',exact:true}).click();await page.getByRole('button',{name:'Рядок служби',exact:true}).click();
+ assert.equal(await page.getByRole('spinbutton',{name:'Згори',exact:true}).inputValue(),'20');
+ await page.getByRole('button',{name:'Перечитати зону',exact:true}).click();await page.getByRole('heading',{name:/Результат · сторінка 1/}).waitFor();
+ const results=await page.evaluate(()=>({requests:window.requests.map(r=>({name:r.name,mode:r.body.mode,box:r.body.box,image:r.body.image_data.startsWith('data:image/jpeg;base64,')})),facts:window.savedFacts}));
+ assert.equal(results.requests.length,2);assert.equal(results.requests[1].mode,'zone');assert(results.requests[1].box.x<.1&&results.requests[1].box.w>.8);assert(results.requests.every(r=>r.image));assert.equal(results.facts.rank,'Чинне звання');
+ await page.getByRole('spinbutton',{name:'Ширина',exact:true}).fill('100');await page.getByRole('spinbutton',{name:'Ширина',exact:true}).blur();await page.getByRole('status').filter({hasText:/Зона повинна/}).waitFor();
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.getByRole('button',{name:'Закрити',exact:true}).click();assert.equal(await page.locator('dialog').count(),0);assert.deepEqual(errors,[]);
+ console.log('PASS zone pilot browser: overview, region choice, context crop, read-only facts, coordinate validation, mobile, cleanup, no JS errors; mocks only');
+ }finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});
