@@ -34,6 +34,8 @@
   reserve_training_records:new Set('start_date end_date position military_specialty unit order_issuer order_number order_date'.split(' ')),
   work_events:new Set('kind employer employer_code position event_date date_precision order_number order_date termination_reason'.split(' '))
  };
+ const objectFields={military_oath:{id:'service.oath',keys:['date','unit']},military_discharge:{id:'service.discharge',keys:['basis','unit','order_number','order_date']},marriage_record:{id:'family.marriage',keys:['certificate_number','registration_date','registration_authority']}};
+ const metadataKeys=new Set('field_sources field_confirmations source_document_id source_pages source_record_index confirmed_by_user manually_confirmed accepted_by_ai raw_text requires_review crossed_out degree_raw'.split(' '));
  const generated=d=>/послужний список|анкета на контракт|перелік документів|реєстр кандидата|титульний/iu.test(d.document_type||'')||d.generated===true||d.is_generated===true;
  function enabled(){return root.CRMFeatureFlags?.factsShadow===true||!own(root.CRMFeatureFlags,'factsShadow')&&!!root.location&&new URLSearchParams(root.location.search).get('factsShadow')==='1';}
  function build(input){
@@ -79,8 +81,20 @@
   // Extend coverage from the current print contract without guessing that a composite
   // group (education, family, periods) is one scalar with interchangeable paths.
   for(const group of root.CRMFieldRegistry?.fields||[])for(const path of group.paths){
-   if(covered.has(path)||collections.has(path.split('.')[1]))continue;
+   if(covered.has(path)||collections.has(path.split('.')[1])||own(objectFields,path.split('.')[1]))continue;
    addFact(group.id+'.legacy.'+path.split('.').at(-1),[path]);
+  }
+  for(const [key,definition] of Object.entries(objectFields)){
+   const location='profile.'+key,raw=profile[key];covered.add(location);
+   if(raw===undefined||raw===null)continue;
+   let record=raw;try{if(typeof raw==='string')record=JSON.parse(raw);}catch{record=null;}
+   if(!record||typeof record!=='object'||Array.isArray(record)){diagnostics.push({code:'invalid-structured-object',location});recordUnmapped.push(location);continue;}
+   profile[key]=record;
+   for(const field of Object.keys(record)){
+    if(metadataKeys.has(field))continue;
+    if(!definition.keys.includes(field)){recordUnmapped.push(location+'.'+field);continue;}
+    addFact(definition.id+'.'+field,[location+'.'+field],record,snapshotId+':'+key);
+   }
   }
   for(const collection of collections){
    const records=profile[collection];if(records!==undefined&&!Array.isArray(records)){diagnostics.push({code:'invalid-collection',location:'profile.'+collection});continue;}
@@ -90,7 +104,7 @@
     const entity=snapshotId+':'+collection+':'+index;
     if(record.requires_review===true||record.crossed_out===true)diagnostics.push({code:'held-record',entityRef:entity});
     for(const key of Object.keys(record)){
-     if(['field_sources','field_confirmations','source_document_id','source_pages','source_record_index','confirmed_by_user','manually_confirmed','accepted_by_ai','raw_text','requires_review','crossed_out','degree_raw'].includes(key))continue;
+     if(metadataKeys.has(key))continue;
      if(!recordFields[collection].has(key)){recordUnmapped.push('profile.'+collection+'.'+index+'.'+key);continue;}
      addFact(collectionIds[collection]+'.'+key,['profile.'+collection+'.'+index+'.'+key],record,entity);
     }
