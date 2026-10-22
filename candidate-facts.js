@@ -91,6 +91,14 @@
    facts.push(fact);return fact;
   }
   for(const [id,paths] of definitions)addFact(id,paths,{field_sources:profile.field_sources,field_confirmations:profile.field_confirmations});
+  // Detect current form/print fallback drift without redefining either reader.
+  for(const [fieldId,cardPaths] of [
+   ['identity.birth_place',['candidate.birth_place','personal_file.birth_place','profile.birth_place']],
+   ['family.marital_status',['candidate.marital_status','personal_file.family_status','profile.marital_status']]
+  ]){const fact=facts.find(f=>f.fieldId===fieldId),path=cardPaths.find(path=>!!at(context,path));
+   const cardValue=path?at(context,path):null;
+   if(!equal(cardValue,fact.value)&&!(empty(cardValue)&&empty(fact.value)))diagnostics.push({code:'reader-route-divergence',factId:fact.id,fieldId,cardLocation:path||null,canonicalLocations:fact.legacyLocations});
+  }
   // Extend coverage from the current print contract without guessing that a composite
   // group (education, family, periods) is one scalar with interchangeable paths.
   for(const group of root.CRMFieldRegistry?.fields||[])for(const path of group.paths){
@@ -231,7 +239,7 @@
    const note=document.createElement('p');note.textContent='Ці збережені поля ще не мають повного відображення в адаптері. Це не означає, що дані відсутні або їх треба видалити. Значення тут не виводяться.';section.append(note);
    for(const path of unmapped){const item=document.createElement('p');item.textContent=path;section.append(item);}details.append(section);
   }
-  const diagnosticLabels={'unavailable-provenance':'Посилання на джерело недоступне','legacy-path-divergence':'У збережених полях є різні значення','invalid-collection':'Неправильний формат списку','invalid-record':'Неправильний формат запису','held-record':'Запис очікує перевірки','invalid-structured-object':'Не вдалося прочитати реквізити','planner-unavailable':'Чинний механізм зіставлення недоступний','planner-failed':'Не вдалося побудувати зіставлення','document-plan-failed':'Не вдалося зіставити документ','partial-planner-without-intake':'Доступна лише частина чинних перевірок','planner-current-divergence':'Адаптер і чинне зіставлення читають різні значення','legacy-decision-source-snapshot-unavailable':'Для старого рішення немає повного знімка джерела','provenance-owner-blocked':'Джерело має розбіжність щодо власника','invalid-print-override':'Неправильний формат друкованої правки','unmapped-print-override':'Друкована правка не відповідає відомому полю'};
+  const diagnosticLabels={'reader-route-divergence':'Картка й послужний читають різні резервні значення','unavailable-provenance':'Посилання на джерело недоступне','legacy-path-divergence':'У збережених полях є різні значення','invalid-collection':'Неправильний формат списку','invalid-record':'Неправильний формат запису','held-record':'Запис очікує перевірки','invalid-structured-object':'Не вдалося прочитати реквізити','planner-unavailable':'Чинний механізм зіставлення недоступний','planner-failed':'Не вдалося побудувати зіставлення','document-plan-failed':'Не вдалося зіставити документ','partial-planner-without-intake':'Доступна лише частина чинних перевірок','planner-current-divergence':'Адаптер і чинне зіставлення читають різні значення','legacy-decision-source-snapshot-unavailable':'Для старого рішення немає повного знімка джерела','provenance-owner-blocked':'Джерело має розбіжність щодо власника','invalid-print-override':'Неправильний формат друкованої правки','unmapped-print-override':'Друкована правка не відповідає відомому полю'};
   if(model.diagnostics.length){const section=document.createElement('details'),title=document.createElement('summary');title.textContent='Пояснення діагностики: '+model.diagnostics.length;section.append(title);
    for(const diagnostic of model.diagnostics){const item=document.createElement('p');item.textContent=(diagnosticLabels[diagnostic.code]||'Інша діагностична подія')+' · '+diagnostic.code+(diagnostic.location?' · '+diagnostic.location:'');section.append(item);}details.append(section);
   }
