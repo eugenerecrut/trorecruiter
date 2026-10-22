@@ -36,4 +36,3 @@ begin
 end $$;
 revoke all on function public.crm_keep_document_value(uuid,uuid,jsonb,timestamptz,jsonb) from public,anon;
 grant execute on function public.crm_keep_document_value(uuid,uuid,jsonb,timestamptz,jsonb) to authenticated;
-
