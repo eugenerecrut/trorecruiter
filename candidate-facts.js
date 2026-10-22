@@ -52,7 +52,9 @@
  function build(input){
   const candidate=copy(input.candidate||{}),personal=copy(input.personalFile||{}),documents=copy(input.documents||[]);
   const profile=object(candidate.profile_data),context={candidate,profile,personal_file:personal};
-  const snapshotId='snapshot:'+ref([candidate.id,candidate.updated_at,profile,personal,documents.map(d=>[d.id,d.updated_at,d.version_number,d.ai_extracted])]);
+  // Cover all supplied evidence, including primary fields and technical states.
+  // These display references still do not replace database CAS or exact comparisons.
+  const snapshotId='snapshot:'+ref([candidate,personal,documents,copy(input.activity||[])]);
   const facts=[],claims=[],issues=[],decisions=[],diagnostics=[],recordUnmapped=[],covered=new Set(),byLocation=new Map();
   const blocked=!!profile.merged_into||!!profile.workflow?.archived_at;
   const currentDocs=root.CRMResponsibility?.latest(documents)||documents.filter(d=>!d.deleted_at&&!documents.some(n=>d.version_group_id&&n.version_group_id===d.version_group_id&&Number(n.version_number)>Number(d.version_number)));
@@ -158,7 +160,7 @@
      diagnostics.push({code:'planner-current-divergence',factId:fact.id,documentId:doc.id,location:path});
      fact.protected=true;fact.protectionReason=fact.protectionReason||'legacy-planner-value';
     }
-    const claim={id:'claim:'+ref([doc.id,doc.version_number,row.target,row.key,index]),candidateId:candidate.id,entityRef:fact.entityRef,fieldId:fact.fieldId,
+    const claim={id:'claim:'+ref([snapshotId,doc.id,doc.version_number,row.target,row.key,index]),candidateId:candidate.id,entityRef:fact.entityRef,fieldId:fact.fieldId,
      rawValue:copy(row.incoming),rawValueOrigin:'existing-planner-proposal',normalizedComparisonValue:norm(row.incoming),source:source(doc,row),
      reviewState:'unreviewed',extractionStatus:doc.processing_status||'unknown',proposalAction:row.action,
      target:row.target,key:row.key,reason:row.reason||'',plannerCurrent:copy(row.current)};
