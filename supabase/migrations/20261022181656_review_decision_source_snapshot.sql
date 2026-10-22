@@ -22,9 +22,9 @@ begin
  decisions:=coalesce(d.ai_extracted->'_crm_review_decisions','[]');
  if jsonb_typeof(decisions)<>'array' then raise exception 'Забагато збережених рішень';end if;
  source:=jsonb_build_object('document_id',d.id,'candidate_id',d.candidate_id,
- 'document_type',to_jsonb(d)->'document_type','version_group_id',to_jsonb(d)->'version_group_id',
- 'version_number',to_jsonb(d)->'version_number','storage_path',to_jsonb(d)->'storage_path',
- 'file_hash',to_jsonb(d)->'file_hash','extraction',d.ai_extracted-'_crm_review_decisions'-'_crm_review_context');
+ 'document_type',d.document_type,'version_group_id',d.version_group_id,
+ 'version_number',d.version_number,'storage_path',d.storage_path,
+ 'file_hash',d.file_hash,'extraction',d.ai_extracted-'_crm_review_decisions'-'_crm_review_context');
  context:=d.ai_extracted->'_crm_review_context';
  if context->>'version' is distinct from '1' or nullif(context->>'id','') is null or context->'source' is distinct from source then
   context:=jsonb_build_object('version',1,'id',pg_catalog.gen_random_uuid(),'source',source);
