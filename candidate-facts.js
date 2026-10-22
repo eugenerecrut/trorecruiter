@@ -15,6 +15,17 @@
   ['identity.name',['candidate.name_nominative','candidate.full_name']],
   ['identity.birth_date',['candidate.birth_date']],['identity.birth_place',['candidate.birth_place','personal_file.birth_place']],
   ['identity.tax_number',['candidate.rnokpp']],['contact.phone',['candidate.phone']],
+  ['identity.sex',['candidate.sex','profile.sex']],
+  ['identity.citizenship',['candidate.citizenship','profile.citizenship']],
+  ['identity.unzr',['profile.unzr']],['identity.birth_certificate',['profile.birth_certificate']],
+  ['identity.document_type',['profile.identity_document_type']],
+  ['identity.passport_series',['profile.passport_series']],['identity.passport_number',['profile.passport_number']],
+  ['identity.passport_issuer',['profile.passport_issuer']],['identity.passport_issue_date',['profile.passport_issue_date']],
+  ['identity.passport_expiry_date',['profile.passport_expiry_date']],
+  ['identity.passport_data',['candidate.passport_data','personal_file.passport_data']],
+  ['contact.phone_secondary',['profile.phone_secondary']],['contact.email',['candidate.email']],['contact.messenger',['profile.messenger']],
+  ['address.registered',['profile.registered_address','personal_file.registered_address']],['address.actual',['personal_file.address']],
+  ['family.children_count',['candidate.children_count']],['family.children_info',['personal_file.children_info','profile.children_info']],
   ['military.rank',['candidate.military_rank']],['military.specialty',['candidate.military_specialty','profile.military_specialty']],
   ['recruitment.service_type',['profile.service_type','personal_file.service_type']],
   ['recruitment.desired_position',['candidate.desired_position']],['recruitment.shpk',['profile.shpk']],['recruitment.tariff_grade',['profile.tariff_grade']],
@@ -41,7 +52,9 @@
  function build(input){
   const candidate=copy(input.candidate||{}),personal=copy(input.personalFile||{}),documents=copy(input.documents||[]);
   const profile=object(candidate.profile_data),context={candidate,profile,personal_file:personal};
-  const snapshotId='snapshot:'+ref([candidate.id,candidate.updated_at,profile,personal,documents.map(d=>[d.id,d.updated_at,d.version_number,d.ai_extracted])]);
+  // Cover all supplied evidence, including primary fields and technical states.
+  // These display references still do not replace database CAS or exact comparisons.
+  const snapshotId='snapshot:'+ref([candidate,personal,documents,copy(input.activity||[])]);
   const facts=[],claims=[],issues=[],decisions=[],diagnostics=[],recordUnmapped=[],covered=new Set(),byLocation=new Map();
   const blocked=!!profile.merged_into||!!profile.workflow?.archived_at;
   const currentDocs=root.CRMResponsibility?.latest(documents)||documents.filter(d=>!d.deleted_at&&!documents.some(n=>d.version_group_id&&n.version_group_id===d.version_group_id&&Number(n.version_number)>Number(d.version_number)));
@@ -78,6 +91,14 @@
    facts.push(fact);return fact;
   }
   for(const [id,paths] of definitions)addFact(id,paths,{field_sources:profile.field_sources,field_confirmations:profile.field_confirmations});
+  // Detect current form/print fallback drift without redefining either reader.
+  for(const [fieldId,cardPaths] of [
+   ['identity.birth_place',['candidate.birth_place','personal_file.birth_place','profile.birth_place']],
+   ['family.marital_status',['candidate.marital_status','personal_file.family_status','profile.marital_status']]
+  ]){const fact=facts.find(f=>f.fieldId===fieldId),path=cardPaths.find(path=>!!at(context,path));
+   const cardValue=path?at(context,path):null;
+   if(!equal(cardValue,fact.value)&&!(empty(cardValue)&&empty(fact.value)))diagnostics.push({code:'reader-route-divergence',factId:fact.id,fieldId,cardLocation:path||null,canonicalLocations:fact.legacyLocations});
+  }
   // Extend coverage from the current print contract without guessing that a composite
   // group (education, family, periods) is one scalar with interchangeable paths.
   for(const group of root.CRMFieldRegistry?.fields||[])for(const path of group.paths){
@@ -147,7 +168,7 @@
      diagnostics.push({code:'planner-current-divergence',factId:fact.id,documentId:doc.id,location:path});
      fact.protected=true;fact.protectionReason=fact.protectionReason||'legacy-planner-value';
     }
-    const claim={id:'claim:'+ref([doc.id,doc.version_number,row.target,row.key,index]),candidateId:candidate.id,entityRef:fact.entityRef,fieldId:fact.fieldId,
+    const claim={id:'claim:'+ref([snapshotId,doc.id,doc.version_number,row.target,row.key,index]),candidateId:candidate.id,entityRef:fact.entityRef,fieldId:fact.fieldId,
      rawValue:copy(row.incoming),rawValueOrigin:'existing-planner-proposal',normalizedComparisonValue:norm(row.incoming),source:source(doc,row),
      reviewState:'unreviewed',extractionStatus:doc.processing_status||'unknown',proposalAction:row.action,
      target:row.target,key:row.key,reason:row.reason||'',plannerCurrent:copy(row.current)};
@@ -199,9 +220,11 @@
    const index=unmapped.indexOf('profile.service_record_print');if(index>=0)unmapped.splice(index,1);
   }
   for(const override of printOverrides)if(override.state==='invalid-print-override'||!override.fieldGroupId)diagnostics.push({code:override.state==='invalid-print-override'?'invalid-print-override':'unmapped-print-override',location:override.location});
+  const citizenship=facts.find(f=>f.fieldId==='identity.citizenship');
+  const displayDefaults=citizenship?.valueState==='unknown'?[{fieldId:'identity.citizenship',value:'Україна',origin:'form-default',persisted:false}]:[];
   const conflicts=issues.filter(i=>i.kind==='proposal-conflict').length;
   const baseline=Number.isInteger(input.comparison?.conflictCount)?input.comparison.conflictCount:null;
-  return {version:1,mode:'shadow',snapshotId,candidateId:candidate.id,facts,claims,issues,decisions,diagnostics,printOverrides,
+  return {version:1,mode:'shadow',snapshotId,candidateId:candidate.id,facts,claims,issues,decisions,diagnostics,printOverrides,displayDefaults,
    coverage:{mappedLocations:[...covered],unmappedLocations:unmapped,excludedDocuments:excluded,documentScope:'supplied-snapshot'},
    shadow:{conflictCount:conflicts,baselineConflictCount:baseline,conflictDelta:baseline===null?null:conflicts-baseline,automaticWrites:0}};
  }
@@ -209,7 +232,17 @@
   const summary=document.createElement('summary');summary.textContent='Діагностика джерел (без запису)';
   const details=document.createElement('details');details.className='cc-facts-shadow';details.append(summary);
   const intro=document.createElement('p');intro.textContent='Діагностичний режим: факти '+model.facts.length+', пропозиції '+model.claims.length+', непокриті шляхи '+model.coverage.unmappedLocations.length+'. Друковані правки '+model.printOverrides.length+'. Не змінює картку або правила друку.';details.append(intro);
+  for(const value of model.displayDefaults){const row=document.createElement('p');row.textContent='Громадянство: '+value.value+' — значення за замовчуванням, можна змінити в картці. Джерело-документ не встановлено.';details.append(row);}
   if(model.shadow.conflictDelta!==null){const compare=document.createElement('p');compare.textContent='Конфлікти: чинний звіт '+model.shadow.baselineConflictCount+', адаптер '+model.shadow.conflictCount+'. Різниця '+model.shadow.conflictDelta+' (без застосування змін).';details.append(compare);}
+  const unmapped=[...new Set(model.coverage.unmappedLocations)].sort();
+  if(unmapped.length){const section=document.createElement('details'),title=document.createElement('summary');title.textContent='Що ще не охоплено діагностикою: '+unmapped.length;section.append(title);
+   const note=document.createElement('p');note.textContent='Ці збережені поля ще не мають повного відображення в адаптері. Це не означає, що дані відсутні або їх треба видалити. Значення тут не виводяться.';section.append(note);
+   for(const path of unmapped){const item=document.createElement('p');item.textContent=path;section.append(item);}details.append(section);
+  }
+  const diagnosticLabels={'reader-route-divergence':'Картка й послужний читають різні резервні значення','unavailable-provenance':'Посилання на джерело недоступне','legacy-path-divergence':'У збережених полях є різні значення','invalid-collection':'Неправильний формат списку','invalid-record':'Неправильний формат запису','held-record':'Запис очікує перевірки','invalid-structured-object':'Не вдалося прочитати реквізити','planner-unavailable':'Чинний механізм зіставлення недоступний','planner-failed':'Не вдалося побудувати зіставлення','document-plan-failed':'Не вдалося зіставити документ','partial-planner-without-intake':'Доступна лише частина чинних перевірок','planner-current-divergence':'Адаптер і чинне зіставлення читають різні значення','legacy-decision-source-snapshot-unavailable':'Для старого рішення немає повного знімка джерела','provenance-owner-blocked':'Джерело має розбіжність щодо власника','invalid-print-override':'Неправильний формат друкованої правки','unmapped-print-override':'Друкована правка не відповідає відомому полю'};
+  if(model.diagnostics.length){const section=document.createElement('details'),title=document.createElement('summary');title.textContent='Пояснення діагностики: '+model.diagnostics.length;section.append(title);
+   for(const diagnostic of model.diagnostics){const item=document.createElement('p');item.textContent=(diagnosticLabels[diagnostic.code]||'Інша діагностична подія')+' · '+diagnostic.code+(diagnostic.location?' · '+diagnostic.location:'');section.append(item);}details.append(section);
+  }
   for(const fact of model.facts.filter(f=>!empty(f.value))){const row=document.createElement('p');
    row.textContent=fact.fieldId+' · '+({documented:'є явне джерело',human_confirmed:'є ручна позначка підтвердження',legacy_unknown:'джерело не встановлено'})[fact.provenanceState]+(fact.protected?' · захищено':'')+(fact.held?' · запис потребує перевірки':'');
    for(const source of fact.sourceRefs){const button=document.createElement('button');button.type='button';button.textContent='Відкрити джерело';
