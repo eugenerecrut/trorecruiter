@@ -137,7 +137,9 @@ async function analyze(data:Uint8Array|null,extra=''){
  }
  throw Error(budget.disabled.size?'AI недоступний: перевірте квоти та доступ до провайдерів. Повний результат не записано; оригінал збережено.':'AI тимчасово не відповідає. Повторну спробу виконано; оригінал збережено.');
 }
-if(mime==='application/pdf'&&bytes&&bytes.length>15000000){
+// Base64 + serialized fallback requests can exhaust Edge memory before 15 MB.
+// Use the existing 8 MB part target as the threshold for bounded PDF preparation.
+if(mime==='application/pdf'&&bytes&&bytes.length>8000000){
  await import('../_shared/pdf-ai-parts.js');const {PDFDocument}=await import('npm:pdf-lib@1.17.1');
  const helper=(globalThis as any).CRMPDFAIParts,prepared=await helper.prepare(bytes,PDFDocument),results=[];
  for(const part of prepared.parts){let result;try{result=await analyze(part.bytes,'\nОбробляється частина PDF. Номери page/source_pages вказуй від 1 у цій частині. Нічого не вигадуй з інших частин.');}catch(error){throw Error('Не завершено сторінки '+part.start+'–'+part.end+'. '+String((error as any)?.message||error));}results.push({part:{start:part.start,end:part.end},result});}

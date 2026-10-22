@@ -8,7 +8,7 @@ async function run(options={}){
   if(url.includes('/crm_staff?'))return json(options.inactive?[]:[{user_id:'u'}]);
   if(url.includes('/documents?id='))return json(options.hidden?[]:[{id,candidate_id:owner,storage_path:options.badPath||owner+'/incoming/test.pdf',file_name:'test.pdf',mime_type:'application/pdf',version_group_id:id,version_number:1,deleted_at:options.deleted?'2026-01-01':null}]);
   if(url.includes('/documents?version_group_id='))return json(options.archived?[{id:'new'}]:[]);
-  if(url.includes('/storage/v1/object/sign/'))return init.method==='POST'?json({signedURL:'/object/sign/candidate-documents/'+owner+'/incoming/test.pdf?token=test'}):new Response(options.large?new Uint8Array(18149553):'%PDF-test',{headers:{'content-type':'application/pdf'}});
+  if(url.includes('/storage/v1/object/sign/'))return init.method==='POST'?json({signedURL:'/object/sign/candidate-documents/'+owner+'/incoming/test.pdf?token=test'}):new Response(options.large||options.bytes?new Uint8Array(options.bytes||18149553):'%PDF-test',{headers:{'content-type':'application/pdf'}});
   if(url==='https://api.openai.com/v1/responses'){providerCalls++;if(options.failProvider||options.failSecondPart&&providerCalls>1)return json({error:{message:'temporary overload'}},503);return json({output:[{content:[{type:'output_text',text:JSON.stringify({document_type:'Рекомендаційний лист',candidate_name:'Тестенко Іван',confidence:0.99,extracted:{full_name:'Тестенко Іван'},warnings:[]})}]}]});}
   throw Error('Unexpected test fetch: '+url);
  };
@@ -30,4 +30,5 @@ test('inactive user, hidden, deleted, old version and unsafe paths never reach A
 });
 
 test('large PDF route processes every part and records original page coverage without DB writes',async()=>{const r=await run({large:true});assert.equal(r.response.status,200);assert.equal(r.data.pdf_processing.total_pages,2);assert.equal(r.data.pdf_processing.parts,2);assert.equal(r.data.pdf_parts[1].start,2);assert(!r.calls.some(c=>c.url.includes('/rest/v1/')&&c.init.method==='PATCH'));assert.equal(r.calls.filter(c=>c.url==='https://api.openai.com/v1/responses').length,2)});
+test('12.9 MB PDF uses bounded parts before constructing provider payloads',async()=>{const r=await run({bytes:12924216});assert.equal(r.response.status,200);assert.equal(r.data.pdf_processing.original_bytes,12924216);assert.equal(r.data.pdf_processing.complete,true);const calls=r.calls.filter(c=>c.url==='https://api.openai.com/v1/responses');assert.equal(calls.length,2);assert(calls.every(c=>c.init.body.length<100000));});
 test('temporary failure is retried once; unfinished parts never return partial success',async()=>{const r=await run({large:true,failSecondPart:true});assert.equal(r.response.status,502);assert.equal(r.data.extracted,undefined);assert.equal(r.calls.filter(c=>c.url==='https://api.openai.com/v1/responses').length,3)});
