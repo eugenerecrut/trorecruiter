@@ -72,4 +72,11 @@
 .cc-v3 .crm-document-more .crm-document-details{display:flex;flex-wrap:wrap;gap:6px;padding:7px 0}
 .cc-v3 .crm-case-primary{margin:10px 0;display:flex;gap:8px}
 .cc-v3 .crm-case-primary>button{min-height:38px}
+.cc-case-summary{padding:12px;border:1px solid var(--v3-line);border-radius:8px;margin:10px 0;overflow-wrap:anywhere}
+.cc-case-summary p{margin:6px 0}.cc-case-extra>summary{cursor:pointer;padding:8px}
+.cc-compact-case .cc-v3-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
+.cc-compact-case .cc-v3-nav button{white-space:normal;min-height:44px;overflow-wrap:anywhere}
+.cc-compact-case .cc-v3-nav button:focus-visible,.cc-v3-tip>button:focus-visible{outline:3px solid #2463a3;outline-offset:2px}
+.cc-v3-tip:focus-within .cc-v3-tooltip{display:block;visibility:visible;opacity:1}
+@media(max-width:760px){.cc-compact-case .cc-v3-nav{gap:4px}.cc-compact-case .cc-v3-nav button{font-size:11px;padding:8px 4px}.cc-case-summary{max-width:100%;box-sizing:border-box}}
 @media(max-width:760px){.cc-v3 .crm-document-compact{grid-template-columns:minmax(0,1fr)}.cc-v3 .crm-document-primary{grid-column:1}.cc-v3 .crm-document-more{grid-column:1}.cc-v3 .crm-document-primary button{min-height:38px}}
