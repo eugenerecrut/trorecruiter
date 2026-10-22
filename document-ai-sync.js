@@ -119,13 +119,15 @@
       const owners=[...new Set((Array.isArray(e.education_records)?e.education_records:[]).map(r=>r?.owner_full_name).filter(v=>!empty(v)).map(norm))];
       if(owners.length===1)e.full_name=(e.education_records||[]).find(r=>norm(r?.owner_full_name)===owners[0]).owner_full_name;
     }
+    const educationOwnerMatch=policy?.category==='education'&&document.verification_status==='Підтверджено'&&
+      (e.education_records||[]).length>0&&(e.education_records||[]).every(r=>!r.requires_review&&equal(r.owner_full_name,e.full_name)&&root.CRMEducation?.ownerMatches(r,candidate,p.education_records||[],true));
     let ownerIssue='';
     const confidence=Number(document.ai_confidence);
     if(document.verification_status!=='Підтверджено'&&document.ai_confidence!=null&&(!Number.isFinite(confidence)||confidence<0.85||confidence>1))ownerIssue='Недостатня впевненість AI: потрібна перевірка рекрутера';
     if(!empty(e.rnokpp)&&!empty(candidate.rnokpp)&&String(e.rnokpp)!==String(candidate.rnokpp))ownerIssue='РНОКПП іншої особи';
     if(!empty(e.birth_date)&&!empty(candidate.birth_date)&&String(e.birth_date)!==String(candidate.birth_date))ownerIssue='Дата народження іншої особи';
     const strongMatch=valid('rnokpp',e.rnokpp)&&!empty(e.rnokpp)&&String(e.rnokpp)===String(candidate.rnokpp);
-    if(!ownerIssue&&!empty(e.full_name)&&!equal(e.full_name,candidate.full_name)&&!root.CRMNameHistory?.matches(e.full_name,candidate)&&!strongMatch)ownerIssue='ПІБ не збігається: звірте власника документа';
+    if(!ownerIssue&&!empty(e.full_name)&&!equal(e.full_name,candidate.full_name)&&!root.CRMNameHistory?.matches(e.full_name,candidate)&&!strongMatch&&!educationOwnerMatch)ownerIssue='ПІБ не збігається: звірте власника документа';
     if(!strongMatch&&empty(e.full_name))ownerIssue='Не визначено власника документа';
     const warnings=[...(Array.isArray(document.ai_warnings)?document.ai_warnings:[]),...(Array.isArray(e.meta?.warnings)?e.meta.warnings:[])].filter(w=>!String(w).startsWith('[CRM AI sync]')).join(' ');
     if(/інш(?:а|ої|у|ого|ий|е).{0,60}(особ|кандидат|ПІБ)|згаду.{0,80}(особ|ПІБ)|different (?:person|candidate|name)|another (?:person|candidate)/i.test(warnings))ownerIssue='У документі згадано іншу особу: потрібна ручна перевірка';
@@ -143,6 +145,7 @@
       const legacy=p.form_data?.[key]??(key==='military_specialty'?p[key]:null);
       const protectedValue=!empty(current)?current:legacy;
       let action='leave',reason='',structured=false;
+      if(key==='full_name'&&educationOwnerMatch&&!ownerIssue&&!equal(value,candidate.full_name)){add(target,key,value,'leave','Диплом містить ім’я та прізвище; повне ПІБ картки збережено',current);return;}
       if(birth&&key==='full_name'&&!ownerIssue&&!empty(value)&&root.CRMNameHistory?.matches(value,candidate)&&!equal(value,candidate.full_name)){add(target,key,value,'leave','ПІБ при народженні підтверджене історією зміни; чинне ПІБ збережено',current);return;}
       if(!empty(value)){
         if(e.field_evidence?.[key]?.requires_review||e.meta?.field_evidence?.[key]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[key]?.legibility||e.meta?.field_evidence?.[key]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
