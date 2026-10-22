@@ -1,11 +1,26 @@
 (function(){
 'use strict';
 const esc=v=>CRMWorkspace.escape(v),object=v=>{if(typeof v==='string'){try{return JSON.parse(v)||{}}catch{return {}}}return v||{}};
+// One shared snapshot per document, not a duplicate extraction per decision.
+// This is an equality guard, not an authentication token or provenance proof.
+const reviewObject=v=>{const x=object(v);return x&&typeof x==='object'&&!Array.isArray(x)?x:{};};
+function reviewEqual(a,b){if(a===b)return true;if(!a||!b||typeof a!=='object'||typeof b!=='object'||Array.isArray(a)!==Array.isArray(b))return false;const ak=Object.keys(a),bk=Object.keys(b);return ak.length===bk.length&&ak.every(k=>Object.prototype.hasOwnProperty.call(b,k)&&reviewEqual(a[k],b[k]));}
+function reviewSource(doc){const ai={...reviewObject(doc.ai_extracted)};delete ai._crm_review_decisions;delete ai._crm_review_context;return {document_id:doc.id??null,candidate_id:doc.candidate_id??null,document_type:doc.document_type??null,version_group_id:doc.version_group_id??null,version_number:doc.version_number??null,storage_path:doc.storage_path??null,file_hash:doc.file_hash??null,extraction:ai};}
+function reviewContext(doc,candidate){const context=reviewObject(doc.ai_extracted)._crm_review_context;return !!context&&context.version===1&&!!context.id&&!!candidate?.id&&doc.candidate_id===candidate.id&&!doc.deleted_at&&!['AI обробка','AI помилка'].includes(doc.processing_status)&&reviewEqual(context.source,reviewSource(doc));}
+function reviewBinding(doc,d,candidate,contextCurrent){
+ if(!Object.prototype.hasOwnProperty.call(d,'source_binding'))return 'container-only';
+ const binding=d.source_binding,context=reviewObject(doc.ai_extracted)._crm_review_context;
+ if(!binding||binding.version!==1||!binding.context_id||!context||binding.context_id!==context.id||!(contextCurrent===undefined?reviewContext(doc,candidate):contextCurrent))return 'stale-source';
+ return 'source-snapshot';
+}
+function reviewMatches(doc,d,row,candidate,contextCurrent){return !!d&&d.action==='keep_card'&&!!d.reviewed_by&&!!d.reviewed_at&&d.target===row.target&&d.key===row.key&&JSON.stringify(d.current)===JSON.stringify(row.current)&&JSON.stringify(d.incoming)===JSON.stringify(row.incoming)&&d.reason===row.reason&&reviewBinding(doc,d,candidate,contextCurrent)!=='stale-source';}
+window.CRMReviewDecision={source:reviewSource,contextMatches:reviewContext,binding:reviewBinding,matches:reviewMatches};
 function items(candidate,docs){return CRMResponsibility.latest(docs).map(doc=>{
  const pending=doc.processing_status==='AI обробка',failed=doc.processing_status==='AI помилка';
  let plan=null,error=null;try{if(doc.ai_extracted&&!pending&&!failed)plan=CRMDocumentSync.plan(doc,candidate);}catch(e){error=e.message;}
  if(plan&&window.CRMDocumentCrosscheck)CRMDocumentCrosscheck.guard(plan,CRMDocumentCrosscheck.compare(docs,candidate));
- if(plan)for(const row of plan.rows){const decisions=object(doc.ai_extracted)?._crm_review_decisions;const saved=(Array.isArray(decisions)?decisions:[]).find(d=>d&&d.action==='keep_card'&&d.reviewed_by&&d.reviewed_at&&d.target===row.target&&d.key===row.key&&JSON.stringify(d.current)===JSON.stringify(row.current)&&JSON.stringify(d.incoming)===JSON.stringify(row.incoming)&&d.reason===row.reason);if(saved&&row.action==='conflict')row.action='leave';}
+ const contextCurrent=reviewContext(doc,candidate);
+ if(plan)for(const row of plan.rows){const decisions=object(doc.ai_extracted)?._crm_review_decisions;const saved=(Array.isArray(decisions)?decisions:[]).find(d=>reviewMatches(doc,d,row,candidate,contextCurrent));if(saved&&row.action==='conflict')row.action='leave';}
  const conflicts=plan?.rows.filter(r=>r.action==='conflict')||[],fills=plan?.rows.filter(r=>r.action==='fill')||[];
  return {doc,plan,error,conflicts,fills,pending,failed,review:!pending&&(!!error||conflicts.length>0||doc.verification_status==='Потребує перевірки'||!!plan&&!plan.supported)};
 });}
