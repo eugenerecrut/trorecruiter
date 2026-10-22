@@ -11,6 +11,10 @@
  // Opaque display references only. Exact values, not these hashes, validate decisions.
  function ref(parts){let h=2166136261;for(const c of stable(parts)||'')h=Math.imul(h^c.charCodeAt(0),16777619);return (h>>>0).toString(16);}
  function at(o,path){const keys=path.split('.');if(keys.some(k=>['__proto__','prototype','constructor'].includes(k)))return undefined;for(const k of keys){if(!own(o,k))return undefined;o=o[k];}return o;}
+ // Match only the three aliases whose current form and service readers share
+ // exact true/false string semantics. Never coerce arbitrary strings or numbers.
+ const booleanFields=new Set(['employment.absence','service.absence','family.has_children']);
+ const booleanValue=v=>v===true||v==='true'?true:v===false||v==='false'?false:null;
  const definitions=[
   ['identity.name',['candidate.name_nominative','candidate.full_name']],
   ['identity.birth_date',['candidate.birth_date']],['identity.birth_place',['candidate.birth_place','personal_file.birth_place']],
@@ -93,7 +97,7 @@
    const location=populated[0]||locations[0],value=location?copy(at(context,location)):null;
    const key=location?.split('.').at(-1),manual=metadata.confirmed_by_user===true||metadata.manually_confirmed===true||metadata.field_confirmations?.[key]===true;
    const fact={id:'fact:'+ref([candidate.id,entityRef,id]),candidateId:candidate.id,entityRef,fieldId:id,value,
-    valueState:empty(value)?'unknown':value===false?'explicit_absence':'present',legacyLocations:locations,
+    valueState:empty(value)?'unknown':value===false||booleanFields.has(id)&&booleanValue(value)===false?'explicit_absence':'present',legacyLocations:locations,
     provenanceState:manual?'human_confirmed':'legacy_unknown',claimRefs:[],decisionRefs:[],protected:!empty(value),
     protectionReason:manual?'explicit-human-marker':!empty(value)?'existing-value':'',sourceRefs:[],held:metadata.requires_review===true||metadata.crossed_out===true};
    const sources=object(metadata.field_sources),sourceId=own(sources,key)?sources[key]:metadata.source_document_id;
@@ -103,7 +107,11 @@
     fact.sourceRefs.push(source(doc,metadata));if(!manual)fact.provenanceState='documented';
    }else if(sourceId)diagnostics.push({code:'unavailable-provenance',factId:fact.id,documentId:sourceId});
    for(const path of paths){byLocation.set(path,fact);covered.add(path);}
-   if(populated.some(path=>!equal(at(context,path),value)))diagnostics.push({code:'legacy-path-divergence',factId:fact.id,locations:populated});
+   if(populated.some(path=>!equal(at(context,path),value))){
+    const boolean=booleanFields.has(id)?booleanValue(value):null;
+    const sameMeaning=boolean!==null&&populated.every(path=>booleanValue(at(context,path))===boolean);
+    diagnostics.push({code:sameMeaning?'legacy-path-format-difference':'legacy-path-divergence',factId:fact.id,locations:populated});
+   }
    facts.push(fact);return fact;
   }
   for(const [id,paths] of definitions)addFact(id,paths,{field_sources:profile.field_sources,field_confirmations:profile.field_confirmations});
@@ -274,7 +282,7 @@
   }
   const fieldLabels={'recruitment.shpk':'ШПК','recruitment.tariff_grade':'Тарифний розряд','recruitment.service_type':'Вид оформлення','identity.citizenship':'Громадянство','identity.sex':'Стать','identity.unzr':'УНЗР','identity.document_type':'Тип документа','identity.passport_number':'Номер паспорта','contact.phone':'Основний телефон','contact.phone_secondary':'Додатковий телефон','contact.email':'Email','address.registered':'Зареєстрована адреса','address.actual':'Фактична адреса','family.marital_status':'Сімейний стан','family.has_children':'Наявність дітей','family.children_count':'Кількість дітей'};
   const labelFor=id=>fieldLabels[id]||(root.CRMFieldRegistry?.fields||[]).find(field=>field.id===id)?.label||id;
-  const diagnosticLabels={'reader-route-divergence':'Картка й послужний читають різні резервні значення','unavailable-provenance':'Посилання на джерело недоступне','legacy-path-divergence':'У збережених полях є різні значення','invalid-collection':'Неправильний формат списку','invalid-record':'Неправильний формат запису','held-record':'Запис очікує перевірки','invalid-structured-object':'Не вдалося прочитати реквізити','planner-unavailable':'Чинний механізм зіставлення недоступний','planner-failed':'Не вдалося побудувати зіставлення','document-plan-failed':'Не вдалося зіставити документ','partial-planner-without-intake':'Доступна лише частина чинних перевірок','planner-current-divergence':'Адаптер і чинне зіставлення читають різні значення','legacy-decision-source-snapshot-unavailable':'Для старого рішення немає повного знімка джерела','provenance-owner-blocked':'Джерело має розбіжність щодо власника','invalid-print-override':'Неправильний формат друкованої правки','unmapped-print-override':'Друкована правка не відповідає відомому полю'};
+  const diagnosticLabels={'legacy-path-format-difference':'Однакова відповідь збережена у різних форматах','reader-route-divergence':'Картка й послужний читають різні резервні значення','unavailable-provenance':'Посилання на джерело недоступне','legacy-path-divergence':'У збережених полях є різні значення','invalid-collection':'Неправильний формат списку','invalid-record':'Неправильний формат запису','held-record':'Запис очікує перевірки','invalid-structured-object':'Не вдалося прочитати реквізити','planner-unavailable':'Чинний механізм зіставлення недоступний','planner-failed':'Не вдалося побудувати зіставлення','document-plan-failed':'Не вдалося зіставити документ','partial-planner-without-intake':'Доступна лише частина чинних перевірок','planner-current-divergence':'Адаптер і чинне зіставлення читають різні значення','legacy-decision-source-snapshot-unavailable':'Для старого рішення немає повного знімка джерела','provenance-owner-blocked':'Джерело має розбіжність щодо власника','invalid-print-override':'Неправильний формат друкованої правки','unmapped-print-override':'Друкована правка не відповідає відомому полю'};
   if(model.diagnostics.length){const section=document.createElement('details'),title=document.createElement('summary');title.textContent='Пояснення діагностики: '+model.diagnostics.length;section.append(title);
    for(const diagnostic of model.diagnostics){const item=document.createElement('p'),fact=model.facts.find(f=>f.id===diagnostic.factId),fieldId=diagnostic.fieldId||fact?.fieldId;
     const paths=[...new Set([diagnostic.location,diagnostic.cardLocation,...(diagnostic.locations||diagnostic.canonicalLocations||[])].filter(Boolean))];
