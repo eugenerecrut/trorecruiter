@@ -27,7 +27,7 @@ async function review(host,candidate,documents){
    const fresh=await CRMDocumentSync.preview(supabaseClient,id),match=fresh.rows.find(x=>x.target===row.target&&x.key===row.key&&x.reason===row.reason&&JSON.stringify(x.current)===JSON.stringify(row.current)&&JSON.stringify(x.incoming)===JSON.stringify(row.incoming));if(!match)throw Error('Дані змінилися. Перевірте їх повторно.');
    const user=await getCurrentUser();if(!user)throw Error('Увійдіть повторно.');const original=fresh.document.ai_extracted,e=object(original),decisions=Array.isArray(e._crm_review_decisions)?e._crm_review_decisions:[];if(decisions.length>=200)throw Error('Забагато збережених рішень. Потрібна технічна перевірка.');
    const decision={target:row.target,key:row.key,current:row.current,incoming:row.incoming,reason:row.reason,action:'keep_card',reviewed_by:user.id,reviewed_at:new Date().toISOString()};
-   const result=await supabaseClient.from('documents').update({ai_extracted:{...e,_crm_review_decisions:[...decisions,decision]}}).eq('id',id).eq('candidate_id',candidate.id).eq('ai_extracted',JSON.stringify(original)).is('deleted_at',null).select('id');if(result.error)throw result.error;if(!result.data?.length)throw Error('Документ змінився. Повторіть звірку.');
+   const result=await supabaseClient.rpc('crm_keep_document_value',{p_document_id:id,p_candidate_id:candidate.id,p_expected_ai:original,p_expected_candidate_updated_at:fresh.candidate.updated_at,p_decision:decision});if(result.error)throw result.error;
   });
   if(b.dataset.intakeOpen)await openDocument(b.dataset.intakeOpen);
   if(b.dataset.intakeRetry)await run(()=>retryDocumentAI(b.dataset.intakeRetry));
