@@ -23,13 +23,19 @@
   ['family.address',['profile.family_residence_address']],['family.address_confirmed',['profile.family_residence_confirmed']]
  ];
  const collections=new Set(['relatives','education_records','work_records','work_events']);
+ const recordFields={
+  relatives:new Set('relationship full_name birth_date birth_place citizenship address phone workplace position notes deceased death_date death_date_precision'.split(' ')),
+  education_records:new Set('degree institution specialty qualification graduation_year study_start_date study_end_date diploma_series diploma_number diploma_issue_date specialty_code supplement_number supplement_issue_date'.split(' ')),
+  work_records:new Set('kind employer employer_code position unit military_specialty location start_date end_date order_number order_date end_order_number end_order_date termination_reason position_changes'.split(' ')),
+  work_events:new Set('kind employer employer_code position event_date date_precision order_number order_date termination_reason'.split(' '))
+ };
  const generated=d=>/послужний список|анкета на контракт|перелік документів|реєстр кандидата|титульний/iu.test(d.document_type||'')||d.generated===true||d.is_generated===true;
  function enabled(){return root.CRMFeatureFlags?.factsShadow===true||!own(root.CRMFeatureFlags,'factsShadow')&&!!root.location&&new URLSearchParams(root.location.search).get('factsShadow')==='1';}
  function build(input){
   const candidate=copy(input.candidate||{}),personal=copy(input.personalFile||{}),documents=copy(input.documents||[]);
   const profile=object(candidate.profile_data),context={candidate,profile,personal_file:personal};
   const snapshotId='snapshot:'+ref([candidate.id,candidate.updated_at,profile,personal,documents.map(d=>[d.id,d.updated_at,d.version_number,d.ai_extracted])]);
-  const facts=[],claims=[],issues=[],decisions=[],diagnostics=[],covered=new Set(),byLocation=new Map();
+  const facts=[],claims=[],issues=[],decisions=[],diagnostics=[],recordUnmapped=[],covered=new Set(),byLocation=new Map();
   const blocked=!!profile.merged_into||!!profile.workflow?.archived_at;
   const currentDocs=root.CRMResponsibility?.latest(documents)||documents.filter(d=>!d.deleted_at&&!documents.some(n=>d.version_group_id&&n.version_group_id===d.version_group_id&&Number(n.version_number)>Number(d.version_number)));
   const excluded=[];
@@ -53,7 +59,7 @@
    const fact={id:'fact:'+ref([candidate.id,entityRef,id]),candidateId:candidate.id,entityRef,fieldId:id,value,
     valueState:empty(value)?'unknown':value===false?'explicit_absence':'present',legacyLocations:locations,
     provenanceState:manual?'human_confirmed':'legacy_unknown',claimRefs:[],decisionRefs:[],protected:!empty(value),
-    protectionReason:manual?'explicit-human-marker':!empty(value)?'existing-value':'',sourceRefs:[]};
+    protectionReason:manual?'explicit-human-marker':!empty(value)?'existing-value':'',sourceRefs:[],held:metadata.requires_review===true||metadata.crossed_out===true};
    const sources=object(metadata.field_sources),sourceId=own(sources,key)?sources[key]:metadata.source_document_id;
    const doc=docById.get(sourceId);
    if(sourceId===null&&own(sources,key)&&!empty(value))fact.protectionReason='manual-source-cleared';
@@ -77,8 +83,10 @@
    for(const [index,record] of (records||[]).entries()){
     if(!record||typeof record!=='object'){diagnostics.push({code:'invalid-record',location:'profile.'+collection+'.'+index});continue;}
     const entity=snapshotId+':'+collection+':'+index;
+    if(record.requires_review===true||record.crossed_out===true)diagnostics.push({code:'held-record',entityRef:entity});
     for(const key of Object.keys(record)){
-     if(['field_sources','field_confirmations','source_document_id','source_pages','source_record_index','confirmed_by_user','manually_confirmed','accepted_by_ai','raw_text'].includes(key))continue;
+     if(['field_sources','field_confirmations','source_document_id','source_pages','source_record_index','confirmed_by_user','manually_confirmed','accepted_by_ai','raw_text','requires_review','crossed_out','degree_raw'].includes(key))continue;
+     if(!recordFields[collection].has(key)){recordUnmapped.push('profile.'+collection+'.'+index+'.'+key);continue;}
      addFact((collection==='relatives'?'family.relative':collection==='education_records'?'education.record':collection==='work_records'?'period.record':'period.event')+'.'+key,['profile.'+collection+'.'+index+'.'+key],record,entity);
     }
    }
@@ -154,7 +162,7 @@
    }
   }
   // A record marked accepted_by_ai is deliberately not a human confirmation.
-  const unmapped=[];
+  const unmapped=[...recordUnmapped];
   for(const [prefix,record] of [['candidate',candidate],['profile',profile],['personal_file',personal]])for(const key of Object.keys(record)){
    if(prefix==='candidate'&&key==='profile_data')continue;
    const path=prefix+'.'+key;if(!covered.has(path))unmapped.push(path);
