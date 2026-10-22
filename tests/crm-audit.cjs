@@ -32,7 +32,7 @@ async function plan(types){let html='',button={addEventListener(){}},click={};co
  h=await plan([...base,'Копія приписного','Копія посвідчення водія / інші посвідчення','Копія УБД']);assert(h.includes('Копія посвідчення водія / інші посвідчення.pdf'));checks++;
  h=await plan([...base,{document_type:'Копія приписного',file_name:'test.pdf',verification_status:'Не перевірено'}]);assert(h.includes('Потрібно підтвердити'));assert(h.includes('data-build disabled'));checks++;
  h=await plan(base);assert(h.includes('Військово-обліковий документ'));assert(h.includes('data-build disabled'));checks++;
- const cardSource=fs.readFileSync(root+'candidate-card-v2.js','utf8');
+ const cardSource=fs.readFileSync(root+'candidate-form-core.js','utf8');
  const saveStart=cardSource.indexOf('const saveCard=')+'const saveCard='.length;
  const saveEnd=cardSource.indexOf('    cardState.save=',saveStart);
  const saveFactory=new Function('context','with(context){return '+cardSource.slice(saveStart,saveEnd).trim().replace(/;$/,'')+'}');

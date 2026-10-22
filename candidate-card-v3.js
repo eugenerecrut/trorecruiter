@@ -1,14 +1,12 @@
-/* Candidate Card V3: optional presentation over the shared, existing V2 form. */
+/* Candidate presentation over the shared form/save core. */
 (function () {
   'use strict';
-  const openV2 = window.openCandidateCard;
-  if (typeof openV2 !== 'function') return;
+  const openCore = window.CRMCandidateFormCore?.open || window.openCandidateCard;
+  if (typeof openCore !== 'function') return;
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   const parse = v => { if (typeof v === 'string') { try { return JSON.parse(v) || {}; } catch { return {}; } } return v || {}; };
-  const key = 'crm.candidateCard.version.454';
   const activeTabs=new Map();
-  let version = 'v3', opening = false, fieldSequence = 0;
-  try { if (localStorage.getItem(key) === 'v2') version = 'v2'; } catch {}
+  let opening = false, fieldSequence = 0;
   const tabs = [['documents','ДОДАТИ ДОКУМЕНТИ',[14]],['review','ВИРІШИТИ ПИТАННЯ',[1,2,3,4,5,6,7,8,9,10,11,12,13,16]],['case','СФОРМУВАТИ СПРАВУ',[]]];
   const advanced = new Set(('name_genitive unzr birth_certificate shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status candidate_source recruiter_name recruitment_notes psychiatric_record_info work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
   const educationFields = {
@@ -124,8 +122,10 @@
   }
   async function mountV3(form, id) {
     const root = form.closest('.content'); root.classList.add('cc-v3'); form.dataset.cardVersion = 'v3';
+    const compact = window.CRMCandidateCaseView?.enabled() === true;
+    root.classList.toggle('cc-compact-case', compact);
     const cleanup = new MutationObserver(() => {
-      if (!form.isConnected) { root.classList.remove('cc-v3'); window.removeEventListener('resize',syncTop); cleanup.disconnect(); }
+      if (!form.isConnected) { root.classList.remove('cc-v3','cc-compact-case'); window.removeEventListener('resize',syncTop); cleanup.disconnect(); }
     });
     cleanup.observe(root,{childList:true});
     const header = document.createElement('section'); header.className = 'cc-v3-header'; header.setAttribute('aria-label','Кандидат');
@@ -151,13 +151,20 @@
     const historyButton = root.querySelector('[data-history]'); if (historyButton) history.append(historyButton);
     const nav = document.createElement('nav'); nav.className = 'cc-v3-nav'; nav.setAttribute('aria-label','Вкладки картки'); nav.setAttribute('role','tablist');
     header.after(nav); root.querySelector('#crmCardNav').hidden = true;
+    const caseSummary=document.createElement('section');caseSummary.className='cc-case-summary';caseSummary.setAttribute('aria-live','polite');caseSummary.hidden=!compact;nav.after(caseSummary);
+    if(compact){
+      const extraTools=document.createElement('details');extraTools.className='cc-case-extra';
+      const summary=document.createElement('summary');summary.textContent='Додаткові дії';extraTools.append(summary);
+      const toolHost=header.querySelector('.cc-v3-tools');while(toolHost.firstChild)extraTools.append(toolHost.firstChild);toolHost.append(extraTools);
+    }
     const title = {1:'Персональні дані',2:'Паспорт',3:'Контакти',4:'Адреси',5:'Освіта',6:'Робота',7:'Військова служба',8:'Військовий облік',9:'ВЛК',10:'Рекрутинг',11:'Контракт',12:'Примітки',13:'Рідні та близькі',14:'Документи',15:'Бланки',16:'Історія'};
     let active = activeTabs.get(id)||'documents';if(!tabs.some(t=>t[0]===active))active='documents';
     let manualEditing=false,reviewLoaded=false,caseLoaded=false;
     const manager=document.createElement('section');manager.className='cc-v3-document-manager';manager.setAttribute('role','tabpanel');manager.setAttribute('aria-labelledby','cc-v3-tab-documents');manager.hidden=true;form.querySelector('.cc-actions').before(manager);
     for(const type of ['input','change','click'])manager.addEventListener(type,event=>event.stopPropagation());
     window.CRMCaseAssistant?.mount(form,id);
-    const reviewHost=document.createElement('section');reviewHost.className='cc-v3-intake-review';reviewHost.hidden=true;form.before(reviewHost);
+    const assistant=root.querySelector('.crm-case-assistant');if(assistant)caseSummary.after(assistant);
+    const reviewHost=document.createElement('section');reviewHost.className='cc-v3-intake-review';reviewHost.hidden=true;caseSummary.after(reviewHost);
     const caseHost=document.createElement('section');caseHost.dataset.workflow='';caseHost.hidden=true;form.after(caseHost);
     const manual=document.createElement('button');manual.type='button';manual.textContent='Додатково: редагувати картку';manual.setAttribute('aria-expanded','false');manual.onclick=()=>{manualEditing=!manualEditing;manual.setAttribute('aria-expanded',String(manualEditing));select('review');if(manualEditing&&!window.CRMWorkspace?.card?.dirty)requestAnimationFrame(()=>{if(window.CRMWorkspace?.card?.dirty)return;form.querySelectorAll('[data-relative-row] [data-relative-field=full_name],[data-relative-row] [name=full_name]').forEach(input=>{input.value=input.defaultValue;const row=input.closest('[data-relative-row]'),summary=row.querySelector('summary');if(summary){const role=row.querySelector('[name=relationship]')?.value||'Родич';const birth=row.querySelector('[name=birth_date]')?.value||'';summary.textContent=[role,input.value,date(birth)].filter(Boolean).join(' · ');}});});};reviewHost.after(manual);manual.hidden=true;
     let managerLoading=false,managerLoaded=false;
@@ -222,10 +229,11 @@
       });
       form.querySelector('[data-card-photo]').hidden = true;
       activeTabs.set(id,active);manager.hidden=active!=='documents';reviewHost.hidden=active!=='review';manual.hidden=active!=='review';caseHost.hidden=active!=='case';
-      if(active==='review'&&!reviewLoaded&&candidate.id){reviewLoaded=true;CRMIntake.review(reviewHost,candidate,documents).catch(e=>{reviewHost.textContent=e.message;reviewLoaded=false;});}
+      if(active==='review'&&!reviewLoaded&&candidate.id){reviewLoaded=true;reviewHost.textContent='Звіряємо документи…';CRMIntake.review(reviewHost,candidate,documents).catch(e=>{reviewHost.textContent='Перевірку не завершено: '+e.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=()=>{reviewLoaded=false;select('review');};reviewHost.append(retry);});}
       if(active==='case'&&!caseLoaded&&candidate.id){caseLoaded=true;CRMWorkflow.mount(candidate,caseHost.parentElement).then(()=>{
         const tools=caseHost.querySelector('.wf-tools'),full=tools?.querySelector('[data-full-package]');
         if(full){const actions=document.createElement('div');actions.className='crm-case-primary';full.classList.add('primary');actions.append(full);tools.before(actions);tools.querySelector('summary').textContent='Окремі бланки та додаткові дії';}
+        if(compact){const planning=caseHost.querySelector('.wf-panel');if(planning)planning.open=false;}
       }).catch(e=>{caseHost.textContent=e.message;caseLoaded=false;});}
       form.querySelector('.cc-actions').hidden=!(active==='review'&&manualEditing)&&!CRMWorkspace.card.dirty;
       if(active==='documents')loadManager();
@@ -255,6 +263,16 @@
       header.querySelector('[data-v3-stage]').textContent = value('case_mode') === 'unit' ? 'Оформлює ВЧ' : CRMWorkflow.label(candidate);
       const totals=window.CRMDocumentState?.summary(candidate,CRMWorkspace.card.requirements||[],documents);
       const packet=window.CRMDocumentState?.packageState(candidate,documents);
+      if(compact&&candidate.id){
+        try{
+          const view=window.CRMCandidateCaseView.build(candidate,CRMWorkspace.card.personalFile||{},documents,CRMWorkspace.card.requirements||[]);
+          const text=CRMWorkspace.card.dirty?'Є незбережені зміни. Показники нижче — за збереженими даними.':view.nextAction.text;
+          const markup='<strong>'+esc(text)+'</strong><p>Перевірено документів: '+view.completeness.verified+' / '+view.completeness.total+' · Питань: '+view.issues.length+' · У роботі AI: '+view.completeness.processing+'</p><small>Паперові позначки: '+view.completeness.paper+'. Електронних копій: '+view.completeness.copies+'. Готовність верстки перевіряється під час формування PDF.</small>'+(view.nextAction.kind==='wait'?'':'<p><button type="button" data-case-next="'+view.nextAction.kind+'">'+esc(view.nextAction.kind==='case'?'Перейти до формування':'Переглянути питання і дані')+'</button></p>');
+          if(caseSummary.innerHTML!==markup)caseSummary.innerHTML=markup;
+          caseSummary.onclick=event=>{const button=event.target.closest('[data-case-next]');if(button)select(button.dataset.caseNext==='case'?'case':'review',true);};
+          for(const [tab,label] of [['documents','Додати документи'],['review','Перевірити питання'+(view.issues.length?' · '+view.issues.length:'')],['case','Сформувати справу']])nav.querySelector('[data-v3-tab="'+tab+'"]').textContent=label;
+        }catch(error){caseSummary.textContent='Не вдалося перевірити стан справи: '+error.message;}
+      }
       const indicators=totals?
         '<button type="button" data-indicator="documents">Комплект · '+totals.verified+'/'+totals.total+(totals.unknown?' · уточнити '+totals.unknown:'')+'</button><button type="button" data-indicator="documents">Копії · '+totals.copies+'</button><button type="button" data-indicator="documents">AI · '+('помилок '+totals.errors+(totals.processing?' · обробляється '+totals.processing:''))+'</button><button type="button" data-indicator="documents">PDF · '+(packet.ready?'готовий':'бракує '+packet.missing.length)+'</button><button type="button" data-indicator="military">ВЛК · '+esc(value('vlk_conclusion')?'висновок є':'немає висновку')+'</button>':'';
       if(header.querySelector('.cc-v3-indicators').innerHTML!==indicators)header.querySelector('.cc-v3-indicators').innerHTML=indicators;
@@ -317,27 +335,19 @@
   }
   async function open(id) {
     if (opening) return; opening = true;
+    const restoreReviewFocus=!!document.activeElement?.closest('.cc-v3-intake-review');
     try {
       document.querySelector('.content')?.classList.remove('cc-v3');
-      await openV2.call(window,id);
+      await openCore.call(window,id);
       const form = document.getElementById('candidateCardV2'); if (!form) return;
-      if (version === 'v3') {
-        try { await mountV3(form,id); }
-        catch (error) { console.error('Candidate Card V3:',error); document.querySelector('.content')?.classList.remove('cc-v3'); await openV2.call(window,id); version = 'v2'; try { localStorage.setItem(key,version); } catch {} }
-      }
-      if(version === 'v2' && window.CRMWorkflow?.mount && CRMWorkspace.card?.candidate){
-        const host=document.createElement('section');host.dataset.workflow='';form.after(host);
-        await CRMWorkflow.mount(CRMWorkspace.card.candidate,host.parentElement);
-      }
-      const target = document.querySelector('.cc-v3-tools .quick-actions') || document.querySelector('.dashboard-top .quick-actions');
-      if (target) {
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'cc-version-switch';
-        button.textContent = version === 'v3' ? 'Повернути V2' : 'Спробувати V3';
-        button.onclick = async () => {
-          if (CRMWorkspace.busy || !await CRMWorkspace.guard()) return;
-          version = version === 'v3' ? 'v2' : 'v3'; try { localStorage.setItem(key,version); } catch {}
-          await open(id);
-        }; target.append(button);
+      try { await mountV3(form,id);if(restoreReviewFocus)form.querySelector('[data-v3-tab=review]')?.focus(); }
+      catch (error) {
+        console.error('Candidate card presentation:',error);
+        document.querySelector('.content')?.classList.remove('cc-v3');
+        await openCore.call(window,id);
+        const notice=document.createElement('p');notice.setAttribute('role','alert');
+        notice.textContent='Спрощений екран не завантажився. Дані доступні у спільній формі; повторіть відкриття картки.';
+        document.getElementById('candidateCardV2')?.prepend(notice);
       }
     } finally { opening = false; }
   }

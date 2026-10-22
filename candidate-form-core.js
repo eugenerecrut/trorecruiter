@@ -1,4 +1,4 @@
-/* PSK_RECRUTER — full editable candidate card V2 */
+/* Shared candidate form and CAS save core. Presentation is mounted separately. */
 (function () {
   const esc = window.escapeHtml || function (v) {
     return String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
@@ -493,12 +493,13 @@
     return '<div class="cc-wide" data-work-editor><h4>Періоди трудової діяльності</h4><p class="cc-hint" data-work-summary>Підтверджені завершені періоди роботи: '+s.days+' календарних днів. Неповних періодів: '+s.incomplete+'. Це не розрахунок страхового стажу.</p><div data-work-rows>'+rows.map((r,i)=>row(r).replace('data-work-row','data-work-row data-work-index="'+i+'"')).join('')+'</div><button type="button" data-add-work>＋ Додати період</button><details style="margin-top:12px"><summary>Історія подій із документів ('+(profile.work_events?.length||0)+')</summary>'+ (profile.work_events||[]).map(x=>'<p>'+esc(x.event_date)+' · '+esc(({hire:'Прийняття',dismissal:'Звільнення',transfer:'Переведення',service_start:'Початок служби',service_end:'Завершення служби',unemployment_start:'Початок обліку безробітного',unemployment_end:'Зняття з обліку безробітного'})[x.kind]||x.kind)+' · '+esc(x.employer)+' · '+esc(x.position||'')+'</p>').join('')+'</details><p class="cc-hint">Порожня дата завершення не підтверджує поточну зайнятість. Оригінальні записи залишаються в контейнері документа.</p></div>';
   }
 
-  window.openCandidateCard = async function (candidateId) {
+  window.CRMCandidateFormCore = { open: async function (candidateId) {
     try { await renderCard(candidateId); }
     catch (e) {
-      console.error('Помилка відкриття картки кандидата V2:', e);
+      console.error('Помилка відкриття картки кандидата:', e);
       const content = document.querySelector('.content');
       if (content) content.innerHTML = `<div class="card"><b>Помилка відкриття картки кандидата.</b><div style="margin-top:8px;color:#a23f38">${esc(e?.message || e || 'Невідома помилка')}</div><button type="button" onclick="crmNavigate('candidates')" style="margin-top:14px;padding:9px 12px;border:1px solid #cfd8dc;border-radius:7px;background:#fff">← Назад до кандидатів</button></div>`;
     }
-  };
+  }};
+  window.openCandidateCard = window.CRMCandidateFormCore.open;
 })();

@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 
-const source=fs.readFileSync(path.join(__dirname,'..','candidate-card-v2.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'..','candidate-form-core.js'),'utf8');
 const helperStart=source.indexOf('  async function savePersonalFileCAS(');
 const helperEnd=source.indexOf('\n  function input(',helperStart);
 assert(helperStart>=0&&helperEnd>helperStart);

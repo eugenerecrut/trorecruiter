@@ -19,10 +19,10 @@ events.unshift({action:'documents_update',source_document_id:'wrong',changes:{ph
 assert.equal(v3.provenance(events).get('phone').id,null,'Document metadata is not a candidate field transfer');
 assert(v3.advanced.has('passport_data'));
 assert(v3.advanced.has('work_order_number'));
-const v2 = read('candidate-card-v2.js');
+const v2 = read('candidate-form-core.js');
 assert(v2.includes("if (!unit && typeof form.__crmEducationRecords === 'function') oldProfile.education_records = form.__crmEducationRecords();"));
 assert(v2.includes("candidateQuery.eq('updated_at',cardState.expectedUpdatedAt)"));
-assert(read('candidate-card-v3.js').includes("let version = 'v3'"));
+assert(!read('candidate-card-v3.js').includes('cc-version-switch'));
 assert(read('index.html').indexOf('candidate-card-v3.js') > read('index.html').indexOf('ai-recommendation-bridge.js'));
 assert(!read('candidate-card-v3.js').includes(".from('candidates').update"),'V3 must use the existing save, not a second candidate write');
 assert(!read('candidate-card-v3.js').includes(".rpc("),'AI merge unchanged');
