@@ -55,5 +55,9 @@
     };
   }
   root.CRMCandidateCaseView = { build: buildCandidateCaseView,
-    enabled: () => root.CRMFeatureFlags?.compactCaseView === true };
+    enabled: () => {
+      if(typeof root.CRMFeatureFlags?.compactCaseView==='boolean')return root.CRMFeatureFlags.compactCaseView;
+      // UI-only opt-in for read-only canary acceptance; never changes permissions or persisted data.
+      return !!root.location && new URLSearchParams(root.location.search).get('compactCaseView')==='1';
+    } };
 })(typeof window === 'undefined' ? globalThis : window);
