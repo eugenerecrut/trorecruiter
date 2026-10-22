@@ -305,11 +305,19 @@
     documents = CRMWorkspace.card.documents || [];
     refresh();
     const results = await Promise.allSettled([
-      supabaseClient.from('crm_activity').select('action,changes,source_document_id,occurred_at,actor_name').eq('candidate_id',id).order('occurred_at',{ascending:false}).limit(250)
+      supabaseClient.from('crm_activity').select('id,candidate_id,action,changes,source_document_id,occurred_at,actor_name').eq('candidate_id',id).order('occurred_at',{ascending:false}).limit(250)
     ]);
     if (!form.isConnected) return;
     const result = i => results[i].status === 'fulfilled' && !results[i].value.error ? results[i].value.data : null;
     const events = result(0); sources = provenance(events || []);
+    if(window.CRMCandidateFacts?.enabled()){
+      const factHost=document.createElement('section');factHost.className='cc-facts-shadow-host';caseSummary.after(factHost);
+      try{
+        const baseline=window.CRMCaseAssistant?.build(candidate,CRMWorkspace.card.requirements||[],documents,CRMWorkspace.card.personalFile||{});
+        const model=window.CRMCandidateFacts.build({candidate,personalFile:CRMWorkspace.card.personalFile||{},documents,requirements:CRMWorkspace.card.requirements||[],activity:events||[],comparison:baseline?{conflictCount:baseline.issues.filter(i=>i.kind==='conflict').length}:undefined});
+        window.CRMCandidateFacts.render(factHost,model);
+      }catch(error){factHost.textContent='Діагностика джерел недоступна. Чинні перевірки CRM працюють.';console.error('Facts shadow reader failed');}
+    }
     const historyContent = history.querySelector('.cc-v3-history-content');
     historyContent.textContent = '';
     if (!events) historyContent.textContent = 'Журнал зараз недоступний. Редагування картки працює.';
