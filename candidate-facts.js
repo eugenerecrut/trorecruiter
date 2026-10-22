@@ -187,6 +187,7 @@
   }catch{diagnostics.push({code:'planner-failed'});}
   for(const item of items){
    const doc=docById.get(item.doc.id);if(!doc)continue;
+   const contextCurrent=root.CRMReviewDecision?.contextMatches(doc,candidate);
    if(item.error){diagnostics.push({code:'document-plan-failed',documentId:doc.id});continue;}
    if(['AI помилка','AI обробка'].includes(doc.processing_status)){issues.push({kind:'technical-state',documentId:doc.id,state:doc.processing_status});continue;}
    for(const [index,row] of (item.plan?.rows||[]).entries()){
@@ -204,10 +205,12 @@
     claims.push(claim);fact.claimRefs.push(claim.id);
     const saved=object(doc.ai_extracted)._crm_review_decisions;
     for(const [di,d] of (Array.isArray(saved)?saved:[]).entries()){
+     if(!d||typeof d!=='object')continue;
      if(d.target!==row.target||d.key!==row.key)continue;
-     const current=d.action==='keep_card'&&!!d.reviewed_by&&!!d.reviewed_at&&equal(d.current,row.current)&&equal(d.incoming,row.incoming)&&d.reason===row.reason;
+     const binding=root.CRMReviewDecision?.binding(doc,d,candidate,contextCurrent)||'container-only';
+     const current=root.CRMReviewDecision?root.CRMReviewDecision.matches(doc,d,row,candidate,contextCurrent):!Object.prototype.hasOwnProperty.call(d,'source_binding')&&d.action==='keep_card'&&!!d.reviewed_by&&!!d.reviewed_at&&equal(d.current,row.current)&&equal(d.incoming,row.incoming)&&d.reason===row.reason;
      const decision={id:'decision:'+ref([doc.id,di]),candidateId:candidate.id,entityRef:fact.entityRef,fieldId:fact.fieldId,action:d.action,
-      state:current?'current-container-match':'stale-or-unverified',sourceBinding:'container-only',actorId:d.reviewed_by||null,reviewedAt:d.reviewed_at||null,documentId:doc.id};
+      state:current?(binding==='source-snapshot'?'current-source-match':'current-container-match'):'stale-or-unverified',sourceBinding:binding,actorId:d.reviewed_by||null,reviewedAt:d.reviewed_at||null,documentId:doc.id};
      const previous=decisions.find(x=>x.id===decision.id);
      if(!previous)decisions.push(decision);else if(current)Object.assign(previous,decision);
      if(current){fact.decisionRefs.push(decision.id);fact.protected=true;fact.protectionReason='keep-card-decision';}
@@ -218,12 +221,14 @@
   for(const doc of eligible){
    const saved=object(doc.ai_extracted)._crm_review_decisions;
    for(const [index,d] of (Array.isArray(saved)?saved:[]).entries()){
+    if(!d||typeof d!=='object')continue;
     const id='decision:'+ref([doc.id,index]);if(decisions.some(x=>x.id===id))continue;
     decisions.push({id,candidateId:candidate.id,entityRef:'candidate:'+candidate.id,fieldId:'legacy.'+d.target+'.'+d.key,action:d.action,
-     state:'not-in-current-plan',sourceBinding:'container-only',actorId:d.reviewed_by||null,reviewedAt:d.reviewed_at||null,documentId:doc.id});
+     state:'not-in-current-plan',sourceBinding:root.CRMReviewDecision?.binding(doc,d,candidate)||'container-only',actorId:d.reviewed_by||null,reviewedAt:d.reviewed_at||null,documentId:doc.id});
    }
   }
-  if(decisions.length)diagnostics.push({code:'legacy-decision-source-snapshot-unavailable',count:decisions.length});
+  const legacyDecisions=decisions.filter(d=>d.sourceBinding==='container-only');
+  if(legacyDecisions.length)diagnostics.push({code:'legacy-decision-source-snapshot-unavailable',count:legacyDecisions.length});
   const ownershipBlocked=new Set(items.filter(item=>(item.plan?.rows||[]).some(row=>/власник|інш.*особ|ПІБ не збігається/iu.test(row.reason||''))).map(item=>item.doc.id));
   for(const fact of facts){
    const rejected=fact.sourceRefs.filter(s=>ownershipBlocked.has(s.documentId));
