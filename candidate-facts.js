@@ -22,11 +22,16 @@
   ['family.marital_status',['candidate.marital_status','profile.marital_status']],['family.has_children',['candidate.has_children','profile.has_children']],
   ['family.address',['profile.family_residence_address']],['family.address_confirmed',['profile.family_residence_confirmed']]
  ];
- const collections=new Set(['relatives','education_records','work_records','work_events']);
+ const collectionIds={relatives:'family.relative',education_records:'education.record',work_records:'period.record',work_events:'period.event',military_rank_records:'military.rank_record',combat_records:'combat.record',awards:'award.record',reserve_training_records:'service.reserve_training'};
+ const collections=new Set(Object.keys(collectionIds));
  const recordFields={
   relatives:new Set('relationship full_name birth_date birth_place citizenship address phone workplace position notes deceased death_date death_date_precision'.split(' ')),
   education_records:new Set('degree institution specialty qualification graduation_year study_start_date study_end_date diploma_series diploma_number diploma_issue_date specialty_code supplement_number supplement_issue_date'.split(' ')),
-  work_records:new Set('kind employer employer_code position unit military_specialty location start_date end_date order_number order_date end_order_number end_order_date termination_reason position_changes'.split(' ')),
+  work_records:new Set('kind employer employer_code position unit military_specialty location locality disposition start_date end_date order_number order_date end_order_number end_order_date termination_reason position_changes'.split(' ')),
+  military_rank_records:new Set('rank order_issuer order_number order_date'.split(' ')),
+  combat_records:new Set('location start_date end_date'.split(' ')),
+  awards:new Set('name reason order_issuer order_number order_date'.split(' ')),
+  reserve_training_records:new Set('start_date end_date position military_specialty unit order_issuer order_number order_date'.split(' ')),
   work_events:new Set('kind employer employer_code position event_date date_precision order_number order_date termination_reason'.split(' '))
  };
  const generated=d=>/послужний список|анкета на контракт|перелік документів|реєстр кандидата|титульний/iu.test(d.document_type||'')||d.generated===true||d.is_generated===true;
@@ -87,7 +92,7 @@
     for(const key of Object.keys(record)){
      if(['field_sources','field_confirmations','source_document_id','source_pages','source_record_index','confirmed_by_user','manually_confirmed','accepted_by_ai','raw_text','requires_review','crossed_out','degree_raw'].includes(key))continue;
      if(!recordFields[collection].has(key)){recordUnmapped.push('profile.'+collection+'.'+index+'.'+key);continue;}
-     addFact((collection==='relatives'?'family.relative':collection==='education_records'?'education.record':collection==='work_records'?'period.record':'period.event')+'.'+key,['profile.'+collection+'.'+index+'.'+key],record,entity);
+     addFact(collectionIds[collection]+'.'+key,['profile.'+collection+'.'+index+'.'+key],record,entity);
     }
    }
   }
