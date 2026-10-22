@@ -17,7 +17,7 @@
 ### Факти та джерела
 
 - Початкове покриття: явні identity/contact/recruitment/absence шляхи, групи чинного `CRMFieldRegistry`, поля записів relatives/education_records/work_records/work_events.
-- Composite-група не перетворюється на один скаляр. Відмінні legacy-шляхи дають diagnostics, не мовчазне об’єднання.
+- Composite-група не перетворюється на один скаляр. Невідомі ключі записів залишаються в unmappedLocations, а рядки requires_review/crossed_out мають held=true. Відмінні legacy-шляхи дають diagnostics, не мовчазне об’єднання.
 - Непорожнє значення захищене навіть без provenance. Відсутність історії не позначається як «внесено вручну».
 - `human_confirmed` вказує лише на наявну явну ручну позначку в legacy metadata; renderer називає її саме позначкою, не перевіркою особи працівника.
 - `documented` означає явне посилання на придатне джерело або точний activity receipt. Це не новий дозвіл на автоматичний запис і не незалежна перевірка правдивості.

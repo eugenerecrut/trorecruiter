@@ -179,7 +179,7 @@
   const intro=document.createElement('p');intro.textContent='Діагностичний режим: факти '+model.facts.length+', пропозиції '+model.claims.length+', непокриті шляхи '+model.coverage.unmappedLocations.length+'. Не змінює картку або правила друку.';details.append(intro);
   if(model.shadow.conflictDelta!==null){const compare=document.createElement('p');compare.textContent='Конфлікти: чинний звіт '+model.shadow.baselineConflictCount+', адаптер '+model.shadow.conflictCount+'. Різниця '+model.shadow.conflictDelta+' (без застосування змін).';details.append(compare);}
   for(const fact of model.facts.filter(f=>!empty(f.value))){const row=document.createElement('p');
-   row.textContent=fact.fieldId+' · '+({documented:'є явне джерело',human_confirmed:'є ручна позначка підтвердження',legacy_unknown:'джерело не встановлено'})[fact.provenanceState]+(fact.protected?' · захищено':'');
+   row.textContent=fact.fieldId+' · '+({documented:'є явне джерело',human_confirmed:'є ручна позначка підтвердження',legacy_unknown:'джерело не встановлено'})[fact.provenanceState]+(fact.protected?' · захищено':'')+(fact.held?' · запис потребує перевірки':'');
    for(const source of fact.sourceRefs){const button=document.createElement('button');button.type='button';button.textContent='Відкрити джерело';
     button.onclick=async()=>{button.disabled=true;try{if(typeof root.openDocument!=='function')throw Error('Перегляд документа недоступний');await root.openDocument(source.documentId);}catch{button.textContent='Не вдалося відкрити джерело';}finally{button.disabled=false;}};row.append(button);}
    details.append(row);}
