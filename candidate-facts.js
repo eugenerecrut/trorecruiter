@@ -172,16 +172,27 @@
    if(prefix==='candidate'&&key==='profile_data')continue;
    const path=prefix+'.'+key;if(!covered.has(path))unmapped.push(path);
   }
+  // Print edits are presentation values, never evidence or canonical candidate facts.
+  const printOverrides=Object.entries(object(profile.service_record_print)).map(([key,value])=>({
+   key,value:copy(value),location:'profile.service_record_print.'+key,
+   fieldGroupId:root.CRMFieldRegistry?.forPrintKey?.(key)?.id||null,
+   state:typeof value==='string'?'stored-print-override':'invalid-print-override',
+   provenanceState:'legacy_unknown',protected:true
+  }));
+  if(own(profile,'service_record_print')){covered.add('profile.service_record_print');
+   const index=unmapped.indexOf('profile.service_record_print');if(index>=0)unmapped.splice(index,1);
+  }
+  for(const override of printOverrides)if(override.state==='invalid-print-override'||!override.fieldGroupId)diagnostics.push({code:override.state==='invalid-print-override'?'invalid-print-override':'unmapped-print-override',location:override.location});
   const conflicts=issues.filter(i=>i.kind==='proposal-conflict').length;
   const baseline=Number.isInteger(input.comparison?.conflictCount)?input.comparison.conflictCount:null;
-  return {version:1,mode:'shadow',snapshotId,candidateId:candidate.id,facts,claims,issues,decisions,diagnostics,
+  return {version:1,mode:'shadow',snapshotId,candidateId:candidate.id,facts,claims,issues,decisions,diagnostics,printOverrides,
    coverage:{mappedLocations:[...covered],unmappedLocations:unmapped,excludedDocuments:excluded,documentScope:'supplied-snapshot'},
    shadow:{conflictCount:conflicts,baselineConflictCount:baseline,conflictDelta:baseline===null?null:conflicts-baseline,automaticWrites:0}};
  }
  function render(host,model){
   const summary=document.createElement('summary');summary.textContent='Діагностика джерел (без запису)';
   const details=document.createElement('details');details.className='cc-facts-shadow';details.append(summary);
-  const intro=document.createElement('p');intro.textContent='Діагностичний режим: факти '+model.facts.length+', пропозиції '+model.claims.length+', непокриті шляхи '+model.coverage.unmappedLocations.length+'. Не змінює картку або правила друку.';details.append(intro);
+  const intro=document.createElement('p');intro.textContent='Діагностичний режим: факти '+model.facts.length+', пропозиції '+model.claims.length+', непокриті шляхи '+model.coverage.unmappedLocations.length+'. Друковані правки '+model.printOverrides.length+'. Не змінює картку або правила друку.';details.append(intro);
   if(model.shadow.conflictDelta!==null){const compare=document.createElement('p');compare.textContent='Конфлікти: чинний звіт '+model.shadow.baselineConflictCount+', адаптер '+model.shadow.conflictCount+'. Різниця '+model.shadow.conflictDelta+' (без застосування змін).';details.append(compare);}
   for(const fact of model.facts.filter(f=>!empty(f.value))){const row=document.createElement('p');
    row.textContent=fact.fieldId+' · '+({documented:'є явне джерело',human_confirmed:'є ручна позначка підтвердження',legacy_unknown:'джерело не встановлено'})[fact.provenanceState]+(fact.protected?' · захищено':'')+(fact.held?' · запис потребує перевірки':'');
