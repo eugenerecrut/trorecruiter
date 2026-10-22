@@ -233,7 +233,12 @@
       if(active==='case'&&!caseLoaded&&candidate.id){caseLoaded=true;CRMWorkflow.mount(candidate,caseHost.parentElement).then(()=>{
         const tools=caseHost.querySelector('.wf-tools'),full=tools?.querySelector('[data-full-package]');
         if(full){const actions=document.createElement('div');actions.className='crm-case-primary';full.classList.add('primary');actions.append(full);tools.before(actions);tools.querySelector('summary').textContent='Окремі бланки та додаткові дії';}
-        if(compact){const planning=caseHost.querySelector('.wf-panel');if(planning)planning.open=false;}
+        if(compact){const planning=caseHost.querySelector('.wf-panel');if(planning){
+          // Generators are nested in the legacy stage panel. Move their existing
+          // nodes/handlers out before folding stages, otherwise PDF actions disappear.
+          const primary=caseHost.querySelector('.crm-case-primary');
+          if(primary)planning.before(primary);if(tools)planning.before(tools);planning.open=false;
+        }}
       }).catch(e=>{caseHost.textContent=e.message;caseLoaded=false;});}
       form.querySelector('.cc-actions').hidden=!(active==='review'&&manualEditing)&&!CRMWorkspace.card.dirty;
       if(active==='documents')loadManager();

@@ -17,6 +17,9 @@ const {chromium}=require('C:/Users/eugen/.cache/codex-runtimes/codex-primary-run
    await page.locator('#qa-tests').click();await page.waitForFunction(()=>/^(PASS|FAIL)/.test(document.querySelector('#qa-result').textContent));
    const result=await page.locator('#qa-result').textContent();if(!result.startsWith('PASS'))throw Error(result);
    if(compact){
+    await page.getByRole('tab',{name:'Сформувати справу',exact:true}).click();
+    await page.locator('[data-full-package]').waitFor({state:'visible'});
+    if(await page.locator('.wf-panel').getAttribute('open')!==null)throw Error('Stage panel should remain folded');
     if((await page.locator('.cc-case-summary').textContent()).includes('Не вдалося'))throw Error(await page.locator('.cc-case-summary').textContent());
     await page.getByRole('tab',{name:/Перевірити питання/}).click();
     const order=await page.evaluate(()=>document.querySelector('.cc-v3-header').compareDocumentPosition(document.querySelector('.cc-v3-intake-review'))&Node.DOCUMENT_POSITION_FOLLOWING);
