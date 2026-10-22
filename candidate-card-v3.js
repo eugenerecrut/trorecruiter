@@ -305,7 +305,7 @@
     documents = CRMWorkspace.card.documents || [];
     refresh();
     const results = await Promise.allSettled([
-      supabaseClient.from('crm_activity').select('action,changes,source_document_id,occurred_at,actor_name').eq('candidate_id',id).order('occurred_at',{ascending:false}).limit(250)
+      supabaseClient.from('crm_activity').select('id,candidate_id,action,changes,source_document_id,occurred_at,actor_name').eq('candidate_id',id).order('occurred_at',{ascending:false}).limit(250)
     ]);
     if (!form.isConnected) return;
     const result = i => results[i].status === 'fulfilled' && !results[i].value.error ? results[i].value.data : null;

@@ -6,6 +6,8 @@
 
 Увімкнення лише діагностики: `?compactCaseView=1&factsShadow=1` або `window.CRMFeatureFlags.factsShadow=true`. За замовчуванням вимкнено; явний false блокує URL opt-in. Параметр не впливає на дозволи чи запис у БД. У картці з’являється згорнута службова секція «Діагностика джерел (без запису)»; відкриття джерела використовує чинний `openDocument`.
 
+До вже наявної вибірки журналу додано `id,candidate_id`, щоб reader міг перевірити належність receipt ідентифікованій картці. Фільтр candidate_id, ліміт 250, RLS та кількість мережевих запитів не змінюються.
+
 ## API
 
 `CRMCandidateFacts.build({candidate, personalFile, documents, requirements, activity, comparison})` — синхронний reader без мережевих викликів. Дані копіюються до виклику чинних planner/policy, тому їхня нормалізація не змінює аргументи caller.
