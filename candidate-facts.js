@@ -33,6 +33,14 @@
   ['family.marital_status',['candidate.marital_status','profile.marital_status']],['family.has_children',['candidate.has_children','profile.has_children']],
   ['family.address',['profile.family_residence_address']],['family.address_confirmed',['profile.family_residence_confirmed']]
  ];
+ // Scalar fields from the current form. Keep legacy summaries separate from
+ // individual diploma/service records; no inferred qualification or date conversion.
+ for(const [group,keys] of [
+  ['education.saved','education_level education_institution education_specialty education_qualification education_year education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date'],
+  ['military.registration','military_document_number military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status military_document_type'],
+  ['service.saved','military_unit military_position service_end_date combat_days']
+ ])for(const key of keys.split(' '))definitions.push([group+'.'+key,['profile.'+key]]);
+ definitions.push(['military.tcc',['candidate.tcc']],['education.saved.summary',['personal_file.education']]);
  const collectionIds={relatives:'family.relative',education_records:'education.record',work_records:'period.record',work_events:'period.event',military_rank_records:'military.rank_record',combat_records:'combat.record',awards:'award.record',reserve_training_records:'service.reserve_training'};
  const collections=new Set(Object.keys(collectionIds));
  const recordFields={
