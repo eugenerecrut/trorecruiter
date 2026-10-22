@@ -15,3 +15,9 @@ test('Missing obligatory document appears once and retains its requirement',()=>
 
 
 test('Service readiness is independent from PDF package and sees personal-file fallback',()=>{const c=candidate();c.rnokpp='1234567890';delete c.birth_place;const r=build(c,[],[],{birth_place:'Дніпро'});assert.equal(r.serviceRecord.ready,true);assert.equal(r.package.ready,false);assert.equal(r.ready,false);delete c.rnokpp;assert(build(c,[],[],{birth_place:'Дніпро'}).serviceRecord.issues.some(i=>i.fieldId==='identity.tax_number'));});
+
+test('case report respects saved intake decisions and never offers stale pending OCR',()=>{
+ const d={id:'decision',ai_extracted:{},rows:[{key:'phone',action:'conflict'}]},pending={id:'pending',ai_extracted:{},processing_status:'AI обробка',rows:[{key:'rnokpp',action:'fill'}]};
+ w.CRMIntake={items:(_c,docs)=>docs.map(doc=>({doc,plan:doc.processing_status==='AI обробка'?null:{rows:doc.rows.map(r=>({...r,action:'leave'}))}}))};
+ try{const r=build(candidate(),[],[d,pending]);assert.equal(r.issues.length,0);assert.equal(r.fills.length,0);}finally{delete w.CRMIntake;}
+});

@@ -4,6 +4,12 @@ const c={id:'c',full_name:'Тестенко Іван',birth_date:null};
 const d=(id,value,extra={})=>({id,candidate_id:'c',document_type:id,storage_path:id,ai_confidence:.95,ai_extracted:{full_name:c.full_name,birth_date:value},...extra});
 test('agreement records two sources but never promotes AI to learning',()=>{const r=x.compare([d('a','2000-01-01'),d('b','2000-01-01')],c).find(r=>r.key==='birth_date');assert.equal(r.status,'corroborated');assert.equal(r.learning_eligible,false)});
 test('conflict blocks candidate fill and keeps sources',()=>{const e=x.compare([d('a','2000-01-01'),d('b','2001-01-01')],c);const p=x.guard({rows:[{target:'candidate',key:'birth_date',action:'fill'}],selections:[{target:'candidate',key:'birth_date'}]},e);assert.equal(p.selections.length,0);assert.equal(p.rows[0].action,'conflict')});
+
+test('cross-document guard does not invent conflicts for absent or matching facts or hide ownership errors',()=>{
+ const evidence=[{key:'birth_date',status:'conflict',sources:[{document_id:'other'}]}];
+ const rows=[{target:'candidate',key:'birth_date',action:'leave',incoming:null},{target:'candidate',key:'birth_date',action:'leave',current:'2000-01-01',incoming:'2000-01-01'},{target:'candidate',key:'birth_date',action:'conflict',reason:'ПІБ не збігається: звірте власника документа'}];
+ const p=x.guard({rows,selections:[]},evidence);assert.equal(p.rows[0].action,'leave');assert.equal(p.rows[1].action,'leave');assert.match(p.rows[2].reason,/власника/);assert.equal(p.crosscheck,evidence);
+});
 test('same file, old versions, children, wrong owner and invalid dates do not corroborate',()=>{for(const extra of [{storage_path:'a'},{deleted_at:'now'},{document_type:'Свідоцтво про народження дітей'},{ai_extracted:{full_name:'Інша Особа',birth_date:'2000-01-01'}},{ai_extracted:{full_name:c.full_name,birth_date:'2000-02-31'}}]){const r=x.compare([d('a','2000-01-01'),d('b','2000-01-01',extra)],c).find(r=>r.key==='birth_date');assert.equal(r.status,'single_source')}});
 test('latest version only and existing manual fact preserved',()=>{const e=x.compare([d('a','2000-01-01',{version_group_id:'r',version_number:1}),d('b','2001-01-01',{version_group_id:'r',version_number:2})],{...c,birth_date:'2000-01-01'}).find(r=>r.key==='birth_date');assert.equal(e.sources.length,1);assert.equal(e.status,'conflict')});
 

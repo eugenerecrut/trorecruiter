@@ -4,7 +4,9 @@
   const empty = v => v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v)&&v.length===0);
   const norm = v => String(v ?? '').normalize('NFKC').replace(/[’ʼ`]/g,"'").trim().replace(/\s+/g,' ').toLocaleLowerCase('uk');
   const object = v => { if(typeof v==='string'){try{v=JSON.parse(v)}catch(_){return {}}}return v && typeof v==='object' && !Array.isArray(v)?v:{}; };
-  const equal = (a,b) => typeof a==='object'||typeof b==='object'?JSON.stringify(a)===JSON.stringify(b):norm(a)===norm(b);
+  // Object property order is not a difference in document facts. Array order stays significant.
+  const stable = v => JSON.stringify(v,(_key,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.keys(value).sort().map(k=>[k,value[k]])):value);
+  const equal = (a,b) => typeof a==='object'||typeof b==='object'?stable(a)===stable(b):norm(a)===norm(b);
   function flatten(value) {
     const e=object(value), out={...e}, formatConflicts=[];
     for(const section of ['personal','service'])for(const [k,v] of Object.entries(object(e[section]))){if(!empty(out[k])&&!empty(v)&&!equal(out[k],v))formatConflicts.push(k);if(empty(out[k]))out[k]=v;}
@@ -65,7 +67,7 @@
         const field='relatives.'+i+'.'+key;
         if(/_date$/.test(key)&&!date(v,true)){add('profile',field,v,'conflict','Некоректна дата',dest[key]);continue;}
         if(empty(dest[key])){add('profile',field,v,'fill','',dest[key]);dest[key]=v;dest.field_sources={...object(dest.field_sources),[key]:documentId};}
-        else add('profile',field,v,equal(dest[key],v)?'leave':'conflict',equal(dest[key],v)?'':'Збережене значення родича має пріоритет',dest[key]);
+        else {const same=key==='phone'&&root.CRMPhone?equal(root.CRMPhone.normalize(dest[key]),root.CRMPhone.normalize(v)):equal(dest[key],v);add('profile',field,v,same?'leave':'conflict',same?'':'Збережене значення родича має пріоритет',dest[key]);}
       }
       if(!Array.isArray(current)||!current.some(x=>relativeKey(x)===relativeKey(r)))add('profile','relatives.'+i,r,'fill','Новий родич',null);
     }

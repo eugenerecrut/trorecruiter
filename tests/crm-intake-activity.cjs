@@ -29,3 +29,18 @@ test('keep-card decision closes only the exact saved question and reopens on cha
  const c=context([]);c.CRMResponsibility={latest:docs=>docs};const conflict={target:'candidate',key:'phone',action:'conflict',current:'111',incoming:'222',reason:'Збережене значення має пріоритет'};c.CRMDocumentSync={plan:()=>({supported:true,selections:[],rows:[{...conflict}]})};vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-intake.js'),'utf8'),c);
  const doc={ai_extracted:{_crm_review_decisions:[{...conflict,action:'keep_card',reviewed_by:'user',reviewed_at:'now'}]}};assert.equal(c.CRMIntake.items({},[doc])[0].conflicts.length,0);conflict.incoming='333';assert.equal(c.CRMIntake.items({},[doc])[0].conflicts.length,1);
 });
+
+test('relative phones in local and international notation agree without changing saved values',()=>{
+ const c=context([]);c.document={addEventListener(){}};vm.runInContext(fs.readFileSync(path.join(__dirname,'../candidate-phone.js'),'utf8'),c);vm.runInContext(fs.readFileSync(path.join(__dirname,'../document-ai-sync.js'),'utf8'),c);
+ const stored=[{relationship:'Мати',full_name:'Тестенко Олена Іванівна',phone:'+380501234567'}],rows=[];
+ const merged=c.CRMDocumentSync.mergeRelatives(stored,[{relationship:'Мати',full_name:stored[0].full_name,phone:'050 123-45-67'}],(...args)=>rows.push(args),'d');
+ assert.equal(rows[0][3],'leave');assert.equal(merged[0].phone,stored[0].phone);
+ const different=[];c.CRMDocumentSync.mergeRelatives(stored,[{relationship:'Мати',full_name:stored[0].full_name,phone:'0501234568'}],(...args)=>different.push(args),'d');assert.equal(different[0][3],'conflict');
+});
+
+test('reordered certificate object keys do not create a conflict; changed facts still do',()=>{
+ const c=context(files),candidate={id:'c',full_name:'Тестенко Іван Петрович',profile_data:{ubd_certificate:{number:'123',source_document_id:'d',issue_date:'2024-01-01',series:'УБД'}}};
+ const doc={id:'d',candidate_id:'c',document_type:'Копія УБД',verification_status:'Підтверджено',ai_extracted:{full_name:candidate.full_name,document_date:'2024-01-01',document_series:'УБД',document_number:'123'}};
+ const p=c.CRMDocumentSync.plan(doc,candidate);assert.equal(p.rows.find(r=>r.key==='ubd_certificate')?.action,'leave');assert.equal(p.selections.length,0);
+ doc.ai_extracted.document_number='124';assert.equal(c.CRMDocumentSync.plan(doc,candidate).rows.find(r=>r.key==='ubd_certificate')?.action,'conflict');
+});
