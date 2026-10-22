@@ -100,10 +100,12 @@
    const records=profile[collection];if(records!==undefined&&!Array.isArray(records)){diagnostics.push({code:'invalid-collection',location:'profile.'+collection});continue;}
    covered.add('profile.'+collection);
    for(const [index,record] of (records||[]).entries()){
-    if(!record||typeof record!=='object'){diagnostics.push({code:'invalid-record',location:'profile.'+collection+'.'+index});continue;}
+    if(!record||typeof record!=='object'||Array.isArray(record)){recordUnmapped.push('profile.'+collection+'.'+index);diagnostics.push({code:'invalid-record',location:'profile.'+collection+'.'+index});continue;}
     const entity=snapshotId+':'+collection+':'+index;
     if(record.requires_review===true||record.crossed_out===true)diagnostics.push({code:'held-record',entityRef:entity});
+    if(collection==='relatives'&&(own(record,'relationship')||own(record,'relation')))addFact('family.relative.relationship',['profile.relatives.'+index+'.relationship','profile.relatives.'+index+'.relation'],record,entity);
     for(const key of Object.keys(record)){
+     if(collection==='relatives'&&['relationship','relation'].includes(key))continue;
      if(metadataKeys.has(key))continue;
      if(!recordFields[collection].has(key)){recordUnmapped.push('profile.'+collection+'.'+index+'.'+key);continue;}
      addFact(collectionIds[collection]+'.'+key,['profile.'+collection+'.'+index+'.'+key],record,entity);
