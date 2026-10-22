@@ -227,6 +227,16 @@
     diagnostics.push({code:'provenance-owner-blocked',factId:fact.id,documentIds:rejected.map(s=>s.documentId)});
    }
   }
+  // Exact scalar agreement can help locate a document, but never proves
+  // historical origin or upgrades human/document provenance.
+  for(const fact of facts){fact.matchingEvidence=[];
+   if(fact.held||empty(fact.value)||typeof fact.value==='object')continue;
+   const seen=new Set(fact.sourceRefs.map(source=>source.documentId));
+   for(const claim of claims.filter(claim=>fact.claimRefs.includes(claim.id))){const doc=docById.get(claim.source.documentId);
+    if(!doc||seen.has(doc.id)||ownershipBlocked.has(doc.id)||doc.verification_status!=='Підтверджено'||claim.proposalAction!=='leave'||claim.reason||!equal(claim.rawValue,fact.value)||!equal(claim.plannerCurrent,fact.value))continue;
+    fact.matchingEvidence.push({claimId:claim.id,source:copy(claim.source),relationship:'same-value-not-origin'});seen.add(doc.id);
+   }
+  }
   // A record marked accepted_by_ai is deliberately not a human confirmation.
   const unmapped=[...recordUnmapped];
   for(const [prefix,record] of [['candidate',candidate],['profile',profile],['personal_file',personal]])for(const key of Object.keys(record)){
@@ -292,6 +302,10 @@
    row.textContent=labelFor(fact.fieldId)+(labelFor(fact.fieldId)!==fact.fieldId?' ['+fact.fieldId+']':'')+' · '+({documented:'є явне джерело',human_confirmed:'є ручна позначка підтвердження',legacy_unknown:'джерело не встановлено'})[fact.provenanceState]+(fact.protected?' · захищено':'')+(fact.held?' · запис потребує перевірки':'');
    for(const source of fact.sourceRefs){const button=document.createElement('button');button.type='button';button.textContent='Відкрити джерело';
     button.onclick=async()=>{button.disabled=true;try{if(typeof root.openDocument!=='function')throw Error('Перегляд документа недоступний');await root.openDocument(source.documentId);}catch{button.textContent='Не вдалося відкрити джерело';}finally{button.disabled=false;}};row.append(button);}
+   for(const evidence of fact.matchingEvidence){const note=document.createElement('span');note.textContent=' · Є точний збіг у документі (не доказ походження поля)';row.append(note);
+    const button=document.createElement('button');button.type='button';button.textContent='Звірити документ зі збігом';
+    button.onclick=async()=>{button.disabled=true;try{if(typeof root.openDocument!=='function')throw Error('Перегляд документа недоступний');await root.openDocument(evidence.source.documentId);}catch{button.textContent='Не вдалося відкрити документ';}finally{button.disabled=false;}};row.append(button);
+   }
    details.append(row);}
   host.replaceChildren(details);
  }
