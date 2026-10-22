@@ -234,7 +234,7 @@
    const seen=new Set(fact.sourceRefs.map(source=>source.documentId));
    for(const claim of claims.filter(claim=>fact.claimRefs.includes(claim.id))){const doc=docById.get(claim.source.documentId);
     if(!doc||seen.has(doc.id)||ownershipBlocked.has(doc.id)||doc.verification_status!=='Підтверджено'||claim.proposalAction!=='leave'||claim.reason||!equal(claim.rawValue,fact.value)||!equal(claim.plannerCurrent,fact.value))continue;
-    fact.matchingEvidence.push({claimId:claim.id,source:copy(claim.source),relationship:'same-value-not-origin'});seen.add(doc.id);
+    fact.matchingEvidence.push({claimId:claim.id,source:copy(claim.source),documentLabel:[doc.document_type,doc.file_name].filter(Boolean).join(' · ')||'Документ',relationship:'same-value-not-origin'});seen.add(doc.id);
    }
   }
   // A record marked accepted_by_ai is deliberately not a human confirmation.
@@ -298,14 +298,23 @@
     const paths=[...new Set([diagnostic.location,diagnostic.cardLocation,...(diagnostic.locations||diagnostic.canonicalLocations||[])].filter(Boolean))];
     item.textContent=(fieldId?labelFor(fieldId)+' · ':'')+(diagnosticLabels[diagnostic.code]||'Інша діагностична подія')+' · '+diagnostic.code+(paths.length?' · '+paths.join(' ↔ '):'');section.append(item);}details.append(section);
   }
+  const matchingDocuments=new Map();
+  for(const fact of model.facts)for(const evidence of fact.matchingEvidence){const id=evidence.source.documentId;
+   if(!matchingDocuments.has(id))matchingDocuments.set(id,{label:evidence.documentLabel||'Документ',fields:new Set()});
+   matchingDocuments.get(id).fields.add(labelFor(fact.fieldId));
+  }
+  if(matchingDocuments.size){const section=document.createElement('details'),title=document.createElement('summary');title.textContent='Документи з точними збігами: '+matchingDocuments.size;section.append(title);
+   const note=document.createElement('p');note.textContent='Збіг значення не доводить походження поля. Один документ може збігатися з кількома полями; це не незалежні підтвердження.';section.append(note);
+   for(const [id,matched] of matchingDocuments){const row=document.createElement('p');row.textContent=matched.label+' · Поля: '+[...matched.fields].join(', ');
+    const button=document.createElement('button');button.type='button';button.textContent='Звірити документ зі збігом';
+    button.onclick=async()=>{button.disabled=true;try{if(typeof root.openDocument!=='function')throw Error('Перегляд документа недоступний');await root.openDocument(id);}catch{button.textContent='Не вдалося відкрити документ';}finally{button.disabled=false;}};row.append(button);section.append(row);
+   }details.append(section);
+  }
   for(const fact of model.facts.filter(f=>!empty(f.value))){const row=document.createElement('p');
    row.textContent=labelFor(fact.fieldId)+(labelFor(fact.fieldId)!==fact.fieldId?' ['+fact.fieldId+']':'')+' · '+({documented:'є явне джерело',human_confirmed:'є ручна позначка підтвердження',legacy_unknown:'джерело не встановлено'})[fact.provenanceState]+(fact.protected?' · захищено':'')+(fact.held?' · запис потребує перевірки':'');
    for(const source of fact.sourceRefs){const button=document.createElement('button');button.type='button';button.textContent='Відкрити джерело';
     button.onclick=async()=>{button.disabled=true;try{if(typeof root.openDocument!=='function')throw Error('Перегляд документа недоступний');await root.openDocument(source.documentId);}catch{button.textContent='Не вдалося відкрити джерело';}finally{button.disabled=false;}};row.append(button);}
-   for(const evidence of fact.matchingEvidence){const note=document.createElement('span');note.textContent=' · Є точний збіг у документі (не доказ походження поля)';row.append(note);
-    const button=document.createElement('button');button.type='button';button.textContent='Звірити документ зі збігом';
-    button.onclick=async()=>{button.disabled=true;try{if(typeof root.openDocument!=='function')throw Error('Перегляд документа недоступний');await root.openDocument(evidence.source.documentId);}catch{button.textContent='Не вдалося відкрити документ';}finally{button.disabled=false;}};row.append(button);
-   }
+   if(fact.matchingEvidence.length){const note=document.createElement('span');note.textContent=' · Документів із точним збігом: '+fact.matchingEvidence.length+' (див. згрупований список)';row.append(note);}
    details.append(row);}
   host.replaceChildren(details);
  }
