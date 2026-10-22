@@ -29,6 +29,7 @@ const {chromium}=require('C:/Users/eugen/.cache/codex-runtimes/codex-primary-run
     await page.setViewportSize({width:390,height:844});
     // Fixture toolbar is test-only; measure the actual candidate screen.
     await page.addStyleTag({content:'#qa{display:none}'});
+    if(factsShadow)await page.locator('.cc-facts-shadow > summary').click();
     if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile horizontal overflow');
     for(const tab of await page.getByRole('tab').all())if(!await tab.isVisible())throw Error('Hidden primary action');
     await page.screenshot({path:path.join(root,'tmp/issue-71-compact-mobile.png'),fullPage:true});

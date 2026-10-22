@@ -74,6 +74,9 @@
 .cc-v3 .crm-case-primary>button{min-height:38px}
 .cc-case-summary{padding:12px;border:1px solid var(--v3-line);border-radius:8px;margin:10px 0;overflow-wrap:anywhere}
 .cc-case-summary p{margin:6px 0}.cc-case-extra>summary{cursor:pointer;padding:8px}
+.cc-facts-shadow-host{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.cc-facts-shadow{margin:10px 0;padding:10px;border:1px solid var(--v3-line);border-radius:8px}
+.cc-facts-shadow>summary{cursor:pointer;min-height:36px}.cc-facts-shadow button{margin:4px;min-height:36px}
 .cc-compact-case .cc-v3-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
 .cc-compact-case .cc-v3-nav button{white-space:normal;min-height:44px;overflow-wrap:anywhere}
 .cc-compact-case .cc-v3-nav button:focus-visible,.cc-v3-tip>button:focus-visible{outline:3px solid #2463a3;outline-offset:2px}
