@@ -24,7 +24,7 @@ try{
  grant select,insert,update,delete on public.${name} to authenticated;
  insert into public.${name} values(1,'manual');`);
  await db.exec(`create function public.sync_candidate_document_requirements(p_candidate_id uuid) returns void language plpgsql security definer as $$begin update public.candidates set value='changed';end$$;`);
- await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261023050513_splav_processor_isolation.sql'),'utf8'));
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261023061609_splav_processor_isolation.sql'),'utf8'));
  await db.exec(`create trigger crm_staff_sync after insert or update on auth.users for each row execute function crm_private.sync_staff();`);
  await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[human,'human@test.invalid',{full_name:'Людина',crm_account_type:'splav_processor'}]);
  await db.query('insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values($1,$2,$3,$4)',[bot,'splav-worker@trorecruiter.invalid',{full_name:'forged'},{crm_account_type:'splav_processor'}]);

@@ -23,8 +23,8 @@ try{
  grant select,insert,update,delete on public.${name} to authenticated;`);}
  await db.exec(`alter table storage.objects enable row level security;create policy permissive on storage.objects for all to authenticated using(true) with check(true);grant all on storage.objects to authenticated;`);
  await db.exec(file('supabase/migrations/20261016122542_repair_document_sync_utf8_literals.sql'));
- await db.exec(file('supabase/migrations/20261023050513_splav_processor_isolation.sql'));
- await db.exec(file('supabase/migrations/20261023051257_splav_durable_jobs.sql'));
+ await db.exec(file('supabase/migrations/20261023061609_splav_processor_isolation.sql'));
+ await db.exec(file('supabase/migrations/20261023061646_splav_durable_jobs.sql'));
  await db.exec(`insert into auth.users(id) values('${id(1)}'),('${id(2)}'),('${id(3)}');
  insert into public.crm_staff values('${id(1)}','Human','recruiter',true),('${id(2)}','СПЛАВ','processor',true),('${id(3)}','Other','recruiter',true);
  insert into public.candidates(id,full_name,profile_data) values('${id(10)}','Candidate','{"service_type":"За мобілізацією","manual":"preserve"}'),('${id(11)}','Other','{}');

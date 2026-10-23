@@ -15,7 +15,7 @@ try{
  create table cron.job(jobid bigint generated always as identity primary key,jobname text unique,schedule text,command text);
  create function cron.schedule(name text,period text,sql text) returns bigint language plpgsql as $$declare result bigint;begin insert into cron.job(jobname,schedule,command) values(name,period,sql) on conflict(jobname) do update set schedule=excluded.schedule,command=excluded.command returning jobid into result;return result;end$$;
  create function cron.unschedule(wanted bigint) returns boolean language plpgsql as $$begin delete from cron.job where jobid=wanted;return found;end$$;`);
- const migration=fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261023052535_splav_worker_bootstrap.sql'),'utf8').replace(/^create extension .*;\r?\n/gm,'');
+ const migration=fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261023061703_splav_worker_bootstrap.sql'),'utf8').replace(/^create extension .*;\r?\n/gm,'');
  await db.exec(migration);
  await db.query("insert into auth.users values($1,'splav-worker@trorecruiter.invalid','{\"crm_account_type\":\"splav_processor\"}',null)",[id]);await db.query("insert into public.crm_staff values($1,'processor',false)",[id]);
  const configure=()=>db.query('select public.crm_splav_configure_worker($1,$2,$3,$4,$5)',[id,password,dispatch,key,'https://vhfysipxorlhuiaatxqi.supabase.co']);
