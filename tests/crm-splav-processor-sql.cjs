@@ -29,10 +29,14 @@ try{
  await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)',[human,'human@test.invalid',{full_name:'Людина',crm_account_type:'splav_processor'}]);
  await db.query('insert into auth.users(id,email,raw_user_meta_data,raw_app_meta_data) values($1,$2,$3,$4)',[bot,'splav-worker@trorecruiter.invalid',{full_name:'forged'},{crm_account_type:'splav_processor'}]);
  await db.query('insert into auth.users(id,email) values($1,$2)',[other,'other@test.invalid']);
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261023094034_splav_auth_metadata_arrival.sql'),'utf8'));
  const staff=async(id)=>(await db.query('select * from public.crm_staff where user_id=$1',[id])).rows[0];
  assert.equal((await staff(human)).role,'recruiter');assert.equal((await staff(human)).active,true);checks+=2;
  assert.equal((await staff(bot)).role,'processor');assert.equal((await staff(bot)).active,false);assert.equal((await staff(bot)).display_name,'СПЛАВ');checks+=3;
  await db.query("update auth.users set raw_user_meta_data='{}',banned_until=null where id=$1",[bot]);assert.equal((await staff(bot)).active,false);checks++;
+ await db.query("update auth.users set raw_app_meta_data='{\"crm_account_type\":\"splav_processor\"}' where id=$1",[other]);
+ assert.equal((await staff(other)).role,'processor');assert.equal((await staff(other)).active,false);checks+=2;
+ await db.query('update auth.users set banned_until=null where id=$1',[other]);assert.equal((await staff(other)).active,false);checks++;
  await db.exec(`set role authenticated;set request.jwt.claim.sub='${human}'`);
  for(const table of [...tables,'storage.objects']){
    const rel=table.includes('.')?table:'public.'+table;
@@ -68,3 +72,4 @@ try{
  await db.exec(`reset role;set role anon`);await assert.rejects(db.query('select crm_private.is_processor()'),/permission denied/);checks++;
  console.log(`СПЛАВ processor isolation: ${checks} PostgreSQL checks passed`);
 }finally{await db.close();}})().catch(error=>{console.error(error);process.exitCode=1;});
+
