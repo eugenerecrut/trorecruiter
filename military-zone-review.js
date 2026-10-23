@@ -19,7 +19,7 @@ async function open(doc,{autostart=false}={}){
   else{const scale=Math.min(1,Math.sqrt(8000000/(bitmap.width*bitmap.height)));source.width=Math.ceil(bitmap.width*scale);source.height=Math.ceil(bitmap.height*scale);source.getContext('2d').drawImage(bitmap,0,0,source.width,source.height);}
   if(closed||token!==renderId)return;sourceReady=true;setBox(full);$('[data-page]').textContent=page+' / '+total;$('[data-zones]').replaceChildren();$('[data-quality]').textContent='';status('Огляньте сторінку або виділіть рядок таблиці.');
  }catch(e){status(e.message);if(autoActive)throw e;}finally{if(!closed&&token===renderId)lock(false)}}
- async function read(mode){if(busy)return;lock(true);const selected=mode==='overview'?full:{...box},atPage=page;try{
+ async function read(mode){if(busy)return;lock(true);const selected=mode==='overview'?full:{...box},atPage=page;let dispatched=false;try{
   status(mode==='overview'?'AI визначає зони сторінки…':'AI перечитує фрагмент; очікуйте…');
   const crop=document.createElement('canvas'),context=.015,left=Math.max(0,selected.x-context),top=Math.max(0,selected.y-context),right=Math.min(1,selected.x+selected.w+context),bottom=Math.min(1,selected.y+selected.h+context);
   const sourceBox=mode==='overview'?full:{x:left,y:top,w:right-left,h:bottom-top};
@@ -28,8 +28,9 @@ async function open(doc,{autostart=false}={}){
   crop.getContext('2d').drawImage(source,sourceBox.x*source.width,sourceBox.y*source.height,sourceBox.w*source.width,sourceBox.h*source.height,0,0,crop.width,crop.height);
   let image_data=crop.toDataURL('image/jpeg',.94);if(image_data.length>5500000)image_data=crop.toDataURL('image/jpeg',.85);if(image_data.length>5500000)throw Error('Зона завелика. Виділіть один рядок або меншу ділянку.');
   const bytes=Uint8Array.from(atob(image_data.split(',')[1]),c=>c.charCodeAt(0)),hash=await crypto.subtle.digest('SHA-256',bytes),render_sha256=Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+  dispatched=true;
   const {data,error}=await supabaseClient.functions.invoke('ai-military-zone',{body:{document_id:doc.id,mode,page:atPage,box:sourceBox,image_data,render_sha256}});
-  if(error){let message=error.message;try{const detail=await error.context?.json();if(detail?.error)message=detail.error;}catch{}throw Error(message)}
+  if(error){let message='Немає підтвердженого результату AI. Автоматичний повтор цього фрагмента вимкнено.',code='ZONE_RESULT_UNCERTAIN';try{const detail=await error.context?.json();if(detail?.error)message=detail.error;if(detail?.code)code=detail.code;}catch{}const failure=Error(message);failure.code=code;throw failure}
   if(closed)return;if(!data?.review_only||data.error)throw Error(data?.error||'Некоректна відповідь AI');reports.push(data);$('[data-export]').disabled=false;
   if(mode==='overview'){
    $('[data-quality]').textContent=(data.quality_issues||[]).join(' · ');const zones=$('[data-zones]');zones.replaceChildren();
@@ -39,7 +40,7 @@ async function open(doc,{autostart=false}={}){
    showReport(data,atPage);
   }
  return data;
- }catch(e){if(!closed)status('Не розпізнано: '+e.message);if(autoActive)throw e;}finally{if(!closed)lock(false)}}
+ }catch(e){e.safe_to_retry=!dispatched;if(!closed)status('Не розпізнано: '+e.message);if(autoActive)throw e;}finally{if(!closed)lock(false)}}
  function showReport(data,atPage){
    const labels={rnokpp:'РНОКПП',desired_position:'Бажана посада',military_unit:'Військова частина',shpk:'ШПК',tariff_grade:'Тарифний розряд',signatory:'Підписант',recruiter_name:'Рекрутер',driver_license_categories:'Категорії водія',award_name:'Нагорода',full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',document_number:'Номер документа',document_series:'Серія',document_date:'Дата документа',issuer:'Орган видачі',address:'Адреса',relative_name:'ПІБ родича',relationship:'Ступінь споріднення',institution:'Заклад освіти',specialty:'Спеціальність',qualification:'Кваліфікація',graduation_year:'Рік закінчення',employer:'Роботодавець',vlk_conclusion:'Висновок ВЛК',vlk_category:'Категорія ВЛК',start_date:'Початок',end_date:'Завершення',unit:'Частина / установа',position:'Посада',military_specialty:'ВОС',order_number:'Номер наказу',order_date:'Дата наказу',rank:'Звання',other:'Інше'};
    const report=document.createElement('details');const uncertain=(data.rows||[]).flatMap(r=>r.fields||[]).filter(f=>f.value===null||f.legibility!=='clear'||f.alternatives?.length).length;report.open=false;report.innerHTML='<summary>Сторінка '+atPage+' · '+uncertain+' невизначених значень</summary><h3>Результат · сторінка '+atPage+'</h3><p style="white-space:pre-wrap">'+esc(data.raw_text)+'</p>'+(data.rows||[]).map((row,i)=>'<h4>Рядок '+(i+1)+'</h4><p>'+esc(row.raw_text)+'</p><div style="overflow:auto"><table><thead><tr><th>Поле</th><th>Дослівно</th><th>Прочитане значення</th><th>Альтернативи / питання</th></tr></thead><tbody>'+(row.fields||[]).map(f=>'<tr><td>'+esc(labels[f.key]||f.key)+'</td><td>'+esc(f.raw_text)+'</td><td>'+esc(f.value??'Не визначено')+'</td><td>'+esc([...(f.alternatives||[]),f.reason].filter(Boolean).join(' · '))+'</td></tr>').join('')+'</tbody></table></div>').join('')+'<p>'+esc((data.warnings||[]).join(' · '))+'</p>';

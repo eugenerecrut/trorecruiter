@@ -21,11 +21,15 @@ async function run(p:any,prompt:string,data:string){
   url='https://openrouter.ai/api/v1/chat/completions';headers.Authorization='Bearer '+p.key;
   body={model:p.model,temperature:0,max_tokens:6000,messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:data}}]}],response_format:{type:'json_object'}};
  }
- const response=await request(url,{method:'POST',headers,body:JSON.stringify(body)});
- if(!response.ok)throw Error(p.name+': HTTP '+response.status);
+ let response;
+ try{response=await request(url,{method:'POST',headers,body:JSON.stringify(body)});}
+ catch{const error:any=Error('Результат запиту невідомий');error.uncertain=true;throw error;}
+ if(!response.ok){const error:any=Error(p.name+': HTTP '+response.status);error.uncertain=![400,401,403,404,413,415,422,429].includes(response.status);throw error;}
+ try{
  const value=await response.json();
  const raw=p.name==='Gemini'?(value.candidates?.[0]?.content?.parts||[]).map((x:any)=>x.text||'').join(''):p.name==='OpenAI'?(value.output||[]).flatMap((x:any)=>x.content||[]).map((x:any)=>x.text||'').join(''):value.choices?.[0]?.message?.content;
  return parse(String(raw||''));
+ }catch{const error:any=Error('Немає коректної відповіді після прийняття запиту');error.uncertain=true;throw error;}
 }
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
@@ -64,8 +68,10 @@ Deno.serve(async req=>{
     const value=await run(provider,promptText,body.image_data);
     const result=contract.result(body.mode,value,{document_id:doc.id,document_type:doc.document_type,page:body.page,box:contract.box(body.box),render_sha256:typeof body.render_sha256==='string'&&/^[a-f0-9]{64}$/i.test(body.render_sha256)?body.render_sha256:null,origin:'client_render',provider:provider.name,model:provider.model});
     return json({...result,mode:body.mode,learning_examples_used:examples.length,provider_errors:errors});
-   }catch(e){errors.push({provider:provider.name,error:String((e as Error).message).startsWith(provider.name+': HTTP ')?(e as Error).message:'Немає коректної відповіді'});}
+   }catch(e){errors.push({provider:provider.name,error:String((e as Error).message).startsWith(provider.name+': HTTP ')?(e as Error).message:'Немає коректної відповіді'});
+    if((e as any).uncertain!==false)return json({error:'Результат виклику AI невідомий. Автоматичний повтор цього фрагмента та перехід до іншого сервісу заблоковані.',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false,provider_errors:errors},502);
+   }
   }
-  return json({error:'Не вдалося прочитати фрагмент',provider_errors:errors},502);
+  return json({error:'Не вдалося прочитати фрагмент. Сервіси відхилили запит або недоступні.',code:'ZONE_PROVIDERS_REJECTED',automatic_retry:false,provider_errors:errors},502);
  }catch{return json({error:'Не вдалося обробити запит зонального читання'},500);}
 });
