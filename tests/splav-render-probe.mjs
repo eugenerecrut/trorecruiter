@@ -61,3 +61,23 @@ test('concurrent renders in one isolate are refused before loading another docum
   release(); assert.equal((await first).status, 200);
   assert.equal(calls.load, 1);
 });
+test('owner can prepare a selected page and bounded zone through the existing endpoint', async () => {
+  const {handler,calls}=fixture(owner,{pages:3});
+  const response=await handler(request({'x-splav-page':'2','x-splav-box':JSON.stringify({x:.1,y:.2,w:.3,h:.4})}));
+  assert.equal(response.status,200);
+  const metrics=JSON.parse(response.headers.get('x-splav-render-metrics'));
+  assert.equal(metrics.page,3);assert.equal(metrics.mode,'zone');assert.ok(metrics.width<1800);
+  assert.match(metrics.file_sha256,/^[a-f0-9]{64}$/);assert.match(metrics.render_sha256,/^[a-f0-9]{64}$/);
+  assert.equal(calls.close,1);assert.equal(calls.destroy,1);assert.equal(metrics.ai_requests,0);
+});
+test('invalid crop and digest do not load; mismatched digest fails closed and permits next request', async () => {
+  const {handler,calls}=fixture();
+  for(const box of ['not-json','null',JSON.stringify({x:-1,y:0,w:1,h:1}),'x'.repeat(201)]){
+    assert.equal((await handler(request({'x-splav-box':box}))).status,400);
+  }
+  assert.equal((await handler(request({'x-splav-sha256':'bad'}))).status,400);
+  assert.equal(calls.load,0);
+  assert.equal((await handler(request({'x-splav-sha256':'0'.repeat(64)}))).status,422);
+  assert.equal(calls.load,0);
+  assert.equal((await handler(request())).status,200);
+});
