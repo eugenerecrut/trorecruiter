@@ -36,3 +36,5 @@ jobs:
         run: node tests/crm-splav-queue-sql.cjs
       - name: Verify server-only bootstrap in isolated PostgreSQL
         run: node tests/crm-splav-bootstrap-sql.cjs
+      - name: Verify source-bound zonal receipts in isolated PostgreSQL
+        run: node tests/crm-zone-receipts-sql.cjs
