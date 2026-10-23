@@ -108,3 +108,9 @@ test('saved review button and request reuse the guarded Edge action without OCR 
  assert.equal(c.savedReviewButtonHtml({id:'d',processing_status:'AI оброблено',verification_status:'Підтверджено',ai_raw_response:{document_type:'Витяг з Резерв+'}}),'');
  await c.recheckSavedDocument('d');assert.equal(calls.length,1);assert.equal(calls[0].args.body.action,'recheck_saved');assert.equal(calls[0].args.body.expected_revision,'revision');assert(alerts[0].includes('без нового AI'));
 });
+
+test('processing metrics render only bounded valid counters and escape provider text',()=>{
+ const src=read('documents.js'),c=vm.createContext({docEscape:v=>String(v).replaceAll('<','&lt;')});vm.runInContext(src.slice(src.indexOf('function documentProcessingMetricsHtml('),src.indexOf('function documentFileHtml(')),c);
+ assert.equal(c.documentProcessingMetricsHtml({}), '');assert.equal(c.documentProcessingMetricsHtml({ai_raw_response:{processing_metrics:{version:1,http_requests:-1}}}), '');
+ const html=c.documentProcessingMetricsHtml({ai_raw_response:{processing_metrics:{version:1,http_requests:2,provider_attempts:1,duration_ms:1000,attempts:[{provider:'<script>',model:'model',http_status:200,response_parsed:true}]}}});assert(html.includes('&lt;script>'));assert(!html.includes('<script>'));assert(html.includes('HTTP-спроб: 2'));assert(html.includes('не є підтвердженням списання'));
+});
