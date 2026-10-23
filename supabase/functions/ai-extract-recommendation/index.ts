@@ -1,106 +1,8 @@
 import { withSupabase } from 'npm:@supabase/server'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
-const schema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    personal: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        full_name: { type: ['string', 'null'] },
-        sex: { type: 'string', enum: ['male', 'female'] },
-        birth_date: { type: ['string', 'null'] },
-        phone: { type: ['string', 'null'] },
-        address: { type: ['string', 'null'] },
-        rnokpp: { type: ['string', 'null'] },
-        military_rank: { type: ['string', 'null'] },
-        tcc: { type: ['string', 'null'] },
-        civilian_profession: { type: ['string', 'null'] },
-      },
-      required: ['full_name','birth_date','phone','address','rnokpp','military_rank','tcc','civilian_profession'],
-    },
-    service: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        military_unit: { type: ['string', 'null'] },
-        desired_unit: { type: ['string', 'null'] },
-        desired_position: { type: ['string', 'null'] },
-        shpk: { type: ['string', 'null'] },
-        military_specialty: { type: ['string', 'null'] },
-        tariff_grade: { type: ['string', 'null'] },
-        service_type: { type: ['string', 'null'] },
-        recommender_unit: { type: ['string', 'null'] },
-        recruiter_name: { type: ['string', 'null'] },
-        signatory: { type: ['string', 'null'] },
-      },
-      required: ['military_unit','desired_unit','desired_position','shpk','military_specialty','tariff_grade','service_type','recommender_unit','recruiter_name','signatory'],
-    },
-    relatives: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          relation: { type: 'string' },
-          full_name: { type: 'string' },
-          birth_date: { type: 'string' },
-          birth_place: { type: 'string' },
-          citizenship: { type: 'string' },
-          address: { type: 'string' },
-          phone: { type: 'string' },
-          workplace: { type: 'string' },
-          position: { type: 'string' },
-          notes: { type: 'string' },
-        },
-        required: ['relation','full_name','birth_date','birth_place','citizenship','address','phone','workplace','position','notes'],
-      },
-    },
-    meta: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        source: { type: 'string' },
-        missing_fields: { type: 'array', items: { type: 'string' } },
-        warnings: { type: 'array', items: { type: 'string' } },
-      },
-      required: ['source','missing_fields','warnings'],
-    },
-  },
-  required: ['personal','service','relatives','meta'],
-}
-
-const systemPrompt = [
-  'Ти модуль структурованої виборки для внутрішньої CRM PSK_RECRUTER.',
-  'Аналізуй лише наданий текст документа. Не вигадуй і не доповнюй відсутні дані.',
-  'Цей endpoint використовується НЕ ЛИШЕ для рекомендаційного листа, а також для свідоцтва про народження, свідоцтва про шлюб, свідоцтва про розірвання шлюбу та інших підтвердних документів.',
-  'Спочатку визнач за змістом документа, які дані він підтверджує. Не вимагай від документа військових або службових полів, яких у ньому закономірно немає.',
-  'Якщо значення немає або воно нечитабельне — поверни null для полів personal/service або порожній рядок для полів relatives та додай поле до missing_fields.',
-  'Зберігай ПІБ, дати, місця, назви установ, військові частини, ВОС, ШПК та інші формулювання максимально близько до документа.',
-  'Для кандидата визнач стать лише за його ПІБ (особливо по батькові та граматичною формою імені). Поверни male або female, тільки якщо впевненість висока; інакше не повертай поле sex. Не визначай стать за підписантом, рекрутером чи іншою згаданою особою.',
-  'Службові дані рекомендаційного листа повинні потрапляти до service, а не до personal.',
-  'КРИТИЧНО ДЛЯ РОДИЧІВ: якщо свідоцтво про народження містить батька та/або матір дитини, обов’язково створи для кожного окремий об’єкт у relatives з relation = Батько або Мати.',
-  'У свідоцтві про народження ПІБ дитини є кандидатом (personal.full_name), а ПІБ батька та матері є родичами кандидата. Не плутай їх місцями.',
-  'Якщо свідоцтво про народження містить дату/місце народження дитини — заповни personal.birth_date та відповідне поле personal/address лише якщо воно прямо є; дані батьків не записуй у personal.',
-  'Якщо свідоцтво про шлюб прямо вказує другого з подружжя — створи окремий relative з relation = Чоловік або Дружина залежно від того, ким є кандидат у документі.',
-  'Якщо свідоцтво про розірвання шлюбу прямо вказує другого з подружжя — створи відповідного relative та зазнач у notes, що це колишній чоловік/дружина, якщо це випливає з документа.',
-  'Якщо в документі прямо зазначені батько, мати, чоловік, дружина, брат, сестра або інший близький родич кандидата — сформуй окремий об’єкт у масиві relatives.',
-  'Для relatives поле relation повинно містити ступінь споріднення: Батько, Мати, Чоловік, Дружина, Брат, Сестра або Інше.',
-  'Не створюй родича лише на підставі згадки сторонньої особи, якщо з документа не видно, що це родич кандидата. Виняток: у свідоцтві про народження батько та мати, зазначені як батьки дитини-кандидата, є родичами кандидата.',
-  'Якщо близьких родичів у документі немає — поверни relatives як порожній масив [].',
-  'Для relatives: якщо конкретне поле відсутнє в документі, залиш його порожнім рядком. Не вигадуй адресу, телефон, роботу чи дату народження.',
-  'Дата народження: YYYY-MM-DD, якщо її можна однозначно визначити з документа; інакше порожній рядок для relatives або null для personal.',
-  'РНОКПП: тільки якщо він прямо є в тексті документа.',
-  'meta.source: вкажи фактичний тип документа, якщо його можна визначити з тексту (наприклад: Свідоцтво про народження, Свідоцтво про шлюб, Свідоцтво про розірвання шлюбу, Рекомендаційний лист, Інший підтвердний документ).',
-].join('\n')
-
+const corsHeaders = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'}
+const schema={type:'object',properties:{personal:{type:'object',properties:{full_name:{type:'string'},sex:{type:'string',enum:['male','female']},birth_date:{type:'string'},phone:{type:'string'},address:{type:'string'},rnokpp:{type:'string'},military_rank:{type:'string'},tcc:{type:'string'},civilian_profession:{type:'string'}},required:['full_name','birth_date','phone','address','rnokpp','military_rank','tcc','civilian_profession']},service:{type:'object',properties:{military_unit:{type:'string'},desired_unit:{type:'string'},desired_position:{type:'string'},shpk:{type:'string'},military_specialty:{type:'string'},tariff_grade:{type:'string'},service_type:{type:'string'},recommender_unit:{type:'string'},recruiter_name:{type:'string'},signatory:{type:'string'}},required:['military_unit','desired_unit','desired_position','shpk','military_specialty','tariff_grade','service_type','recommender_unit','recruiter_name','signatory']},relatives:{type:'array',items:{type:'object',properties:{relation:{type:'string'},full_name:{type:'string'},birth_date:{type:'string'},birth_place:{type:'string'},citizenship:{type:'string'},address:{type:'string'},phone:{type:'string'},workplace:{type:'string'},position:{type:'string'},notes:{type:'string'}},required:['relation','full_name','birth_date','birth_place','citizenship','address','phone','workplace','position','notes']}},meta:{type:'object',properties:{source:{type:'string'},missing_fields:{type:'array',items:{type:'string'}},warnings:{type:'array',items:{type:'string'}}},required:['source','missing_fields','warnings']}},required:['personal','service','relatives','meta']}
+const systemPrompt=['Ти модуль структурованої виборки для внутрішньої CRM PSK_RECRUTER.','Аналізуй лише наданий текст документа. Не вигадуй і не доповнюй відсутні дані.','Для кандидата визнач стать лише за його ПІБ (особливо по батькові та граматичною формою імені). Поверни male або female, тільки якщо впевненість висока; інакше не повертай поле sex. Не визначай стать за підписантом, рекрутером чи іншою згаданою особою.','Для відсутніх або нечитабельних значень повертай порожній рядок.','Зберігай ПІБ, назви підрозділів, військові частини, ВОС, ШПК та службові формулювання максимально близько до документа.','Розрізняй підписанта рекомендаційного листа та рекрутера/контактну особу, якщо вони вказані окремо.','Службові дані рекомендаційного листа повинні потрапляти до service, а не до personal.','Якщо в документі прямо зазначені батько, мати, чоловік, дружина, брат, сестра або інший близький родич кандидата — сформуй окремий об’єкт у relatives.','Для relatives relation: Батько, Мати, Чоловік, Дружина, Брат, Сестра або Інше.','Не створюй родича лише на підставі згадки сторонньої особи, якщо з документа не видно, що це родич кандидата.','Якщо близьких родичів у документі немає — relatives = [].','Дата народження: YYYY-MM-DD, якщо її можна однозначно визначити; інакше порожній рядок.','РНОКПП: тільки якщо він прямо є в тексті документа.','meta.source: Рекомендаційний лист.'].join('\n')
 async function fetchGeminiWithRetries(apiKey:string,model:string,requestBody:unknown):Promise<Response>{
   const deadline=Date.now()+110000;
   let lastResponse:Response|undefined;
@@ -138,14 +40,8 @@ async function fetchGeminiWithRetries(apiKey:string,model:string,requestBody:unk
   throw lastError??new Error('Gemini retry deadline reached before a response');
 }
 
-async function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } })
-}
-
-export default {
-  fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
-    if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-    if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+function jsonResponse(body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json; charset=utf-8'}})}
+export default{fetch:withSupabase({auth:'user'},async(req,ctx)=>{if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return jsonResponse({error:'Method not allowed'},405);
     // This legacy text endpoint has no leased-job contract. Never grant it to the worker.
     const backend = Deno.env.get('SUPABASE_URL')
     const publicKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY')
@@ -156,27 +52,5 @@ export default {
     if (!staffResponse.ok) return jsonResponse({error:'Доступ заборонено'},403)
     const staff = await staffResponse.json()
     if (!Array.isArray(staff) || !staff.length || staff[0].role==='processor') return jsonResponse({error:'Доступ лише активним працівникам CRM'},403)
-    const apiKey = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('Gemini API Key')
-    if (!apiKey) return jsonResponse({ error: 'GEMINI_API_KEY не налаштовано в Supabase Secrets.' }, 500)
-    let body: { text?: string }
-    try { body = await req.json() } catch { return jsonResponse({ error: 'Некоректний JSON запиту.' }, 400) }
-    const text = String(body?.text || '').trim()
-    if (!text) return jsonResponse({ error: 'Не передано текст документа.' }, 400)
-    if (text.length > 50000) return jsonResponse({ error: 'Документ завеликий для AI-виборки.' }, 413)
-    const userEmail = String(ctx.userClaims?.email || '')
-    const input = ['Користувач CRM: ' + userEmail, '', 'ТЕКСТ ДОКУМЕНТА:', text].join('\n')
-    const model = Deno.env.get('GEMINI_MODEL') || 'gemini-3.5-flash-lite'
-    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemInstruction:{parts:[{text:systemPrompt}]}, contents:[{role:'user',parts:[{text:input}]}], generationConfig:{responseMimeType:'application/json',responseSchema:schema} }),
-    })
-    if (!geminiResponse.ok) { const details = await geminiResponse.text(); console.error('Gemini error:', details); return jsonResponse({ error:'AI-сервіс Gemini повернув помилку.', details },502) }
-    const result = await geminiResponse.json()
-    const outputText = String(result?.candidates?.[0]?.content?.parts?.map((part:{text?:string})=>part?.text||'').join('')||'').trim()
-    if (!outputText) { console.error('Gemini empty output:', JSON.stringify(result)); return jsonResponse({ error:'Gemini не повернув структуровану виборку.' },502) }
-    let extracted: unknown
-    try { extracted = JSON.parse(outputText) } catch { console.error('Invalid Gemini structured output:', outputText); return jsonResponse({ error:'Gemini повернув некоректний структурований результат.' },502) }
-    return jsonResponse({ extracted, model, user_email:userEmail })
-  }),
-}
+
+const apiKey=Deno.env.get('GEMINI_API_KEY')||Deno.env.get('Gemini API Key');if(!apiKey)return jsonResponse({error:'GEMINI_API_KEY не налаштовано в Supabase Secrets.'},500);let body:{text?:string};try{body=await req.json()}catch{return jsonResponse({error:'Некоректний JSON запиту.'},400)}const text=String(body?.text||'').trim();if(!text)return jsonResponse({error:'Не передано текст документа.'},400);if(text.length>50000)return jsonResponse({error:'Документ завеликий для AI-виборки.'},413);const userEmail=String(ctx.userClaims?.email||'');const input=['Користувач CRM: '+userEmail,'','ТЕКСТ ДОКУМЕНТА:',text].join('\n');const model='gemini-3.5-flash-lite';try{const r=await fetchGeminiWithRetries(apiKey,model,{systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:input}]}],generationConfig:{responseMimeType:'application/json',responseSchema:schema,temperature:0}});if(!r.ok){const details=await r.text();console.error('Gemini error:',details);return jsonResponse({error:'AI-сервіс Gemini повернув помилку.',details,model},502)}const result=await r.json();const outputText=String(result?.candidates?.[0]?.content?.parts?.map((p:{text?:string})=>p?.text||'').join('')||'').trim();if(!outputText)return jsonResponse({error:'Gemini не повернув структуровану виборку.',model},502);let extracted:unknown;try{extracted=JSON.parse(outputText)}catch{console.error('Invalid Gemini structured output:',outputText);return jsonResponse({error:'Gemini повернув некоректний структурований результат.',model},502)}return jsonResponse({extracted,model,user_email:userEmail})}catch(e){console.error('Gemini request exception:',e);return jsonResponse({error:'Помилка під час звернення до Gemini.',details:String(e),model},502)}})}

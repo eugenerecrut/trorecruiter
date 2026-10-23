@@ -14,6 +14,14 @@ function memory(candidate=person(),docs=[document()],options={}){const state={ca
   for(const s of selections){if(s.target.startsWith('sync_'))continue;const dest=s.target==='candidate'?state.candidate:state.candidate.profile_data;dest[s.key]=structuredClone(s.incoming);}return {};
  }};return {client,state};}
 test('all actual runtime dependencies cold-load without window/document or network',()=>{const c=context();assert.equal(c.window,undefined);assert.equal(c.document,undefined);for(const key of ['CRMPhone','CRMNameHistory','CRMEducation','CRMWork','CRMMilitary','CRMResidence','CRMVLK','CRMMilitaryFacts','CRMDocumentPolicy','CRMDocumentCrosscheck','CRMDocumentSync','CRMIDValidation'])assert(c[key],key);});
+
+test('queue reconciliation routes fills and review warnings through scoped capabilities only',async()=>{
+ const c=context(),m=memory(person(),[document(undefined,{notes:'AI REVIEW REQUIRED'})]),calls=[],original=m.client.rpc.bind(m.client);
+ m.client.rpc=async(name,args)=>{calls.push({name,args});if(name==='crm_splav_apply_fields')return original('crm_apply_document_fields',{document_id:'d',selections:args.selections});if(name==='crm_splav_mark_review'){m.state.docs[0].verification_status='Потребує перевірки';return {};}throw Error('Unexpected RPC');};
+ const result=await c.reconcileDocument(m.client,'d','revision',{job_id:'job',lease_token:'lease'});
+ assert.equal(result.state,'needs_review');assert.equal(m.state.writes,0);assert(calls.some(x=>x.name==='crm_splav_apply_fields'));assert(calls.some(x=>x.name==='crm_splav_mark_review'));
+ assert(calls.every(x=>x.args.job_id==='job'&&x.args.token==='lease'));assert.equal(m.state.candidate.profile_data.service_type,'За мобілізацією');
+});
 test('browser and DOM-free server return identical real plans across document families',()=>{const a=context(true),b=context(),types=['Рекомендаційний лист','Свідоцтво про народження','ID-картка','Паспорт','Картка платника податків','Копія диплома','Трудова книжка','Військовий квиток','Резерв+','Довідка ВЛК','Витяг про місце проживання','Актовий запис про шлюб','Посвідчення водія','Копія УБД','Автобіографія друкована'];
  for(const type of types){const p=person(),d=document(type),before=JSON.stringify([p,d]);assert.equal(JSON.stringify(a.CRMDocumentSync.plan(d,p)),JSON.stringify(b.CRMDocumentSync.plan(d,p)),type);assert.equal(JSON.stringify([p,d]),before);}
 });

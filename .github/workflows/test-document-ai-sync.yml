@@ -17,7 +17,7 @@ jobs:
         run: |
           node --test tests/crm-candidate-facts.cjs
           node --test tests/crm-candidate-case-view.cjs tests/crm-personal-file-cas.cjs
-          node --test tests/crm-splav-provision.cjs tests/crm-splav-legacy-access.cjs tests/crm-splav-server-sync.cjs tests/crm-splav-result-consistency.cjs tests/crm-review-source.cjs tests/crm-review-decision-body.cjs tests/crm-diploma-owner.cjs tests/crm-review-structured.cjs tests/crm-relative-completion.cjs tests/crm-large-pdf.cjs tests/crm-period-links.cjs tests/crm-document-crosscheck.cjs tests/crm-military-autopilot.cjs tests/crm-military-zone.cjs tests/crm-relative-name-case.cjs tests/crm-auth-navigation.cjs tests/crm-biography-facts.cjs tests/crm-anketa-size.cjs tests/crm-document-ai-sync.cjs tests/crm-edge-document-id.cjs tests/crm-upload-pipeline.cjs tests/crm-service-readiness.cjs tests/crm-field-registry.cjs tests/crm-military-facts.cjs tests/crm-record-append.cjs tests/crm-intake-activity.cjs tests/crm-dashboard-document-status.cjs tests/crm-case-assistant.cjs
+          node --test tests/crm-splav-worker.cjs tests/crm-splav-provision.cjs tests/crm-splav-legacy-access.cjs tests/crm-splav-server-sync.cjs tests/crm-splav-result-consistency.cjs tests/crm-review-source.cjs tests/crm-review-decision-body.cjs tests/crm-diploma-owner.cjs tests/crm-review-structured.cjs tests/crm-relative-completion.cjs tests/crm-large-pdf.cjs tests/crm-period-links.cjs tests/crm-document-crosscheck.cjs tests/crm-military-autopilot.cjs tests/crm-military-zone.cjs tests/crm-relative-name-case.cjs tests/crm-auth-navigation.cjs tests/crm-biography-facts.cjs tests/crm-anketa-size.cjs tests/crm-document-ai-sync.cjs tests/crm-edge-document-id.cjs tests/crm-upload-pipeline.cjs tests/crm-service-readiness.cjs tests/crm-field-registry.cjs tests/crm-military-facts.cjs tests/crm-record-append.cjs tests/crm-intake-activity.cjs tests/crm-dashboard-document-status.cjs tests/crm-case-assistant.cjs
           node tests/crm-audit.cjs
           node tests/crm-interface.cjs
           node tests/crm-card-v3.cjs
@@ -31,3 +31,7 @@ jobs:
         run: node tests/crm-review-source-sql.cjs
       - name: Verify processor isolation in isolated PostgreSQL
         run: node tests/crm-splav-processor-sql.cjs
+      - name: Verify delegated jobs in isolated PostgreSQL
+        run: node tests/crm-splav-queue-sql.cjs
+      - name: Verify server-only bootstrap in isolated PostgreSQL
+        run: node tests/crm-splav-bootstrap-sql.cjs

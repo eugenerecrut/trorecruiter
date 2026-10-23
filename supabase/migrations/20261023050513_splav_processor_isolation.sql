@@ -50,9 +50,12 @@ begin
     execute format('create policy splav_processor_isolation on public.%I as restrictive for all to authenticated using (not (select crm_private.is_processor())) with check (not (select crm_private.is_processor()))',rel);
   end loop;
 end $$;
-create policy splav_processor_isolation on public.crm_staff as restrictive for all to authenticated
-  using(not (select crm_private.is_processor()) or user_id=(select auth.uid()))
-  with check(not (select crm_private.is_processor()));
+create policy splav_processor_read on public.crm_staff as restrictive for select to authenticated
+  using(not (select crm_private.is_processor()) or user_id=(select auth.uid()));
+create policy splav_processor_insert on public.crm_staff as restrictive for insert to authenticated with check(not (select crm_private.is_processor()));
+create policy splav_processor_update on public.crm_staff as restrictive for update to authenticated
+  using(not (select crm_private.is_processor())) with check(not (select crm_private.is_processor()));
+create policy splav_processor_delete on public.crm_staff as restrictive for delete to authenticated using(not (select crm_private.is_processor()));
 create policy splav_processor_isolation on storage.objects as restrictive for all to authenticated
   using(not (select crm_private.is_processor())) with check(not (select crm_private.is_processor()));
 

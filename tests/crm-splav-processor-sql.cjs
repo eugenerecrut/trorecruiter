@@ -13,8 +13,8 @@ try{
  create table public.crm_staff(user_id uuid primary key references auth.users(id),display_name text,role text,active boolean default true,
  constraint crm_staff_role_check check(role in ('owner','lead','recruiter','observer')));
  alter table public.crm_staff enable row level security;
- create policy staff on public.crm_staff for select to authenticated using(true);
- grant select on public.crm_staff to authenticated;
+ create policy staff on public.crm_staff for all to authenticated using(true) with check(true);
+ grant select,insert,update,delete on public.crm_staff to authenticated;
  create table storage.objects(id int primary key,name text);alter table storage.objects enable row level security;
  create policy storage on storage.objects for all to authenticated using(true) with check(true);
  grant select,insert,update,delete on storage.objects to authenticated;insert into storage.objects values(1,'private.pdf');`);
@@ -49,7 +49,9 @@ try{
    assert.equal((await db.query(`delete from ${rel} returning *`)).rows.length,0);checks++;
  }
  await assert.rejects(db.query('select public.sync_candidate_document_requirements($1)',[human]),/Processor access denied/);checks++;
- await assert.rejects(db.exec("update public.crm_staff set role='owner'"),/permission denied/);checks++;
+ assert.equal((await db.query("update public.crm_staff set role='owner' returning user_id")).rows.length,0);checks++;
+ assert.equal((await db.query('delete from public.crm_staff returning user_id')).rows.length,0);checks++;
+ await assert.rejects(db.query("insert into public.crm_staff(user_id,role,active) values('00000000-0000-0000-0000-000000000099','owner',true)"),/row-level security/);checks++;
  // Spoofing JWT/app claims or an arbitrary GUC must not remove database-backed isolation.
  await db.exec(`set request.jwt.claim.role='owner';set crm.splav_write='true'`);
  assert.equal((await db.query('select * from public.candidates')).rows.length,0);checks++;
