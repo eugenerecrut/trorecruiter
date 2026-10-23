@@ -80,3 +80,22 @@ test('server reconciliation failure stays visible without a silent second applic
 test('manual retry also consumes the source-bound server outcome without duplicate sync',async()=>{const {c,state,upload}=setup({serverSync:true});await upload(['birth.pdf']);state.automations=0;const alerts=[];c.alert=m=>alerts.push(m);c.activeDocumentsCandidateId='c';c.reloadDocumentView=async()=>{};c.reviewDocumentData=async()=>{};const src=read('documents.js');vm.runInContext(src.slice(src.indexOf('async function retryDocumentAI('),src.indexOf('async function openDocument(')),c);await c.retryDocumentAI('d1');assert.equal(state.automations,1);assert(alerts.some(m=>m.includes('СПЛАВ завершив')));assert.equal(state.candidate.profile_data.relatives.length,1);});
 
 test('enabled background queue accepts uploaded files without waiting for OCR or invoking it in the browser',async()=>{const {state,upload}=setup({queue:true});const message=await upload(['birth.pdf','diploma.pdf']);assert.equal(state.docs.length,2);assert.equal(state.calls.length,0);assert.equal(state.automations,0);assert.equal(state.browserPatches.length,0);assert.match(message,/фонової черги/);assert.match(message,/вкладку можна закрити/);});
+
+
+test('excluded source retry hides confirmed and AI-disabled documents and escapes identifiers',()=>{
+ const c=vm.createContext({docEscape:s=>String(s).replaceAll('"','&quot;')});const src=read('documents.js');
+ vm.runInContext(src.slice(src.indexOf('function excludedDocumentRetryHtml('),src.indexOf('async function showDocuments(')),c);
+ const d={id:'source"1',requirement_id:'r',verification_status:'Не перевірено'};
+ assert.match(c.excludedDocumentRetryHtml(d,[{id:'r',ai_enabled:true}]),/source&quot;1/);
+ assert.equal(c.excludedDocumentRetryHtml({...d,verification_status:'Підтверджено'},[]),'');
+ assert.equal(c.excludedDocumentRetryHtml(d,[{id:'r',ai_enabled:false}]),'');
+});
+test('excluded source retry uses existing queued action, workspace guard and busy lock',async()=>{
+ const calls=[],alerts=[],c=vm.createContext({CRMWorkspace:{busy:false},retryDocumentAI:async id=>calls.push(id),alert:m=>alerts.push(m)}),src=read('documents.js');
+ vm.runInContext(src.slice(src.indexOf('async function retryExcludedDocument('),src.indexOf('async function showDocuments(')),c);
+ const b={disabled:false,isConnected:true,dataset:{excludedRetry:'source'}};
+ await c.retryExcludedDocument(b,async()=>false);assert.equal(calls.length,0);
+ c.CRMWorkspace.busy=true;await c.retryExcludedDocument(b,async()=>true);assert.equal(calls.length,0);
+ c.CRMWorkspace.busy=false;await c.retryExcludedDocument(b,async()=>true);assert.deepEqual(calls,['source']);assert.equal(b.disabled,false);assert.equal(c.CRMWorkspace.busy,false);
+ c.retryDocumentAI=async()=>{throw Error('queue unavailable')};await c.retryExcludedDocument(b,async()=>true);assert.deepEqual(alerts,['queue unavailable']);assert.equal(c.CRMWorkspace.busy,false);
+});

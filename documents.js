@@ -50,6 +50,17 @@ function documentFileHtml(d,r,allDocs,esc=docEscape,compact=false){
   const detailId='doc-details-'+d.id;
   return '<details class="crm-document-file crm-document-verified"><summary class="crm-document-summary">'+info+'</summary><div class="crm-document-details" id="'+esc(detailId)+'">'+actions+'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></div></details>';
 }
+function excludedDocumentRetryHtml(d,reqs,esc=docEscape){
+  const r=reqs.find(r=>r.id===d.requirement_id||r.document_type===d.document_type);
+  return d.verification_status!=='Підтверджено'&&r?.ai_enabled!==false?'<button type="button" data-excluded-retry="'+esc(d.id)+'">Повторити розпізнавання</button>':'';
+}
+async function retryExcludedDocument(button,ensureSaved){
+  if(CRMWorkspace.busy||!await ensureSaved())return;
+  button.disabled=true;CRMWorkspace.busy=true;
+  try{await retryDocumentAI(button.dataset.excludedRetry);}
+  catch(error){alert(error.message);}
+  finally{CRMWorkspace.busy=false;if(button.isConnected)button.disabled=false;}
+}
 async function showDocuments(id,options={}){
   const content=options.host||document.querySelector('.content');if(!content)return;
   const embedded=!!options.host;activeDocumentsOptions=embedded?options:null;
@@ -85,8 +96,8 @@ async function showDocuments(id,options={}){
   content.querySelector('#docBatchStatus').textContent='Комплектність враховує обов’язкові файли та позначки «Є в наявності». Для PDF-пакета потрібні електронні копії.';
   if(excludedDocs.length&&!CRMCandidateConditions.isUnit(c)){
     const details=document.createElement('details');details.className='card';details.style.marginBottom='18px';
-    details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button>'+(d.ai_extracted?' <button type="button" data-excluded-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button><button type="button" data-excluded-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+'</p>').join('');
-    details.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.excludedOpen)openDocument(b.dataset.excludedOpen);if(b.dataset.excludedEditAi)editDocumentExtraction(b.dataset.excludedEditAi).catch(err=>alert(err.message));if(b.dataset.excludedData)reviewDocumentData(b.dataset.excludedData).catch(err=>alert(err.message))});content.querySelector('#docFilters').before(details);
+    details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button>'+(d.ai_extracted?' <button type="button" data-excluded-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button><button type="button" data-excluded-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+excludedDocumentRetryHtml(d,reqs,esc)+'</p>').join('');
+    details.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.excludedRetry){retryExcludedDocument(b,ensureSaved);return;}if(b.dataset.excludedOpen)openDocument(b.dataset.excludedOpen);if(b.dataset.excludedEditAi)editDocumentExtraction(b.dataset.excludedEditAi).catch(err=>alert(err.message));if(b.dataset.excludedData)reviewDocumentData(b.dataset.excludedData).catch(err=>alert(err.message))});content.querySelector('#docFilters').before(details);
   }
   const body=content.querySelector('#documentRows');
   body.innerHTML=rows.map(row=>{
