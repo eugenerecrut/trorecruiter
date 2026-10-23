@@ -8,7 +8,7 @@ function config(){return [
  {name:'OpenAI',key:Deno.env.get('OPENAI_API_KEY'),model:Deno.env.get('OPENAI_MODEL')||'gpt-4.1-mini'},
  {name:'Gemini',key:Deno.env.get('GEMINI_API_KEY')||Deno.env.get('Gemini API Key')||Deno.env.get('GOOGLE_API_KEY'),model:Deno.env.get('GEMINI_MODEL')||'gemini-3.8-flash'},
  {name:'OpenRouter',key:Deno.env.get('OPENROUTER_API_KEY'),model:Deno.env.get('OPENROUTER_MODEL')||'openai/gpt-4.1-mini'}
-];}
+].sort((a,b)=>['OpenRouter','OpenAI','Gemini'].indexOf(a.name)-['OpenRouter','OpenAI','Gemini'].indexOf(b.name));}
 // Persist only an allowlisted diagnosis; provider bodies can contain document text or secrets.
 const diagnosisCodes=new Set(['insufficient_quota','rate_limit_exceeded','invalid_api_key','model_not_found','permission_denied','RESOURCE_EXHAUSTED','UNAUTHENTICATED','PERMISSION_DENIED','NOT_FOUND','INVALID_ARGUMENT','UNAVAILABLE','INTERNAL']);
 function diagnosis(value:any,status:number){
@@ -45,7 +45,8 @@ async function run(p:any,prompt:string,data:string){
  let value:any;
  try{
  value=await response.json();
- const raw=p.name==='Gemini'?(value.candidates?.[0]?.content?.parts||[]).map((x:any)=>x.text||'').join(''):p.name==='OpenAI'?(value.output||[]).flatMap((x:any)=>x.content||[]).map((x:any)=>x.text||'').join(''):value.choices?.[0]?.message?.content;
+ if(p.name==='Gemini'&&(value?.promptFeedback?.blockReason||(value?.candidates?.[0]?.finishReason&&value.candidates[0].finishReason!=='STOP')))throw Error('Unfinished Gemini output');
+ const raw=p.name==='Gemini'?(value.candidates?.[0]?.content?.parts||[]).filter((x:any)=>x?.thought!==true).map((x:any)=>typeof x?.text==='string'?x.text:'').join(''):p.name==='OpenAI'?(value.output||[]).flatMap((x:any)=>x.content||[]).map((x:any)=>x.text||'').join(''):value.choices?.[0]?.message?.content;
  return parse(String(raw||''));
  }catch{const error:any=Error('Немає коректної відповіді після прийняття запиту');error.uncertain=true;error.diagnosis=outputDiagnosis(p,value);throw error;}
 }

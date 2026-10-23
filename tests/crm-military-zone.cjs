@@ -15,9 +15,9 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,ledger='accepted',finish='completed'}={}){
+function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,geminiThoughts=false,router=false,ledger='accepted',finish='completed'}={}){
  let handler;const calls=[];let savedReceipt=null;
- const context={globalThis:null,TextDecoder,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini',OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
+ const context={globalThis:null,TextDecoder,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini'}:{}),...(router?{OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
   if(url.endsWith('/auth/v1/user'))return Response.json({id:'user'},{status:auth?200:401});
   if(url.includes('crm_staff?'))return Response.json(staff?[{user_id:'user',role:processor?'processor':'recruiter'}]:[]);
@@ -48,6 +48,7 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,e
    return finish==='error'?Response.json({error:'unavailable'},{status:503}):Response.json({state:finish});
   }
   if(url.includes('/documents?'))return Response.json(doc?[{id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',candidate_id:'c',storage_path:'c/original.pdf',document_type:type,version_group_id:'g',version_number:1}]:[]);
+  if(url.includes('openrouter.ai'))return router==='malformed'?Response.json({choices:[]}):Response.json({choices:[{message:{content:'{"rows":[]}'}}]});
   if(url.includes('api.openai.com')){
    if(provider==='quota')return Response.json({error:{code:'insufficient_quota',message:'SECRET PASSPORT DATA'}},{status:429,headers:{'retry-after':'30'}});
    if(provider==='unknown-code')return Response.json({error:{code:'SECRET PASSPORT DATA',message:'SECRET'}},{status:429});
@@ -58,7 +59,8 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,e
    if(provider==='5xx')return Response.json({error:'synthetic'}, {status:503});
    return provider?Response.json({output:[{content:[{text:JSON.stringify({raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
   }
-  if(url.includes('generativelanguage.googleapis.com')&&geminiFailure)return Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'truncated SECRET'}]}}]});
+  if(url.includes('generativelanguage.googleapis.com')&&geminiThoughts)return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{thought:true,text:'{"SECRET_THOUGHT":1}'},{text:'{"rows":[]}' }]}}]});
+  if(url.includes('generativelanguage.googleapis.com')&&geminiFailure)return Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:geminiFailure==='valid-json'?'{"rows":[]}':'truncated SECRET'}]}}]});
   if(url.includes('generativelanguage.googleapis.com'))return Response.json({candidates:[{content:{parts:[{text:'{"rows":[]}' }]}}]});
   throw Error('Unexpected request '+url);
  }};context.globalThis=context;vm.createContext(context);
@@ -156,4 +158,26 @@ test('Gemini truncated output retains safe reason and prevents further provider 
  const s=server({provider:false,fallback:true,geminiFailure:true});const result=await (await s.invoke()).json();
  assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[1].diagnosis,'MAX_TOKENS');
  assert(!JSON.stringify(result).includes('SECRET'));assert(!s.calls.some(c=>c.url.includes('openrouter.ai')));
+});
+
+
+test('funded OpenRouter has priority when configured and an uncertain response never falls through',async()=>{
+ for(const router of [true,'malformed']){
+  const s=server({router,fallback:true});const response=await s.invoke();const result=await response.json();
+  assert.equal(s.calls.filter(c=>c.url.includes('openrouter.ai')).length,1);
+  assert(!s.calls.some(c=>c.url.includes('api.openai.com')||c.url.includes('generativelanguage')));
+  assert.equal(router===true?result.source.provider:result.code,router===true?'OpenRouter':'ZONE_RESULT_UNCERTAIN');
+ }
+});
+test('Gemini JSON excludes thought parts and is read without a second paid request',async()=>{
+ const s=server({provider:false,fallback:true,geminiThoughts:true});const result=await (await s.invoke()).json();
+ assert.equal(result.source.provider,'Gemini');assert(!JSON.stringify(result).includes('SECRET_THOUGHT'));
+ assert.equal(s.calls.filter(c=>c.url.includes('generativelanguage')).length,1);
+});
+
+
+test('Gemini MAX_TOKENS is rejected even when its partial output happens to be valid JSON',async()=>{
+ const s=server({provider:false,fallback:true,geminiFailure:'valid-json'});const response=await s.invoke(),result=await response.json();
+ assert.equal(response.status,502);assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[1].diagnosis,'MAX_TOKENS');
+ assert(!s.calls.some(c=>c.url.includes('openrouter.ai')));
 });

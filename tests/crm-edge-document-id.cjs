@@ -12,10 +12,11 @@ async function run(options={}){
   if(url.includes('/documents?version_group_id='))return json(options.archived?[{id:'new'}]:[]);
   if(url.includes('/storage/v1/object/sign/'))return init.method==='POST'?json({signedURL:'/object/sign/candidate-documents/'+owner+'/incoming/test.pdf?token=test'}):new Response(options.large||options.bytes?new Uint8Array(options.bytes||18149553):'%PDF-test',{headers:{'content-type':'application/pdf'}});
   if(url==='https://openrouter.ai/api/v1/chat/completions'){providerCalls++;if(providerCalls===1)return json({error:{message:'response_format unsupported'}},400);return json({model:'openai/gpt-4.1-mini',choices:[{message:{content:JSON.stringify({document_type:'Рекомендаційний лист',confidence:1,extracted:{full_name:'Тестенко Іван'}})}}]});}
+  if(url.includes('generativelanguage.googleapis.com')){providerCalls++;return json({candidates:[{finishReason:'STOP',content:{parts:[{thought:true,text:'{"SECRET_THOUGHT":true}'},{text:JSON.stringify({document_type:'Рекомендаційний лист',confidence:1,extracted:{full_name:'Тестенко Іван'}})}]}}]});}
   if(url==='https://api.openai.com/v1/responses'){providerCalls++;if(options.failProvider||options.failSecondPart&&providerCalls>1)return json({error:{message:'temporary overload'}},503);return json({output:[{content:[{type:'output_text',text:JSON.stringify({document_type:'Рекомендаційний лист',candidate_name:'Тестенко Іван',confidence:0.99,extracted:{full_name:'Тестенко Іван'},warnings:[]})}]}]});}
   throw Error('Unexpected test fetch: '+url);
  };
- const c=vm.createContext({Response,Request,Headers,URL,AbortController,setTimeout,clearTimeout,Uint8Array,TextEncoder,btoa,console:{log(){},error(){}},fetch,Deno:{env:{get:k=>({SUPABASE_URL:backend,SUPABASE_ANON_KEY:'public-test-key',OPENAI_API_KEY:options.router?'':'fake-test-key',OPENROUTER_API_KEY:options.router?'fake-router-key':''})[k]},serve:fn=>handler=fn}});
+ const c=vm.createContext({Response,Request,Headers,URL,AbortController,setTimeout,clearTimeout,Uint8Array,TextEncoder,btoa,console:{log(){},error(){}},fetch,Deno:{env:{get:k=>({SUPABASE_URL:backend,SUPABASE_ANON_KEY:'public-test-key',OPENAI_API_KEY:options.gemini||(options.router&&!options.allProviders)?'':'fake-test-key',GEMINI_API_KEY:options.gemini?'fake-gemini':'',OPENROUTER_API_KEY:options.router?'fake-router-key':''})[k]},serve:fn=>handler=fn}});
  c.CRMPDFAIParts={prepare:async()=>({pages:2,parts:[{bytes:new Uint8Array(10),start:1,end:1},{bytes:new Uint8Array(10),start:2,end:2}]}),merge:require('../supabase/functions/_shared/pdf-ai-parts.js').merge};c.PDFDocumentMock={};vm.runInContext(stripTypeScriptTypes(source.replace("await import('../_shared/pdf-ai-parts.js');",'').replace("await import('npm:pdf-lib@1.17.1')",'({PDFDocument:PDFDocumentMock})')),c);
  const response=await handler(new Request(backend,{method:'POST',headers:{Authorization:'Bearer fake-session','content-type':'application/json'},body:JSON.stringify({document_id:id,file_url:'https://untrusted.test/file',text:'Untrusted OCR',...options.body})}));
  return {response,data:await response.json(),calls};
@@ -51,4 +52,15 @@ test('large PDFs aggregate metrics across all parts, errors retain metrics witho
 });
 test('concurrent classifier executions keep counters and authorization isolated',async()=>{
  const [a,b]=await Promise.all([run({router:true}),run()]);assert.equal(a.data.processing_metrics.http_requests,2);assert.equal(b.data.processing_metrics.http_requests,1);assert.equal(a.data.processing_metrics.attempts[0].provider,'OpenRouter');assert.equal(b.data.processing_metrics.attempts[0].provider,'OpenAI');
+});
+
+
+test('root classifier selects configured OpenRouter before direct OpenAI',async()=>{
+ const r=await run({router:true,allProviders:true});assert.equal(r.response.status,200);
+ assert(!r.calls.some(c=>c.url.includes('api.openai.com')));assert(r.calls.some(c=>c.url.includes('openrouter.ai')));
+});
+test('root classifier reads only Gemini final text, excluding thought summaries',async()=>{
+ const r=await run({gemini:true});assert.equal(r.response.status,200);assert.equal(r.data.extracted.full_name,'Тестенко Іван');
+ assert(!JSON.stringify(r.data).includes('SECRET_THOUGHT'));
+ assert.equal(r.calls.filter(c=>c.url.includes('generativelanguage')).length,1);
 });
