@@ -60,7 +60,7 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,e
    return provider?Response.json({output:[{content:[{text:JSON.stringify({raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
   }
   if(url.includes('generativelanguage.googleapis.com')&&geminiThoughts)return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{thought:true,text:'{"SECRET_THOUGHT":1}'},{text:'{"rows":[]}' }]}}]});
-  if(url.includes('generativelanguage.googleapis.com')&&geminiFailure)return Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'truncated SECRET'}]}}]});
+  if(url.includes('generativelanguage.googleapis.com')&&geminiFailure)return Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:geminiFailure==='valid-json'?'{"rows":[]}':'truncated SECRET'}]}}]});
   if(url.includes('generativelanguage.googleapis.com'))return Response.json({candidates:[{content:{parts:[{text:'{"rows":[]}' }]}}]});
   throw Error('Unexpected request '+url);
  }};context.globalThis=context;vm.createContext(context);
@@ -173,4 +173,11 @@ test('Gemini JSON excludes thought parts and is read without a second paid reque
  const s=server({provider:false,fallback:true,geminiThoughts:true});const result=await (await s.invoke()).json();
  assert.equal(result.source.provider,'Gemini');assert(!JSON.stringify(result).includes('SECRET_THOUGHT'));
  assert.equal(s.calls.filter(c=>c.url.includes('generativelanguage')).length,1);
+});
+
+
+test('Gemini MAX_TOKENS is rejected even when its partial output happens to be valid JSON',async()=>{
+ const s=server({provider:false,fallback:true,geminiFailure:'valid-json'});const response=await s.invoke(),result=await response.json();
+ assert.equal(response.status,502);assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[1].diagnosis,'MAX_TOKENS');
+ assert(!s.calls.some(c=>c.url.includes('openrouter.ai')));
 });
