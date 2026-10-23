@@ -33,35 +33,45 @@
     probe.addEventListener('click',()=>task(async()=>{const result=await api({action:'probe_splav'});notice(result.probe?.idle_isolation===true?'СПЛАВ: вхід працює; доступ поза дорученнями й адміністрування заборонені.':'СПЛАВ: службовий вхід і заборона адміністрування перевірені. Перевірку порожньої черги пропущено, оскільки є активне доручення.');}));panel.append(probe);
     const diagnostic=document.createElement('details'),summary=document.createElement('summary');
     summary.textContent='Діагностика рендеру · без AI';diagnostic.append(summary);
-    const explanation=document.createElement('p');explanation.textContent='Пілотна перевірка першої сторінки PDF до 20 МіБ. Файл не зберігається і не додається до справи. Для перевірки використовуйте штучний зразок.';
+    const explanation=document.createElement('p');explanation.textContent='Перевірка однієї сторінки або зони PDF до 20 МіБ. Файл не зберігається і не додається до справи. Для перевірки використовуйте штучний зразок. Це діагностика рендера, не фонове AI-опрацювання.';
     const file=document.createElement('input');file.type='file';file.accept='application/pdf,.pdf';file.setAttribute('aria-label','PDF для діагностики рендеру');
-    const run=document.createElement('button');run.type='button';run.textContent='Підготувати першу сторінку';
+    const pageLabel=document.createElement('label');pageLabel.textContent='Сторінка ';const pageNumber=document.createElement('input');pageNumber.type='number';pageNumber.min='1';pageNumber.max='200';pageNumber.value='1';pageNumber.setAttribute('aria-label','Сторінка для серверного рендеру');pageLabel.append(pageNumber);
+    const zoneLabel=document.createElement('label');const zoneEnabled=document.createElement('input');zoneEnabled.type='checkbox';zoneLabel.append(zoneEnabled,document.createTextNode(' Підготувати окрему зону'));
+    const zoneFields=document.createElement('fieldset');zoneFields.hidden=true;const zoneLegend=document.createElement('legend');zoneLegend.textContent='Зона, % від сторінки';zoneFields.append(zoneLegend);
+    const coordinates={};for(const [key,label,value] of [['x','Ліворуч',10],['y','Згори',10],['w','Ширина',80],['h','Висота',30]]){const l=document.createElement('label');l.textContent=label+' ';const input=document.createElement('input');input.type='number';input.min='0';input.max='100';input.step='.1';input.value=String(value);input.setAttribute('aria-label','Рендер: '+label);coordinates[key]=input;l.append(input);zoneFields.append(l);}
+    zoneEnabled.onchange=()=>{zoneFields.hidden=!zoneEnabled.checked;};
+    const run=document.createElement('button');run.type='button';run.textContent='Підготувати фрагмент без AI';
     const result=document.createElement('p');result.setAttribute('role','status');
-    const preview=document.createElement('img');preview.alt='Перша сторінка діагностичного PDF';preview.hidden=true;preview.style.maxWidth='100%';
+    const preview=document.createElement('img');preview.alt='Фрагмент діагностичного PDF';preview.hidden=true;preview.style.maxWidth='100%';
     let imageURL=null;
     run.addEventListener('click',async()=>{
       if(run.disabled)return;
       const selected=file.files?.[0];
       if(!selected||selected.size>20*1024*1024){result.textContent='Виберіть PDF до 20 МіБ.';return;}
+      const selectedPage=Number(pageNumber.value),box=zoneEnabled.checked?Object.fromEntries(Object.entries(coordinates).map(([key,input])=>[key,Number(input.value)/100])):null;
+      if(!Number.isInteger(selectedPage)||selectedPage<1||selectedPage>200||box&&(!Object.values(box).every(Number.isFinite)||box.x<0||box.y<0||box.w<=0||box.h<=0||box.x+box.w>1||box.y+box.h>1)){result.textContent='Перевірте номер сторінки та межі зони (0–100%).';return;}
       run.disabled=true;preview.hidden=true;result.textContent='Готую сторінку без AI…';
       if(imageURL){URL.revokeObjectURL(imageURL);imageURL=null;}
       try{
         const {data:{session},error}=await client.auth.getSession();
         if(error||!session||session.user.id!==OWNER||!allowed)throw Error('Потрібна чинна сесія власника CRM');
+        const hash=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),n=>n.toString(16).padStart(2,'0')).join('');
+        const originalHash=await hash(await selected.arrayBuffer());
         const response=await fetch('https://vhfysipxorlhuiaatxqi.supabase.co/functions/v1/splav-render-probe',{
-          method:'POST',headers:{'Content-Type':'application/pdf',apikey:'sb_publishable_o8ZTKE4Ek0m58zq1q0QpFQ_domIX0Yz',Authorization:'Bearer '+session.access_token},
+          method:'POST',headers:{'Content-Type':'application/pdf',apikey:'sb_publishable_o8ZTKE4Ek0m58zq1q0QpFQ_domIX0Yz',Authorization:'Bearer '+session.access_token,'x-splav-page':String(selectedPage-1),'x-splav-sha256':originalHash,...(box?{'x-splav-box':JSON.stringify(box)}:{})},
           body:selected,signal:AbortSignal.timeout(60000)});
         if(!response.ok){const detail=await response.json().catch(()=>({}));throw Error(detail.error||'Рендер недоступний ('+response.status+')');}
         const metrics=JSON.parse(response.headers.get('x-splav-render-metrics')||'{}');
         const blob=await response.blob();
+        if(metrics.file_sha256!==originalHash||metrics.render_sha256!==await hash(await blob.arrayBuffer())||metrics.page!==selectedPage)throw Error('Контрольна сума або сторінка відповіді не збігається. Результат не показано.');
         if(!allowed||session.user.id!==OWNER)return;
         imageURL=URL.createObjectURL(blob);preview.src=imageURL;preview.hidden=false;
-        result.textContent='Готово: '+metrics.width+' × '+metrics.height+'; сторінок у PDF: '+metrics.pages+'; '+metrics.total_ms+' мс; AI-запитів: 0. Файл не збережено.';
+        result.textContent='Готово: сторінка '+metrics.page+' із '+metrics.pages+' · '+(box?'зона':'вся сторінка')+' · '+metrics.width+' × '+metrics.height+' · '+metrics.total_ms+' мс · AI-запитів: 0. Контрольні суми оригіналу та PNG збігаються. Файл не збережено.';
       }catch(error){result.textContent=error.message||'Не вдалося підготувати сторінку.';}
       finally{run.disabled=false;}
     });
     window.addEventListener('pagehide',()=>{if(imageURL)URL.revokeObjectURL(imageURL);});
-    diagnostic.append(explanation,file,run,result,preview);panel.append(diagnostic);
+    diagnostic.append(explanation,file,pageLabel,zoneLabel,zoneFields,run,result,preview);panel.append(diagnostic);
   }
   function route() {
     const requested = location.hash.slice(1);

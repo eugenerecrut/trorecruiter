@@ -1,11 +1,12 @@
-import {readBoundedPDF, rasterDimensions, grayPNG} from '../_shared/pdf-raster.js';
+import {readBoundedPDF} from '../_shared/pdf-raster.js';
+import {renderPDFZone, zoneRasterBox} from '../_shared/pdf-zone-raster.mjs';
 
 const OWNER = '7c74b122-3940-40a8-a32f-fe2b6776c173';
 const ORIGIN = 'https://eugenerecrut.github.io';
 export function createRenderProbe({authorize, getLibrary}) {
   let busy = false;
   const headers = {'Access-Control-Allow-Origin': ORIGIN, 'Vary': 'Origin',
-    'Access-Control-Allow-Headers': 'authorization,apikey,x-client-info,content-type,x-splav-page',
+    'Access-Control-Allow-Headers': 'authorization,apikey,x-client-info,content-type,x-splav-page,x-splav-box,x-splav-sha256',
     'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Expose-Headers': 'x-splav-render-metrics',
     'Cache-Control': 'no-store'};
   const fail = (status, error) => new Response(JSON.stringify({error}), {
@@ -23,33 +24,25 @@ export function createRenderProbe({authorize, getLibrary}) {
     if (req.headers.get('content-type')?.split(';')[0] !== 'application/pdf') return fail(415, 'Потрібен PDF');
     const rawPage = req.headers.get('x-splav-page') ?? '0';
     if (!/^\d{1,3}$/.test(rawPage) || Number(rawPage) > 199) return fail(400, 'Номер сторінки поза межами');
+    const rawBox = req.headers.get('x-splav-box'), expected = req.headers.get('x-splav-sha256');
+    let box, mode = rawBox === null ? 'overview' : 'zone';
+    try {
+      if (rawBox !== null) { if (rawBox.length > 200) throw Error(); box = JSON.parse(rawBox); }
+      zoneRasterBox(mode, box);
+      if (expected !== null && !/^[a-f0-9]{64}$/.test(expected)) throw Error();
+    } catch { return fail(400, 'Некоректна зона або контрольна сума'); }
     busy = true;
-    let doc, page;
     const start = performance.now();
     try {
       const bytes = await readBoundedPDF(req.body, req.headers.get('content-length'));
-      const readAt = performance.now(), library = await getLibrary(), initAt = performance.now();
-      doc = await library.loadDocument(bytes);
-      const pages = doc.getPageCount(), index = Number(rawPage);
-      if (!Number.isInteger(pages) || pages < 1 || pages > 200 || index >= pages) return fail(422, 'PDF повинен мати від 1 до 200 сторінок; перевірте вибрану сторінку');
-      page = doc.getPage(index);
-      const original = page.getOriginalSize();
-      const size = rasterDimensions(original.originalWidth, original.originalHeight), loadAt = performance.now();
-      const bitmap = await page.render({...size, colorSpace: 'Gray', render: 'bitmap'}), renderAt = performance.now();
-      if (bitmap.width !== size.width || bitmap.height !== size.height) throw new Error('Unexpected bitmap geometry');
-      const png = await grayPNG(bitmap.data, bitmap.width, bitmap.height), end = performance.now();
-      if (png.length > 4 * 1024 * 1024) return fail(413, 'Зображення сторінки перевищило бюджет 4 МіБ');
-      const metrics = {pages, page: index + 1, width: size.width, height: size.height, pdf_bytes: bytes.length,
-        png_bytes: png.length, read_ms: Math.round(readAt - start), init_ms: Math.round(initAt - readAt),
-        load_ms: Math.round(loadAt - initAt), render_ms: Math.round(renderAt - loadAt),
-        encode_ms: Math.round(end - renderAt), total_ms: Math.round(end - start), ai_requests: 0};
+      const readAt = performance.now();
+      const {png, metrics} = await renderPDFZone({bytes, page: Number(rawPage) + 1, mode, box, expected_sha256: expected ?? undefined, getLibrary});
+      metrics.read_ms = Math.round(readAt - start); metrics.total_ms = Math.round(performance.now() - start);
       return new Response(png, {headers: {...headers, 'Content-Type': 'image/png',
         'x-splav-render-metrics': JSON.stringify(metrics)}});
     } catch {
       return fail(422, 'Не вдалося підготувати сторінку. Перевірте PDF (до 20 МіБ), захист паролем і розмір сторінки. AI не запускався.');
     } finally {
-      try { page?.close(); } catch { /* Still destroy the document. */ }
-      try { doc?.destroy(); } catch { /* Never retain a busy lock after cleanup failure. */ }
       busy = false;
     }
   };
