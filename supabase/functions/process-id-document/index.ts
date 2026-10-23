@@ -63,7 +63,7 @@ async function processDocument(req:Request){
     if(body.action==='recheck_saved'){
       if(!body.expected_revision||body.expected_revision!==doc.ai_processed_at)return stale();
       if(profile.workflow?.archive_lock)return json({error:'Справу заблоковано'},409);
-      const requirement=await sb.from('document_requirements').select('id,document_type,ai_enabled').eq('document_type','Військовий облік (витяг Резерв+ / приписне)').limit(1).maybeSingle();
+      const requirement=await sb.from('document_requirements').select('id,document_type,ai_enabled,active').eq('active',true).eq('document_type','Військовий облік (витяг Резерв+ / приписне)').limit(1).maybeSingle();
       if(requirement.error)throw requirement.error;
       const proposed=(globalThis as any).CRMDocumentPolicy.savedReview(doc,requirement.data);
       if(!proposed.eligible)return json({error:proposed.reason,code:'SAVED_REVIEW_BLOCKED'},409);

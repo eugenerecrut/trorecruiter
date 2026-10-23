@@ -56,7 +56,7 @@
     const deny=reason=>({eligible:false,reason});
     if(doc.deleted_at||doc.verification_status==='Підтверджено'||doc.verified_at)return deny('Документ видалений або вже підтверджений.');
     if(doc.processing_status!=='AI оброблено'||!raw||typeof raw!=='object')return deny('Немає успішного збереженого OCR.');
-    if(!/^(?:витяг (?:з|із) )?резерв\+$/u.test(norm(raw.document_type))||requirement?.document_type!==canonical||requirement.ai_enabled===false)return deny('Потрібна окрема звірка типу документа.');
+    if(!/^(?:витяг (?:з|із) )?резерв\+$/u.test(norm(raw.document_type))||requirement?.document_type!==canonical||requirement.ai_enabled===false||requirement.active===false)return deny('Потрібна окрема звірка типу документа.');
     if(raw.review_required||raw.extracted?.meta?.requires_review||doc.ai_extracted?.meta?.requires_review||doc.ai_extracted?.meta?.manual_review||raw.meta?.conflicts?.length||raw.extracted?.meta?.conflicts?.length)return deny('Джерело має окреме застереження або ручні уточнення.');
     if(!Number.isFinite(Number(doc.ai_confidence))||Number(doc.ai_confidence)<0.85||Number(doc.ai_confidence)>1)return deny('Недостатня впевненість OCR.');
     if(doc.notes!=='AI REVIEW REQUIRED model='+doc.ai_model)return deny('Примітка вже змінена; автоматичне очищення заборонено.');
