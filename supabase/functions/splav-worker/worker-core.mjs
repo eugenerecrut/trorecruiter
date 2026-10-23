@@ -21,14 +21,15 @@ export function createWorkerHandler({createClient,env,waitUntil,fetchImpl=fetch,
    const client=createClient(url,publicKey,{auth:{persistSession:false,autoRefreshToken:false}});
    const signed=await client.auth.signInWithPassword({email:bootstrap.data.email,password:bootstrap.data.password});
    if(signed.error||!signed.data?.session?.access_token)return json(503,{error:'Processor sign-in failed'});
-   const claimed=await client.rpc('crm_splav_claim');
+   let claimed=await client.rpc('crm_splav_claim');
    if(claimed.error)return json(503,{error:'Claim failed'});
+   if(!claimed.data){claimed=await client.rpc('crm_splav_zone_claim');if(claimed.error)return json(503,{error:'Zonal claim failed'});}
    if(!claimed.data){await client.auth.signOut({scope:'local'});return json(200,{state:'busy_or_idle'});}
    const job=claimed.data;
    const task=(async()=>{
     try{
-     const response=await fetchImpl(url+'/functions/v1/process-id-document',{method:'POST',headers:{Authorization:'Bearer '+signed.data.session.access_token,apikey:publicKey,'Content-Type':'application/json'},
-       body:JSON.stringify({document_id:job.document_id,job_id:job.id,lease_token:job.lease_token})});
+     const response=await fetchImpl(url+'/functions/v1/'+(job.kind==='zone'?'splav-zone-worker':'process-id-document'),{method:'POST',headers:{Authorization:'Bearer '+signed.data.session.access_token,apikey:publicKey,'Content-Type':'application/json'},
+       body:JSON.stringify({...(job.kind==='zone'?{}:{document_id:job.document_id}),job_id:job.id,lease_token:job.lease_token})});
      await response.body?.cancel();
      log({event:'job_response',status:response.status});
      // A completed HTTP response ends this session. Transport ambiguity leaves the
