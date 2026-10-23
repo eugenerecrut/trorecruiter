@@ -24,7 +24,7 @@ function server({auth=true,staff=true,processor=false,doc=true,enabled=true,type
   if(url.includes('version_number=gt.'))return Response.json(newer?[{id:'new'}]:[]);
   if(url.includes('/document_requirements?'))return Response.json([{ai_enabled:enabled}]);
   if(url.includes('/rpc/crm_military_zone_examples'))return Response.json([]);
-  if(url.includes('/rpc/crm_zone_begin')){
+  if(url.includes('/rpc/crm_zone_begin')||url.includes('/rpc/crm_zone_coordinator_begin')){
    if(ledger==='durable'){
     if(savedReceipt)return Response.json(savedReceipt);
     savedReceipt={state:'dispatched'};
@@ -112,4 +112,12 @@ test('a durable uncertain result is replayed without another paid call',async()=
  const s=server({ledger:'durable',provider:'transport'});
  assert.equal((await s.invoke()).status,502);assert.equal((await s.invoke()).status,502);
  assert.equal(s.calls.filter(x=>x.url.includes('api.openai.com')).length,1);
+});
+test('coordinator dispatch uses its guarded RPC and malformed versions make no AI request',async()=>{
+ const s=server({ledger:'completed'}),r=await s.invoke({coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',coordinator_version:1});
+ assert.equal(r.status,200);assert(s.calls.some(c=>c.url.endsWith('/rpc/crm_zone_coordinator_begin')));
+ assert(!s.calls.some(c=>c.url.endsWith('/rpc/crm_zone_begin')));
+ for(const extra of [{coordinator_id:'invalid',coordinator_version:1},{coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',coordinator_version:-1},{coordinator_version:1}]){
+  const bad=server();assert.equal((await bad.invoke(extra)).status,400);assert(!bad.calls.some(c=>c.url.includes('api.openai.com')));
+ }
 });

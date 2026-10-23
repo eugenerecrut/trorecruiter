@@ -1,0 +1,45 @@
+<!doctype html><html lang="uk"><meta charset="utf-8"><title>Синтетична перевірка координатора</title>
+<style>body{font:16px system-ui;margin:24px;background:#f2f5fa;color:#15243c}button{padding:10px;margin:5px}dialog{max-width:92vw;max-height:90vh;overflow:auto;border:1px solid #bbc;border-radius:12px}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px}summary{cursor:pointer}canvas{border:1px solid #ddd}</style>
+<h1>Перевірка відновлення координатора</h1><p>Лише штучне зображення та симулятор БД. Доступу до CRM, моделей і реальних документів немає.</p>
+<p>Перший запис після огляду навмисно відхиляється. Закрийте читач, відкрийте знову і продовжте: огляд не повинен виконатися вдруге.</p>
+<button id="open">Відкрити тестове джерело</button><p id="proof" role="status"></p>
+<script src="../../military-autopilot.js"></script><script src="../../supabase/functions/_shared/military-zone.js"></script>
+<script>
+const doc={id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',storage_path:'synthetic.png',file_name:'Штучне джерело.png',mime_type:'image/png',document_type:'Автобіографія друкована',ai_extracted:{},processing_status:'AI оброблено',ai_processed_at:'synthetic-revision'};
+let session=null,failAfter=true,overviews=0,zones=0,finals=0;
+const slots=new Map(),clone=v=>JSON.parse(JSON.stringify(v));
+function proof(){document.querySelector('#proof').textContent='Синтетичних оглядів: '+overviews+' · Читань зон: '+zones+' · Збережених звітів: '+finals+' · Реальних AI-запитів: 0';}
+window.fetch=async url=>{
+ if(url!=='https://synthetic.invalid/original.png')throw Error('External network is forbidden in this fixture');
+ const canvas=document.createElement('canvas');canvas.width=400;canvas.height=600;
+ const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,400,600);ctx.fillStyle='black';ctx.font='20px sans-serif';ctx.fillText('SYNTHETIC DOCUMENT',30,70);ctx.fillText('NO PERSONAL DATA',30,110);
+ return new Response(await new Promise(resolve=>canvas.toBlob(resolve,'image/png')));
+};
+window.supabaseClient={storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'https://synthetic.invalid/original.png'}})})},
+ rpc:async(name,args)=>{
+  if(name==='crm_zone_coordinator_open'){
+   if(!session)session={id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',version:0,source:{document_id:doc.id,file_sha256:args.p_file_sha256,revision:'synthetic-revision'},snapshot:null};
+   if(session.snapshot?.in_flight&&!slots.has(session.snapshot.attempts)&&args.p_recover){session.snapshot.in_flight=null;session.snapshot.attempts=session.snapshot.completed;session.version++;}
+   const data={...clone(session),reports_truncated:false,reports:[...slots.entries()].filter(([attempt])=>attempt<=(session.snapshot?.completed||0)).map(([,slot])=>clone(slot.result)),
+    in_flight_response:session.snapshot?.in_flight?clone(slots.get(session.snapshot.attempts)||null):null};return{data};
+  }
+  if(name==='crm_zone_coordinator_save'){
+   if(args.p_expected_version!==session.version)return{error:{code:'40001',message:'stale'}};
+   if(args.p_snapshot.in_flight===null&&args.p_snapshot.completed===1&&failAfter){failAfter=false;return{error:{message:'synthetic lost checkpoint'}};}
+   session.snapshot=clone(args.p_snapshot);session.version++;proof();return{data:session.version};
+  }
+  if(name==='crm_save_military_zone_report'){finals++;proof();return{data:{status:args.p_report.status,saved_at:'synthetic-time'}};}
+  throw Error('Unexpected synthetic RPC '+name);
+ },functions:{invoke:async(name,{body})=>{
+  if(name!=='ai-military-zone'||body.coordinator_id!==session.id||body.coordinator_version!==session.version)throw Error('Invalid synthetic dispatch');
+  const task=session.snapshot.in_flight,attempt=session.snapshot.attempts;
+  if(task.mode!==body.mode||task.page!==body.page)throw Error('Wrong synthetic task');
+  if(slots.has(attempt))return{data:{...clone(slots.get(attempt).result),request_replayed:true}};
+  const result={mode:body.mode,review_only:true,source:{document_id:doc.id,page:body.page,box:body.box,render_sha256:body.render_sha256,provider:'Симулятор',origin:'synthetic'},quality_issues:[],warnings:[],raw_text:'Synthetic sample',
+   ...(body.mode==='overview'?{zones:[{label:'Штучний рядок',box:{x:.1,y:.1,w:.5,h:.2}}]}:{rows:[{raw_text:'Synthetic sample',fields:[{key:'full_name',raw_text:'Synthetic sample',value:'Synthetic sample',legibility:'clear',requires_review:true}]}]})};
+  if(body.mode==='overview')overviews++;else zones++;
+  slots.set(attempt,{state:'completed',result:clone(result)});proof();return{data:result};
+ }}};
+proof();
+</script><script src="../../military-zone-review.js"></script>
+<script>document.querySelector('#open').onclick=()=>CRMMilitaryZoneReview.open(doc,{autostart:false});</script></html>
