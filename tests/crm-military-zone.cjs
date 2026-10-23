@@ -15,9 +15,9 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,processor=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true}={}){
+function server({auth=true,staff=true,processor=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false}={}){
  let handler;const calls=[];
- const context={globalThis:null,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key'}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
+ const context={globalThis:null,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini',OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
   if(url.endsWith('/auth/v1/user'))return Response.json({id:'user'},{status:auth?200:401});
   if(url.includes('crm_staff?'))return Response.json(staff?[{user_id:'user',role:processor?'processor':'recruiter'}]:[]);
@@ -25,7 +25,14 @@ function server({auth=true,staff=true,processor=false,doc=true,enabled=true,type
   if(url.includes('/document_requirements?'))return Response.json([{ai_enabled:enabled}]);
   if(url.includes('/rpc/crm_military_zone_examples'))return Response.json([]);
   if(url.includes('/documents?'))return Response.json(doc?[{id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',candidate_id:'c',storage_path:'c/original.pdf',document_type:type,version_group_id:'g',version_number:1}]:[]);
-  if(url.includes('api.openai.com'))return provider?Response.json({output:[{content:[{text:JSON.stringify({raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
+  if(url.includes('api.openai.com')){
+   if(provider==='transport')throw Error('synthetic network failure');
+   if(provider==='malformed')return Response.json({output:[]});
+   if(provider==='body-lost')return new Response('{truncated');
+   if(provider==='5xx')return Response.json({error:'synthetic'}, {status:503});
+   return provider?Response.json({output:[{content:[{text:JSON.stringify({raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
+  }
+  if(url.includes('generativelanguage.googleapis.com'))return Response.json({candidates:[{content:{parts:[{text:'{"rows":[]}' }]}}]});
   throw Error('Unexpected request '+url);
  }};context.globalThis=context;vm.createContext(context);
  let source=fs.readFileSync(path.join(__dirname,'../supabase/functions/ai-military-zone/index.ts'),'utf8').replace("import '../_shared/military-zone.js';",'');source=stripTypeScriptTypes(source);vm.runInContext(source,context);
@@ -41,4 +48,20 @@ test('edge rejects malformed page, image and box without AI calls',async()=>{
 test('edge returns read-only result, uses only GET against database, and reports provider failures safely',async()=>{
  const s=server(),r=await s.invoke(),out=await r.json();assert.equal(r.status,200);assert.equal(out.review_only,true);assert.equal(out.source.page,1);assert.equal(out.source.document_id,'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');assert(s.calls.filter(x=>x.url.includes('/rest/')).every(x=>x.method==='GET'));
  const fail=await server({provider:false}).invoke();assert.equal(fail.status,502);assert(!JSON.stringify(await fail.json()).includes('unit-test-not-a-real-key'));
+});
+
+test('ambiguous transport, server and accepted-but-unreadable responses stop before fallback',async()=>{
+ for(const provider of ['transport','malformed','body-lost','5xx']){
+  const s=server({provider,fallback:true}),r=await s.invoke(),out=await r.json();
+  assert.equal(r.status,502);assert.equal(out.code,'ZONE_RESULT_UNCERTAIN');assert.equal(out.automatic_retry,false);
+  assert.equal(s.calls.filter(x=>x.url.includes('api.openai.com')).length,1);
+  assert.equal(s.calls.filter(x=>x.url.includes('generativelanguage')||x.url.includes('openrouter')).length,0);
+  assert(!JSON.stringify(out).includes('unit-test-not-a-real-key'));
+ }
+});
+test('explicit provider rejection permits the existing bounded fallback',async()=>{
+ const s=server({provider:false,fallback:true}),r=await s.invoke();
+ assert.equal(r.status,200);assert.equal((await r.json()).source.provider,'Gemini');
+ assert.equal(s.calls.filter(x=>x.url.includes('api.openai.com')).length,1);
+ assert.equal(s.calls.filter(x=>x.url.includes('generativelanguage')).length,1);
 });

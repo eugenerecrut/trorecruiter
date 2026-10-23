@@ -5,7 +5,12 @@ function create(pages){const tasks=Array.from({length:Math.min(200,pages)},(_,i)
  return {tasks,errors,stop(){stopped=true;},get running(){return running;},async run({read,show,limit=Infinity}){
   if(running)return;running=true;stopped=false;let calls=0;
   try{while(tasks.length&&!stopped&&calls<limit){const task=tasks[0];show?.({page:task.page,pending:tasks.length,calls,limit});let result;
-   try{result=await read(task);if(!result)throw Error('Немає результату читання');calls++;}catch(error){tasks.shift();if(!task.transport_retry)tasks.unshift({...task,transport_retry:true});else errors.push({page:task.page,mode:task.mode,error:error.message});show?.({error:error.message,page:task.page,pending:tasks.length,calls:++calls,limit});continue;}
+   try{result=await read(task);if(!result)throw Error('Немає результату читання');calls++;}catch(error){tasks.shift();
+    // A rejected promise does not prove that the AI request was not accepted.
+    // Only a positively identified local/pre-dispatch failure may be retried.
+    if(error?.safe_to_retry===true&&!task.transport_retry)tasks.unshift({...task,transport_retry:true});
+    else errors.push({page:task.page,mode:task.mode,error:error.message,code:error?.code||'ZONE_STEP_FAILED',automatic_retry:false});
+    show?.({error:error.message,page:task.page,pending:tasks.length,calls:++calls,limit});continue;}
    tasks.shift();
    if(task.mode==='overview'){
     const zones=(result.zones||[]).filter(z=>z.box&&!/empty|blank|порожн/iu.test([z.label,z.reason].join(' '))).slice(0,6);
