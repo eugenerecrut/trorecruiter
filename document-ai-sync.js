@@ -152,6 +152,7 @@
         if(e.field_evidence?.[key]?.requires_review||e.meta?.field_evidence?.[key]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[key]?.legibility||e.meta?.field_evidence?.[key]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
         else if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
         else if(!(['driver_license','ubd_certificate','registration_records','marriage_record','education_records','work_records','work_events'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
+        else if(!empty(protectedValue)&&typeof value!=='object'&&equal(key==='service_type'?service(protectedValue):protectedValue,value)){action='leave';reason=ownerIssue?'Значення збігається з карткою; документ потребує перевірки':'';}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
         else if(target==='profile'&&['education_records','work_records','work_events'].includes(key)&&empty(legacy)){
           if(key!=='education_records'&&Array.isArray(value))value=value.filter(row=>{

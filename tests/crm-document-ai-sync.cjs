@@ -149,3 +149,21 @@ test('Unmapped service-record sources explicitly request recruiter review',async
 test('Clear source with no conflicting stored values does not trigger a recruiter exception',async()=>{
  const m=memory(candidate(),{...document({...personal(),military_specialty:'225256А'}),ai_confidence:0.99});const r=await sync.automate(m.client,'d1');assert.equal(r.needsRecruiter,false);assert.equal(m.state.c.military_specialty,'225256А');assert.notEqual(m.state.d.verification_status,'Підтверджено');
 });
+
+
+test('Reserve+ aliases normalize narrowly without turning military books or passports into registry extracts',()=>{
+ const policy=globalThis.CRMDocumentPolicy,canonical='Військовий облік (витяг Резерв+ / приписне)';
+ for(const type of ['Витяг з Резерв+','Витяг із Резерв+','Резерв+',canonical])assert.equal(policy.normalize(document({},type)).type,canonical);
+ for(const type of ['Військовий квиток','Паспорт громадянина України','Приписне посвідчення','Інший документ'])assert.equal(policy.normalize(document({},type),canonical).type,type);
+});
+test('document review is not eleven scalar conflicts when values match; new and different values stay blocked',()=>{
+ const c=candidate();c.military_rank='Солдат';c.profile_data.military_specialty='901074';
+ const d={...document({...personal(),military_rank:'Солдат',military_specialty:'901074',tcc:'Новий ТЦК'},'Витяг з Резерв+'),notes:'AI REVIEW REQUIRED',ai_confidence:1};
+ const p=sync.plan(d,c);
+ assert.equal(p.rows.find(r=>r.key==='full_name').action,'leave');
+ assert.equal(p.rows.find(r=>r.key==='military_rank').action,'leave');
+ assert.equal(p.rows.find(r=>r.key==='military_specialty').action,'leave');
+ assert.equal(p.rows.find(r=>r.key==='tcc').action,'conflict');assert.equal(p.selections.length,0);
+ const unreadable=sync.plan({...d,ai_extracted:{...d.ai_extracted,field_evidence:{military_specialty:{legibility:'unreadable'}}}},c);
+ assert.equal(unreadable.rows.find(r=>r.key==='military_specialty').action,'conflict');
+});
