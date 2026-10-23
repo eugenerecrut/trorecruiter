@@ -37,7 +37,13 @@ try{
  values('${id(20)}','${id(10)}','source.pdf','${id(20)}',1,'Автобіографія друкована','${id(30)}','{}','Не перевірено');`);
  await db.exec(file('supabase/migrations/20261023162403_splav_delegated_zone_worker.sql'));
  await db.exec("update crm_private.splav_settings set enabled=true");
- await db.exec(`update public.documents set verification_status='Підтверджено',ai_extracted='{"manual_field":"preserve"}' where id='${id(20)}'`);
+ await db.exec(`update public.documents set verification_status='Підтверджено',ai_processed_at='2026-10-15T00:00:00Z',ai_extracted='{"manual_field":"preserve"}' where id='${id(20)}'`);
+ await db.exec(`alter table public.crm_activity add column candidate_id uuid,add column document_id uuid,add column actor_id uuid,add column actor_name text,add column action text,add column changes jsonb,add column source_document_id uuid;
+ alter table public.document_ai_runs add column document_id uuid,add column candidate_id uuid,add column actor_id uuid,add column actor_name text,add column processed_at timestamptz,add column model text,add column result jsonb;`);
+ await db.exec(file('tests/fixtures/splav-zone-document-triggers.sql'));
+ await db.exec(file('supabase/migrations/20261023193100_splav_zone_metadata_provenance.sql'));
+ await db.exec(`create trigger crm_guard_document before insert or update on public.documents for each row execute function crm_private.guard_document();
+ create trigger crm_activity_documents after insert or update or delete on public.documents for each row execute function crm_private.record_activity();`);
  const hash='a'.repeat(64),full={x:0,y:0,w:1,h:1};
  await actor(1);const c=await call('crm_zone_coordinator_open',[id(20),hash,false]);
  assert.equal(await call('crm_zone_background_ready'),false);checks++;
@@ -86,6 +92,9 @@ try{
  assert.deepEqual((await db.query('select profile_data from public.candidates where id=$1',[id(10)])).rows[0].profile_data,{manual:'preserve',service_type:'За мобілізацією'});checks++;
  assert.equal((await db.query("select ai_extracted->'_military_zone_report'->>'status' status from public.documents where id=$1",[id(20)])).rows[0].status,'complete');checks++;
  assert.deepEqual((await db.query("select ai_extracted-'_military_zone_report' as original,verification_status from public.documents where id=$1",[id(20)])).rows[0],{original:{manual_field:'preserve'},verification_status:'Підтверджено'});checks++;
+ assert.equal((await db.query("select ai_processed_at='2026-10-15T00:00:00Z'::timestamptz as same from public.documents where id=$1",[id(20)])).rows[0].same,true);checks++;
+ assert.equal((await db.query('select count(*)::int n from public.document_ai_runs where document_id=$1',[id(20)])).rows[0].n,0);checks++;
+ assert.equal((await db.query('select count(*)::int n from public.crm_activity where document_id=$1',[id(20)])).rows[0].n,1);checks++;
  async function fresh(n){await owner();await db.query(`insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status)
   values($1,$2,$3,$1,1,'Автобіографія друкована',$4,'{}','Не перевірено')`,[id(n),id(10),'source-'+n+'.pdf',id(30)]);
   await actor(1);const co=await call('crm_zone_coordinator_open',[id(n),hash,false]);const j=await call('crm_splav_zone_enqueue',[co.id,1]);await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,j.id);checks++;return {j,co};}
@@ -110,6 +119,9 @@ try{
  const root=await call('crm_splav_enqueue',[id(20)]);await actor(2);const rootLease=await call('crm_splav_claim');assert.equal(rootLease.id,root.id);checks++;
  await assert.rejects(call('crm_splav_zone_step',[rootLease.id,rootLease.lease_token,'load',{}]),/Invalid zonal lease/);checks++;
  assert.equal((await call('crm_splav_validate',[rootLease.id,rootLease.lease_token])).document_id,id(20));checks++;
+ await owner();const beforePrimary=(await db.query('select count(*)::int n from public.document_ai_runs where document_id=$1',[id(20)])).rows[0].n;
+ await db.query("update public.documents set ai_extracted=ai_extracted||'{\"new_primary\":\"value\"}' where id=$1",[id(20)]);
+ assert.equal((await db.query('select count(*)::int n from public.document_ai_runs where document_id=$1',[id(20)])).rows[0].n,beforePrimary+1);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
