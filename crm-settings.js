@@ -5,6 +5,33 @@
   const byId = id => document.getElementById(id);
   let allowed = false, busy = false, page = 1, currentUsers = [], hasMore = false, scannerChecked = false, authGeneration = 0;
   const notice = text => {byId('users-status').textContent = text;};
+  let workerState=null;
+  function renderWorkerState(){
+    if(!byId('splav-worker-status'))return;
+    byId('splav-worker-status').textContent=workerState?.active&&workerState?.enabled
+      ?'СПЛАВ працює. У черзі: '+workerState.queued+' · Опрацьовується: '+workerState.running+' · Потребує звірки: '+workerState.needs_review
+      :workerState?.created?'Службовий запис створено. Фонове опрацювання вимкнено.':'Службовий запис ще не створено.';
+    byId('splav-create').disabled=busy||!workerState||workerState.created;
+    byId('splav-activate').disabled=busy||!workerState?.created||!!workerState?.active;
+    byId('splav-disable').disabled=busy||!workerState?.active;
+    byId('splav-probe').disabled=busy||!workerState?.active;
+  }
+  async function loadWorkerState(){const data=await api({action:'status_splav'});workerState=data.worker;renderWorkerState();}
+  function installWorkerPanel(){
+    if(byId('splav-worker-panel'))return;
+    const panel=document.createElement('section');panel.id='splav-worker-panel';panel.className='card';
+    const title=document.createElement('h3');title.textContent='СПЛАВ · Фонове опрацювання';
+    const description=document.createElement('p');description.textContent='Нові завантаження опрацьовуються без відкритої вкладки. Наявні документи автоматично повторно не запускаються. Ручні значення зберігаються.';
+    const status=document.createElement('p');status.id='splav-worker-status';status.textContent='Перевіряю стан…';
+    panel.append(title,description,status);
+    for(const [id,label,action] of [['splav-create','Створити службовий запис','provision_splav'],['splav-activate','Увімкнути СПЛАВ','activate_splav'],['splav-disable','Призупинити','disable_splav']]){
+      const button=document.createElement('button');button.type='button';button.id=id;button.textContent=label;button.disabled=true;
+      button.addEventListener('click',()=>task(async()=>{await api({action});await loadWorkerState();await loadUsers();}));panel.append(button);
+    }
+    byId('users-content').prepend(panel);
+    const probe=document.createElement('button');probe.type='button';probe.id='splav-probe';probe.textContent='Перевірити доступ';probe.disabled=true;
+    probe.addEventListener('click',()=>task(async()=>{const result=await api({action:'probe_splav'});notice(result.probe?.idle_isolation===true?'СПЛАВ: вхід працює; доступ поза дорученнями й адміністрування заборонені.':'СПЛАВ: службовий вхід і заборона адміністрування перевірені. Перевірку порожньої черги пропущено, оскільки є активне доручення.');}));panel.append(probe);
+  }
   function route() {
     const requested = location.hash.slice(1);
     const groups = window.CRMInterface?.mode === 'mobile' ? ['general', 'users', 'about'] : ['general', 'scanner', 'users', 'about'];
@@ -47,7 +74,8 @@
       const heading = document.createElement('h3'); heading.textContent = user.full_name || user.email;
       const detail = document.createElement('p'); detail.className = 'muted';
       const login = user.email.endsWith('@trorecruiter.invalid') ? user.email.split('@')[0] : user.email;
-      detail.textContent = [login, user.department, user.position, user.owner ? 'Власник CRM' : 'Користувач'].filter(Boolean).join(' · ');
+      detail.textContent = [login, user.department, user.position, user.technical?'Службовий запис СПЛАВ':user.owner ? 'Власник CRM' : 'Користувач'].filter(Boolean).join(' · ');
+      if(user.technical){card.append(heading,detail);list.append(card);return;}
       const edit = document.createElement('button'); edit.className = 'btn secondary'; edit.textContent = 'Редагувати';
       edit.addEventListener('click', () => {
         if (busy) return;
@@ -79,6 +107,7 @@
       busy = false; document.querySelectorAll('#users button').forEach(button => {button.disabled = false;});
       byId('users-prev').disabled = page === 1;
       byId('users-next').disabled = !hasMore;
+      renderWorkerState();
     }
   }
   byId('user-form').addEventListener('submit', event => {
@@ -118,7 +147,9 @@
       const access = await api({action: 'access'});
       if (!access.allowed || generation !== authGeneration) return;
       allowed = true; byId('users-link').hidden = false; byId('users-content').hidden = false;
+      installWorkerPanel();
       await loadUsers();
+      try{await loadWorkerState();}catch{byId('splav-worker-status').textContent='Сервер черги ще не підключено.';}
     } catch (error) {if (generation === authGeneration) notice(error.message);}
   }
   window.addEventListener('hashchange', route);

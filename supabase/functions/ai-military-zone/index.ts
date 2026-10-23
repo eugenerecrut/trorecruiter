@@ -37,8 +37,9 @@ Deno.serve(async req=>{
   const headers={Authorization:authorization,apikey:key};
   const auth=await request(backend+'/auth/v1/user',{headers});if(!auth.ok)return json({error:'Потрібна чинна сесія'},401);
   const user=await auth.json();if(!user.id)return json({error:'Потрібна чинна сесія'},401);
-  const staff=await request(backend+'/rest/v1/crm_staff?user_id=eq.'+encodeURIComponent(user.id)+'&active=eq.true&select=user_id&limit=1',{headers});
+  const staff=await request(backend+'/rest/v1/crm_staff?user_id=eq.'+encodeURIComponent(user.id)+'&active=eq.true&select=user_id,role&limit=1',{headers});
   if(!staff.ok)return json({error:'Доступ заборонено'},403);const users=await staff.json();if(!Array.isArray(users)||!users.length)return json({error:'Користувач неактивний'},403);
+  if(users[0].role==='processor')return json({error:'Зональне розпізнавання потребує окремого доручення СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
   const raw=await req.text();if(raw.length>6000000)return json({error:'Фрагмент завеликий'},413);let body;try{body=JSON.parse(raw)}catch{return json({error:'Некоректний JSON'},400)}
   if(!/^[0-9a-f-]{36}$/i.test(body.document_id||'')||!['overview','zone'].includes(body.mode)||!Number.isInteger(body.page)||body.page<1||body.page>200||!contract.box(body.box))return json({error:'Некоректна сторінка або зона'},400);
   if(typeof body.image_data!=='string'||body.image_data.length>5500000||!/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(body.image_data))return json({error:'Потрібне зображення JPEG/PNG до 4 МБ'},400);

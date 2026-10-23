@@ -13,21 +13,42 @@ async function processDocument(req:Request){
   const sb=createClient(Deno.env.get('SUPABASE_URL')!,key,{global:{headers:{Authorization:authorization}},auth:{persistSession:false}});
   const {data:auth,error:authError}=await sb.auth.getUser();
   if(authError||!auth.user)return json({error:'Потрібна чинна сесія'},401);
-  const {data:staff,error:staffError}=await sb.from('crm_staff').select('active').eq('user_id',auth.user.id).single();
+  const {data:staff,error:staffError}=await sb.from('crm_staff').select('active,role').eq('user_id',auth.user.id).single();
   if(staffError||!staff?.active)return json({error:'Користувач неактивний'},403);
-  let id:string|undefined,snapshot:any=null;
+  let body:any;
+  try{body=await req.json();}catch{return json({error:'Некоректний JSON запиту'},400);}
+  let queue:any=null;
+  if(staff.role==='processor'){
+    if(!body?.job_id||!body?.lease_token)return json({error:'Фоновий виконавець може працювати лише через чергу СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
+    const access=await sb.rpc('crm_splav_validate',{job_id:body.job_id,token:body.lease_token});
+    if(access.error||access.data?.document_id!==body.document_id)return json({error:'Доручення СПЛАВ недійсне або прострочене',code:'INVALID_SPLAV_LEASE'},403);
+    queue={job_id:body.job_id,lease_token:body.lease_token,stage:access.data.stage};
+  }else if(body?.job_id||body?.lease_token)return json({error:'Виконання черги доступне лише СПЛАВ'},403);
+  let id:string|undefined,snapshot:any=null,providerReceipt:string|null=null;
   const stale=()=>json({error:'Стан документа вже змінено під час розпізнавання. Оновіть картку, щоб побачити чинні дані.',code:'STALE_DOCUMENT'},409);
   // All success/error writes compare the same initial revision. Never let an old
   // request overwrite a newer AI result, manual review, moved or deleted file.
   const persist=async(patch:Record<string,unknown>)=>{
     if(!snapshot)return {data:[],error:null};
+    if(queue){const result=await sb.rpc('crm_splav_persist',{job_id:queue.job_id,token:queue.lease_token,provider_receipt:providerReceipt,patch});return {data:result.data?[result.data]:[],error:result.error};}
     let query=sb.from('documents').update(patch).eq('id',snapshot.id).eq('candidate_id',snapshot.candidate_id).eq('storage_path',snapshot.storage_path).is('deleted_at',null);
     query=snapshot.ai_processed_at==null?query.is('ai_processed_at',null):query.eq('ai_processed_at',snapshot.ai_processed_at);
     for(const field of ['document_type','requirement_id','verification_status','verified_at','file_hash'])query=snapshot[field]==null?query.is(field,null):query.eq(field,snapshot[field]);
     return await query.select('id,ai_processed_at');
   };
+  const reconcileSaved=async(revision:string)=>{
+    let reconciliation;
+    try{
+      reconciliation=await reconcileDocument(sb,id,revision,queue);
+      if(queue&&['completed','needs_review'].includes(reconciliation.state)){
+        const saved=await sb.rpc('crm_splav_finish',{job_id:queue.job_id,token:queue.lease_token,outcome:reconciliation});
+        if(saved.error)throw saved.error;
+      }
+    }catch{console.error('splav-reconciliation-failed');reconciliation={state:'failed',auto_filled:0,conflict_count:0,reasons:['Розпізнавання збережено, але узгодження даних не завершено. Потрібна повторна перевірка без нового AI.']};}
+    return {...reconciliation,version:1,document_id:id,source_revision:revision};
+  };
   try{
-    const body=await req.json();id=body.document_id;
+    id=body.document_id;
     if(!id)return json({error:'document_id required'},400);
     const {data:doc,error:de}=await sb.from('documents').select('*').eq('id',id).single();
     if(de||!doc)throw new Error('Документ не знайдено');
@@ -38,9 +59,19 @@ async function processDocument(req:Request){
     const profile=crActive.data.profile_data||{};if(profile.merged_into||profile.workflow?.archived_at)return json({error:'Об’єднана або архівна картка: потрібна окрема звірка'},409);
     const requirementGuard=doc.requirement_id?await sb.from('document_requirements').select('ai_enabled').eq('id',doc.requirement_id).maybeSingle():{data:null,error:null};if(requirementGuard.error)throw requirementGuard.error;if(requirementGuard.data?.ai_enabled===false)return json({error:'Для цього документа AI вимкнено'},409);
     snapshot=doc;
-    const r=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-classify-document`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':authorization,'apikey':key},body:JSON.stringify({document_id:doc.id})});
+    if(queue?.stage==='ocr_saved'){
+      const sync_result=await reconcileSaved(doc.ai_processed_at);
+      return json({...doc.ai_raw_response,ok:true,documentId:id,persistence_version:1,document_revision:doc.ai_processed_at,
+        document_type:doc.document_type,extracted:doc.ai_extracted,warnings:doc.ai_warnings||[],confidence:doc.ai_confidence,sync_result});
+    }
+    const r=await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-classify-document`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':authorization,'apikey':key},body:JSON.stringify({document_id:doc.id,...(queue?{job_id:queue.job_id,lease_token:queue.lease_token}:{})})});
     const raw=await r.text();let result:any;
     try{result=JSON.parse(raw)}catch{result={error:'AI повернув неструктуровану відповідь',http_status:r.status,raw_text:raw}}
+    providerReceipt=result.provider_receipt||null;delete result.provider_receipt;
+    if(queue&&!providerReceipt){
+      await sb.rpc('crm_splav_release_waiting',{job_id:queue.job_id,token:queue.lease_token});
+      return json({error:result.error||'Право на збереження результату AI не підтверджено',code:result.code||'SPLAV_DISPATCH_UNCERTAIN'},409);
+    }
     if(!r.ok||result.error){
       const update=await persist({processing_status:'AI помилка',notes:String(result.error||'Помилка AI'),ai_raw_response:result,ai_model:result.model||null,ai_processed_at:new Date().toISOString()});
       if(update.error)throw update.error;if(!update.data?.length)return stale();
@@ -69,13 +100,11 @@ async function processDocument(req:Request){
     const patch={requirement_id:matchedRequirement.data?.id||null,document_type:normalizedType,document_name:normalizedType,status:'Завантажено',ai_raw_response:result,ai_model:result.model||null,ai_processed_at:new Date().toISOString(),ai_document_type:normalizedType,ai_confidence:result.confidence??null,ai_candidate_name:result.candidate_name||ex.full_name||null,ai_extracted:ex,ai_warnings:warnings,processing_status:'AI оброблено',verification_status:reviewRequired?'Потребує перевірки':'Не перевірено',notes:`${reviewRequired?'AI REVIEW REQUIRED':'AI OK'} model=${result.model||''}`};
     const update=await persist(patch);
     if(update.error)throw update.error;if(!update.data?.length)return stale();
-    let reconciliation;
-    try{reconciliation=await reconcileDocument(sb,id,update.data[0].ai_processed_at);}
-    catch{console.error('splav-reconciliation-failed');reconciliation={state:'failed',auto_filled:0,conflict_count:0,reasons:['Розпізнавання збережено, але узгодження даних не завершено. Потрібна повторна перевірка без нового AI.']};}
-    const sync_result={...reconciliation,version:1,document_id:id,source_revision:update.data[0].ai_processed_at};
+    const sync_result=await reconcileSaved(update.data[0].ai_processed_at);
     return json({...result,ok:true,documentId:id,persistence_version:1,document_revision:update.data[0].ai_processed_at,document_type:normalizedType,extracted:ex,warnings,review_required:reviewRequired,sync_result});
   }catch(error){
     console.error('process-id-document',error);
+    if(queue&&!providerReceipt){await sb.rpc('crm_splav_release_waiting',{job_id:queue.job_id,token:queue.lease_token});return json({error:'Опрацювання буде відновлено без непідтвердженого платного повтору'},503);}
     if(snapshot){const update=await persist({processing_status:'AI помилка',notes:'Обробку не завершено',ai_raw_response:{error:'Обробку не завершено'},ai_model:null,ai_processed_at:new Date().toISOString()});if(!update.error&&!update.data?.length)return stale();}
     return json({error:'Помилка обробки документа'},500);
   }

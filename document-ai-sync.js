@@ -294,10 +294,14 @@
       const dr=await client.from('documents').select('*').eq('id',id).single();if(dr.error)throw dr.error;
       if(JSON.stringify(dr.data.ai_extracted)!==JSON.stringify(before.document.ai_extracted))throw new Error('Результат AI змінився. Оновіть перевірку.');
       const warnings=[...new Set([...(Array.isArray(dr.data.ai_warnings)?dr.data.ai_warnings:[]),...reasons.map(r=>'[Рекрутер] '+r)])];
+      if(typeof options.markReview==='function'){
+        await options.markReview(dr.data,warnings);
+      }else{
       let query=client.from('documents').update({verification_status:'Потребує перевірки',ai_warnings:warnings}).eq('id',id);
       if(dr.data.updated_at)query=query.eq('updated_at',dr.data.updated_at);
       for(const field of ['ai_processed_at','verification_status','verified_at','candidate_id','storage_path','deleted_at'])if(dr.data[field]!==undefined)query=dr.data[field]===null?query.is(field,null):query.eq(field,dr.data[field]);
       const result=await query.select('id');if(result.error)throw result.error;if(Array.isArray(result.data)&&!result.data.length)throw new Error('Документ змінився. Оновіть перевірку.');
+      }
     }
     return {...report,needsRecruiter,reasons,autoFilled:!error?before.rows.filter(r=>r.action==='fill').length:0};
   }
