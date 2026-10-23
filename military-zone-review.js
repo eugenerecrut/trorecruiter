@@ -102,7 +102,16 @@ async function open(doc,{autostart=false}={}){
  }
  $('[data-auto]').onclick=async()=>{if(busy||autoActive||!sourceReady)return;autoActive=true;stopRequested=false;lock(false);try{
   const isPDF=/pdf/i.test(doc.mime_type||'')||/\.pdf$/i.test(doc.file_name||'');
-  if(canary){const actor=await supabaseClient.auth.getUser();if(actor.error||actor.data?.user?.id!=='7c74b122-3940-40a8-a32f-fe2b6776c173'||!isPDF)throw Error('Однокроковий контроль доступний лише власнику для PDF. AI не запускався.');}
+  if(canary){
+   const actor=await supabaseClient.auth.getUser();if(actor.error||actor.data?.user?.id!=='7c74b122-3940-40a8-a32f-fe2b6776c173'||!isPDF||!doc.ai_extracted)throw Error('Однокроковий контроль доступний лише власнику для PDF з основним OCR. AI не запускався.');
+   const jobs=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:doc.candidate_id});
+   if(jobs.error)throw Error('Не вдалося перевірити доручення. AI не запускався.');
+   const existing=(jobs.data||[]).find(j=>j.document_id===doc.id&&j.kind==='zone');if(existing){showBackground(existing);return;}
+   await loadCoordinator();
+   const queued=await supabaseClient.rpc('crm_splav_zone_canary_enqueue',{p_id:coordinatorSession.id,p_pages:total});
+   if(queued.error||!queued.data?.id)throw Error('Точковий контроль не дозволено. Загальний фон не вмикався; AI не запускався.');
+   showBackground(queued.data);return;
+  }
   if(isPDF&&doc.ai_extracted){
    const ready=await supabaseClient.rpc('crm_zone_background_ready');
    if(canary&&(ready.error||ready.data!==true))throw Error('Фоновий контроль вимкнений. Браузерний AI не запускався.');
