@@ -1,4 +1,4 @@
-(function(){
+(function(root){
 'use strict';
 const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ]/g,"'").replace(/\s+/g,' ').trim().toLocaleLowerCase('uk-UA');
 const isDocument=t=>/трудов|відомості.*реєстр.*застрахован/iu.test(String(t||''));
@@ -27,7 +27,7 @@ function historyText(records){
 function review(e,c,p={},documentId){
  const issues=[],pairs=[[e.full_name||e.name_nominative,c.name_nominative||c.full_name,'ПІБ'],[e.rnokpp,c.rnokpp,'РНОКПП'],[e.birth_date,c.birth_date,'дата народження']].filter(([a,b])=>a&&b);
  if(!pairs.length)issues.push('Немає достатніх реквізитів для звірки власника документа.');
- for(const [a,b,label] of pairs)if(norm(a)!==norm(b)&&!((label==='ПІБ')&&window.CRMNameHistory?.matches(a,c)))issues.push('Розбіжність: '+label+'.');
+ for(const [a,b,label] of pairs)if(norm(a)!==norm(b)&&!((label==='ПІБ')&&root.CRMNameHistory?.matches(a,c)))issues.push('Розбіжність: '+label+'.');
  const records=Array.isArray(p.work_records)?p.work_records.map(r=>({...r})):[],events=Array.isArray(p.work_events)?p.work_events.map(r=>({...r})):[];
  if(issues.length)return {records,events,accepted:0,issues};
  const source=Array.isArray(e.work_events)?e.work_events:[];let accepted=0;const clean=[];
@@ -53,5 +53,5 @@ function review(e,c,p={},documentId){
  for(const r of built){const same=records.find(x=>recordKey(x)===recordKey(r));if(!same)records.push(r);}
  return {records,events,accepted,issues,summary:summary(records)};
 }
-window.CRMWork={isDocument,review,summary,historyText,date,eventKey,recordKey};
-})();
+root.CRMWork={isDocument,review,summary,historyText,date,eventKey,recordKey};
+})(typeof window==='undefined'?globalThis:window);

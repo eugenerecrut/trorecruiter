@@ -1,11 +1,11 @@
-(function(){
+(function(root){
  'use strict';
  const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ]/g,"'").replace(/\s+/g,' ').trim().toLocaleLowerCase('uk-UA');
  const isDocument=t=>/місц[яе] проживання|реєстраці[яюї] місця проживання|реєстр[у]? територіальної громади/iu.test(String(t||''));
  function review(e,c,p={}){
   const issues=[];let compared=0;
   for(const [key,a,b] of [['ПІБ',e.name_nominative||e.full_name,c.name_nominative||c.full_name],['Дата народження',e.birth_date,c.birth_date],['РНОКПП',e.rnokpp,c.rnokpp],['УНЗР',e.unzr,p.unzr]]){
-   if(a&&b){compared++;if(norm(a)!==norm(b)&&!(key==='ПІБ'&&window.CRMNameHistory?.matches(a,c)))issues.push(key+' не збігається з карткою кандидата.');}
+   if(a&&b){compared++;if(norm(a)!==norm(b)&&!(key==='ПІБ'&&root.CRMNameHistory?.matches(a,c)))issues.push(key+' не збігається з карткою кандидата.');}
   }
   if(!compared)issues.push('Не вистачає даних для звірки власника документа з кандидатом.');
   const identityVerified=compared>0&&issues.length===0;
@@ -21,5 +21,5 @@
   else issues.push('AI не підтвердив чинну зареєстровану адресу.');
   return {address:issues.length?null:address,unzr,issues};
  }
- window.CRMResidence={isDocument,review};
-})();
+ root.CRMResidence={isDocument,review};
+})(typeof window==='undefined'?globalThis:window);

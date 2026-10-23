@@ -1,4 +1,4 @@
-(function(){
+(function(root){
 'use strict';
 const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ]/g,"'").replace(/\s+/g,' ').trim().toLocaleLowerCase('uk-UA');
 const ranks={'середня':1,'професійна':2,'молодший спеціаліст':3,'фаховий молодший бакалавр':3,'молодший бакалавр':4,'бакалавр':5,'спеціаліст':6,'магістр':6,'доктор філософії':7,'доктор наук':8};
@@ -10,7 +10,7 @@ function ownerMatches(r,c,existing=[],sourceVerified=false){
 const a=norm(r.owner_full_name),b=norm(c.name_nominative||c.full_name);
 if(!a||!b)return false;
 if(r.owner_birth_date&&c.birth_date&&r.owner_birth_date!==c.birth_date)return false;
-if(a===b||window.CRMNameHistory?.matches(r.owner_full_name,c))return true;
+if(a===b||root.CRMNameHistory?.matches(r.owner_full_name,c))return true;
 const words=a.split(' '),other=b.split(' ');
 // A diploma can omit the patronymic and put the given name before the surname.
 // Never treat an arbitrary subset or surname alone as proof of identity.
@@ -46,5 +46,5 @@ return (Array.isArray(records)?records:[]).filter(r=>r&&!r.requires_review).map(
 function summary(p={},pf={}){
 return pf.education||p.education||historyText(p.education_records)||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ')||historyText(p.bio_education_claims);
 }
-window.CRMEducation={isDocument,review,ownerMatches,ranks,normalizeDegree,historyText,summary};
-})();
+root.CRMEducation={isDocument,review,ownerMatches,ranks,normalizeDegree,historyText,summary};
+})(typeof window==='undefined'?globalThis:window);

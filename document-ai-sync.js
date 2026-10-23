@@ -96,6 +96,7 @@
   }
   function plan(document,candidate){
     const policy=root.CRMDocumentPolicy?.normalize(document),p=object(candidate.profile_data),e=flatten(policy?.extracted||document.ai_extracted),rows=[],selections=[];
+    if(['AI обробка','AI помилка'].includes(document.processing_status))return {document,candidate,rows,selections,supported:false,blockedReason:'Розпізнавання не завершено; старі дані AI не переносяться.'};
     if(document.candidate_id&&candidate.id&&document.candidate_id!==candidate.id||p.merged_into||p.workflow?.archived_at)return {document,candidate,rows:[],selections:[],supported:false};
     const type=String(policy?.type||document.ai_document_type||document.document_type||'');
     const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
@@ -278,8 +279,10 @@
     return after;
   }
   async function sync(client,id){return apply(client,await preview(client,id));}
-  async function automate(client,id){
+  async function automate(client,id,options={}){
     const before=await preview(client,id);let report=before,error=null;
+    if(Object.prototype.hasOwnProperty.call(options,'expectedRevision')&&before.document.ai_processed_at!==options.expectedRevision)return {...before,superseded:true,needsRecruiter:false,reasons:[],autoFilled:0};
+    if(before.blockedReason)return {...before,needsRecruiter:true,reasons:[before.blockedReason],autoFilled:0};
     try{if(before.supported)report=await apply(client,before);}catch(e){error=e;}
     const reasons=[];
     if(!before.supported)reasons.push('Для цього типу документа потрібна звірка рекрутера: автоматичне перенесення ще не підтримується.');
@@ -293,6 +296,7 @@
       const warnings=[...new Set([...(Array.isArray(dr.data.ai_warnings)?dr.data.ai_warnings:[]),...reasons.map(r=>'[Рекрутер] '+r)])];
       let query=client.from('documents').update({verification_status:'Потребує перевірки',ai_warnings:warnings}).eq('id',id);
       if(dr.data.updated_at)query=query.eq('updated_at',dr.data.updated_at);
+      for(const field of ['ai_processed_at','verification_status','verified_at','candidate_id','storage_path','deleted_at'])if(dr.data[field]!==undefined)query=dr.data[field]===null?query.is(field,null):query.eq(field,dr.data[field]);
       const result=await query.select('id');if(result.error)throw result.error;if(Array.isArray(result.data)&&!result.data.length)throw new Error('Документ змінився. Оновіть перевірку.');
     }
     return {...report,needsRecruiter,reasons,autoFilled:!error?before.rows.filter(r=>r.action==='fill').length:0};

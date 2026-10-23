@@ -15,7 +15,7 @@ function compare(documents,candidate){
   const e=obj(d.ai_extracted),p=obj(e.personal),name=e.full_name||p.full_name;
   if(/послужний список|анкета на контракт|перелік документів|реєстр кандидата|титульний/iu.test(d.document_type||''))return false;
   if(/дітей|шлюб|змін.{0,12}(імен|прізв)/iu.test(d.document_type||''))return false;
-  if(d.processing_status==='AI помилка'||/AI REVIEW REQUIRED/.test(d.notes||''))return false;
+  if(['AI помилка','AI обробка'].includes(d.processing_status)||/AI REVIEW REQUIRED/.test(d.notes||''))return false;
   if(d.verification_status!=='Підтверджено'&&(d.ai_confidence==null||Number(d.ai_confidence)<.85||Number(d.ai_confidence)>1))return false;
   if(name&&norm(name)===norm(candidate.full_name))return true;
   return !!(name&&root.CRMNameHistory?.matches(name,candidate));
