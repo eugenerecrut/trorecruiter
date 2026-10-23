@@ -42,6 +42,7 @@ try{
  alter table public.document_ai_runs add column document_id uuid,add column candidate_id uuid,add column actor_id uuid,add column actor_name text,add column processed_at timestamptz,add column model text,add column result jsonb;`);
  await db.exec(file('tests/fixtures/splav-zone-document-triggers.sql'));
  await db.exec(file('supabase/migrations/20261023193100_splav_zone_metadata_provenance.sql'));
+ await db.exec(file('supabase/migrations/20261023195033_splav_scoped_single_step_canary.sql'));
  await db.exec(`create trigger crm_guard_document before insert or update on public.documents for each row execute function crm_private.guard_document();
  create trigger crm_activity_documents after insert or update or delete on public.documents for each row execute function crm_private.record_activity();`);
  const hash='a'.repeat(64),full={x:0,y:0,w:1,h:1};
@@ -122,6 +123,33 @@ try{
  await owner();const beforePrimary=(await db.query('select count(*)::int n from public.document_ai_runs where document_id=$1',[id(20)])).rows[0].n;
  await db.query("update public.documents set ai_extracted=ai_extracted||'{\"new_primary\":\"value\"}' where id=$1",[id(20)]);
  assert.equal((await db.query('select count(*)::int n from public.document_ai_runs where document_id=$1',[id(20)])).rows[0].n,beforePrimary+1);checks++;
+ // The scoped canary works with global zones OFF, for one coordinator/budget only.
+ await db.exec(`update crm_private.splav_jobs set state='completed',leased_by=null,lease_token=null,lease_until=null where state='running';
+ update crm_private.splav_settings set zones_enabled=false;`);
+ await db.query(`insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status)
+ values($1,$2,'canary.pdf',$1,1,'Автобіографія друкована',$3,'{"preserve":true}','Підтверджено')`,[id(50),id(10),id(30)]);
+ await actor(1);const ca=await call('crm_zone_coordinator_open',[id(50),hash,false]);
+ await assert.rejects(call('crm_splav_zone_canary_enqueue',[ca.id,1]),/Active owner/);checks++;
+ await owner();await db.exec(`update public.crm_staff set role='owner' where user_id='${id(1)}'`);await actor(1);
+ const cj=await call('crm_splav_zone_canary_enqueue',[ca.id,1]);assert.equal(cj.kind,'zone');checks++;
+ assert.equal(await call('crm_zone_background_ready'),false);checks++;
+ await assert.rejects(call('crm_splav_zone_enqueue',[ca.id,1,2600]),/disabled/);checks++;
+ await assert.rejects(call('crm_splav_zone_canary_enqueue',[ca.id,1]),/already consumed/);checks++;
+ await owner();let settings=(await db.query('select zones_enabled,zone_canary_coordinator from crm_private.splav_settings')).rows[0];
+ assert.equal(settings.zones_enabled,false);assert.equal(settings.zone_canary_coordinator,ca.id);checks+=2;
+ await actor(2);assert.equal(await call('crm_splav_claim'),null);checks++;
+ lease=await call('crm_splav_zone_claim');assert.equal(lease.id,cj.id);checks++;
+ const cx=await step('load'),canary=pilot.restore(cx.snapshot,{source:cx.source});assert.equal(canary.snapshot().budget,1);checks++;
+ const cr=await canary.run({limit:1,checkpoint:async s=>{cx.version=await step('save',{version:cx.version,snapshot:s});},read:async()=>{
+  const receipt=await step('begin',{version:cx.version,mode:'overview',page:1,box:full,render_sha256:hash});
+  const result={review_only:true,mode:'overview',zones:[{box:{x:.1,y:.1,w:.5,h:.2},label:'synthetic'}],source:{document_id:id(50),page:1,box:full,render_sha256:hash}};
+  await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result});return result;
+ }});assert.equal(cr.calls,1);assert.equal(cr.budget_exhausted,true);checks+=2;
+ await step('hold');await owner();settings=(await db.query('select zones_enabled,zone_canary_coordinator from crm_private.splav_settings')).rows[0];
+ assert.equal(settings.zones_enabled,false);assert.equal(settings.zone_canary_coordinator,null);checks+=2;
+ assert.deepEqual((await db.query('select ai_extracted,verification_status from public.documents where id=$1',[id(50)])).rows[0],{ai_extracted:{preserve:true},verification_status:'Підтверджено'});checks++;
+ await actor(2);assert.equal(await call('crm_splav_zone_claim'),null);checks++;
+ await assert.rejects(step('load'),/Invalid zonal lease/);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -32,6 +32,7 @@ test('one-step canary is owner-only, sends a durable budget of one and never fal
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
  assert.match(source,/get\('zoneBudget'\)\s*===\s*'1'/);
  assert.match(source,/supabaseClient.auth.getUser\(\)/);
+ assert.match(source,/rpc\('crm_splav_zone_canary_enqueue'/);
  assert.match(source,/p_budget:canary\?1:2600/);
  assert.match(source,/if\(canary&&\(ready.error\|\|ready.data!==true\)\)throw/);
  assert(source.indexOf("if(canary)throw Error('Немає придатного")<source.indexOf('await autopilot.run'));
