@@ -13,7 +13,7 @@ function setup(options={}){
    return {data:clone(one?(data[0]||null):data),error:null};
   }return q;
  }};
- const c={Request,Response,Headers,structuredClone,EdgeRuntime:{waitUntil:task=>state.background.push(task)},reconcileDocument:async(client,id,revision)=>{state.reconciliations.push({id,revision});if(options.reconcileError)throw Error('sync unavailable');return {state:'completed',auto_filled:1,conflict_count:0,reasons:[]};},console:{error(){}},createClient:()=>client,reviewID:()=>({blocked:false,issues:[]}),Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'fake-public-key'})[k]},serve:fn=>handler=fn},fetch:async()=>{state.requests++;return options.fetch?options.fetch(state):options.processor?Response.json({...await good().json(),provider_receipt:'receipt'}):good()}};c.globalThis=c;vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(root,'supabase/functions/_shared/document-data-policy.js'),'utf8'),c);vm.runInContext(stripTypeScriptTypes(source.replace(/^import .*;?\r?\n/gm,'')),c);
+ const c={CRMDocumentSync:{plan:()=>({supported:true,rows:[{action:'leave',incoming:'match'}],selections:options.savedSelections||[]})},Request,Response,Headers,structuredClone,EdgeRuntime:{waitUntil:task=>state.background.push(task)},reconcileDocument:async(client,id,revision)=>{state.reconciliations.push({id,revision});if(options.reconcileError)throw Error('sync unavailable');return {state:'completed',auto_filled:1,conflict_count:0,reasons:[]};},console:{error(){}},createClient:()=>client,reviewID:()=>({blocked:false,issues:[]}),Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'fake-public-key'})[k]},serve:fn=>handler=fn},fetch:async()=>{state.requests++;return options.fetch?options.fetch(state):options.processor?Response.json({...await good().json(),provider_receipt:'receipt'}):good()}};c.globalThis=c;vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(root,'supabase/functions/_shared/document-data-policy.js'),'utf8'),c);vm.runInContext(stripTypeScriptTypes(source.replace(/^import .*;?\r?\n/gm,'')),c);
  async function run(extra={}){const response=await handler(new Request('https://test.supabase.co',{method:'POST',headers:{Authorization:'Bearer test','Content-Type':'application/json'},body:JSON.stringify({document_id:'d',...extra})}));return {status:response.status,body:await response.json()};}
  return {state,run};
 }
@@ -51,4 +51,22 @@ test('Reserve+ alias retains the matching requirement without a false type revie
 test('a real document type mismatch still requires review',async()=>{
  const {state,run}=setup({requiredType:'Військовий квиток',doc:{document_type:'Військовий квиток',requirement_id:'r'},fetch:async()=>Response.json({document_type:'Витяг з Резерв+',confidence:1,extracted:{full_name:'Тестова Марія'}})});
  const r=await run();assert.equal(r.status,200);assert.equal(r.body.review_required,true);assert(state.doc.notes.includes('AI REVIEW REQUIRED'));
+});
+
+
+const savedDoc=()=>({requirement_id:null,document_type:'Витяг з Резерв+',ai_processed_at:'saved',processing_status:'AI оброблено',ai_model:'test',notes:'AI REVIEW REQUIRED model=test',ai_confidence:1,ai_raw_response:{document_type:'Витяг з Резерв+',extracted:{full_name:'Тестова Марія'}},ai_warnings:['AI визначив інший тип: Витяг з Резерв+. Звірте тип документа.']});
+test('saved Reserve+ recheck does not invoke OCR, fill candidate fields or confirm the document',async()=>{
+ const {state,run}=setup({doc:savedDoc(),requiredType:'Військовий облік (витяг Резерв+ / приписне)'}),before=clone(state.profile),r=await run({action:'recheck_saved',expected_revision:'saved'});
+ assert.equal(r.status,200);assert.equal(r.body.rechecked,true);assert.equal(state.requests,0);assert.equal(state.writes.length,1);assert.deepEqual(state.profile,before);assert.equal(state.doc.requirement_id,'r');assert.equal(state.doc.verification_status,'Не перевірено');assert.equal(state.doc.notes,'AI OK model=test');assert.equal(state.reconciliations.length,0);
+});
+test('saved recheck rejects stale revisions, manual notes, confirmation, provider review and new selections before any write',async()=>{
+ for(const opts of [{expected_revision:'stale'},{doc:{notes:'Manual note'}},{doc:{ai_warnings:['Документ містить іншу особу']}},{doc:{ai_warnings:['[CRM AI sync] broken']}},{doc:{verification_status:'Підтверджено'}},{doc:{ai_raw_response:{document_type:'Витяг з Резерв+',review_required:true}}},{savedSelections:[{key:'new'}]},{processor:true}]){
+ const {state,run}=setup({...opts,doc:{...savedDoc(),...opts.doc},requiredType:'Військовий облік (витяг Резерв+ / приписне)'}),r=await run({action:'recheck_saved',expected_revision:opts.expected_revision||'saved'});
+ assert([403,409].includes(r.status));assert.equal(state.requests,0);assert.equal(state.writes.length,0);
+ }
+});
+
+test('saved recheck write failure does not overwrite stored OCR with an AI error',async()=>{
+ const {state,run}=setup({doc:savedDoc(),writeError:true,requiredType:'Військовий облік (витяг Резерв+ / приписне)'}),before=clone(state.doc),r=await run({action:'recheck_saved',expected_revision:'saved'});
+ assert.equal(r.status,500);assert.equal(state.requests,0);assert.equal(state.writes.length,0);assert.deepEqual(state.doc,before);
 });

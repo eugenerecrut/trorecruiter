@@ -99,3 +99,12 @@ test('excluded source retry uses existing queued action, workspace guard and bus
  c.CRMWorkspace.busy=false;await c.retryExcludedDocument(b,async()=>true);assert.deepEqual(calls,['source']);assert.equal(b.disabled,false);assert.equal(c.CRMWorkspace.busy,false);
  c.retryDocumentAI=async()=>{throw Error('queue unavailable')};await c.retryExcludedDocument(b,async()=>true);assert.deepEqual(alerts,['queue unavailable']);assert.equal(c.CRMWorkspace.busy,false);
 });
+
+test('saved review button and request reuse the guarded Edge action without OCR or queue calls',async()=>{
+ const src=read('documents.js'),calls=[],alerts=[];
+ const c=vm.createContext({docEscape:String,AI_DOC_FUNCTION:'process-id-document',activeDocumentsCandidateId:null,alert:m=>alerts.push(m),documentAIError:async e=>e.message,supabaseClient:{from:()=>{const q={select:()=>q,eq:()=>q,single:async()=>({data:{id:'d',candidate_id:'c',ai_processed_at:'revision'}})};return q},functions:{invoke:async(fn,args)=>{calls.push({fn,args});return {data:{rechecked:true,matched_fields:11}}}}}});
+ vm.runInContext(src.slice(src.indexOf('function savedReviewButtonHtml('),src.indexOf('function excludedDocumentRetryHtml(')),c);
+ assert.match(c.savedReviewButtonHtml({id:'d',processing_status:'AI оброблено',verification_status:'Не перевірено',ai_raw_response:{document_type:'Витяг з Резерв+'}}),/data-doc-recheck/);
+ assert.equal(c.savedReviewButtonHtml({id:'d',processing_status:'AI оброблено',verification_status:'Підтверджено',ai_raw_response:{document_type:'Витяг з Резерв+'}}),'');
+ await c.recheckSavedDocument('d');assert.equal(calls.length,1);assert.equal(calls[0].args.body.action,'recheck_saved');assert.equal(calls[0].args.body.expected_revision,'revision');assert(alerts[0].includes('без нового AI'));
+});

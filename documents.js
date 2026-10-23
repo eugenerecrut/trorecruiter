@@ -38,7 +38,7 @@ function documentFileHtml(d,r,allDocs,esc=docEscape,compact=false){
   const verified=d.verification_status==='Підтверджено';
   const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
   const zoneAction=r.ai_enabled!==false&&window.CRMMilitaryZoneReview&&window.CRMMilitaryZoneContract?.family(d.document_type,d.ai_document_type)?'<button type="button" class="crm-button" data-doc-zone="'+esc(d.id)+'">' +(d.ai_extracted?._military_zone_report?'Результат AI':'Опрацювати AI · автопілот')+'</button>':'';
-  const actions=CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
+  const actions=CRMResponsibility.documentInfo(d)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+savedReviewButtonHtml(d,esc)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
   if(zoneAction)return '<div class="crm-document-file">'+info+zoneAction+'<details class="crm-document-more"><summary>Додатково</summary><div class="crm-document-details">'+actions+'</div></details></div>';
   if(compact){
     const failed=d.processing_status==='AI помилка',attention=d.verification_status==='Потребує перевірки';
@@ -50,6 +50,16 @@ function documentFileHtml(d,r,allDocs,esc=docEscape,compact=false){
   const detailId='doc-details-'+d.id;
   return '<details class="crm-document-file crm-document-verified"><summary class="crm-document-summary">'+info+'</summary><div class="crm-document-details" id="'+esc(detailId)+'">'+actions+'<button class="crm-button" data-doc-add="'+esc(r.id)+'">＋ Додати</button></div></details>';
 }
+function savedReviewButtonHtml(d,esc=docEscape){
+  return d.processing_status==='AI оброблено'&&d.verification_status!=='Підтверджено'&&/резерв\+/iu.test(d.ai_raw_response?.document_type||'')?'<button type="button" data-doc-recheck="'+esc(d.id)+'">Звірити без AI</button>':'';
+}
+async function recheckSavedDocument(id){
+  const {data:d,error}=await supabaseClient.from('documents').select('id,candidate_id,ai_processed_at').eq('id',id).single();if(error)throw error;
+  const result=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:id,action:'recheck_saved',expected_revision:d.ai_processed_at}});
+  if(result.error)throw new Error(await documentAIError(result.error));if(!result.data?.rechecked)throw new Error(result.data?.error||'Звірку не завершено');
+  alert('Звірку завершено без нового AI. Збігів: '+result.data.matched_fields+'. Ручні дані не змінено; документ не підтверджено автоматично.');
+  if(activeDocumentsCandidateId===d.candidate_id)await reloadDocumentView(d.candidate_id);
+}
 function excludedDocumentRetryHtml(d,reqs,esc=docEscape){
   const r=reqs.find(r=>r.id===d.requirement_id||r.document_type===d.document_type);
   return d.verification_status!=='Підтверджено'&&r?.ai_enabled!==false?'<button type="button" data-excluded-retry="'+esc(d.id)+'">Повторити розпізнавання</button>':'';
@@ -57,7 +67,7 @@ function excludedDocumentRetryHtml(d,reqs,esc=docEscape){
 async function retryExcludedDocument(button,ensureSaved){
   if(CRMWorkspace.busy||!await ensureSaved())return;
   button.disabled=true;CRMWorkspace.busy=true;
-  try{await retryDocumentAI(button.dataset.excludedRetry);}
+  try{if(button.dataset.docRecheck)await recheckSavedDocument(button.dataset.docRecheck);else await retryDocumentAI(button.dataset.excludedRetry);}
   catch(error){alert(error.message);}
   finally{CRMWorkspace.busy=false;if(button.isConnected)button.disabled=false;}
 }
@@ -96,8 +106,8 @@ async function showDocuments(id,options={}){
   content.querySelector('#docBatchStatus').textContent='Комплектність враховує обов’язкові файли та позначки «Є в наявності». Для PDF-пакета потрібні електронні копії.';
   if(excludedDocs.length&&!CRMCandidateConditions.isUnit(c)){
     const details=document.createElement('details');details.className='card';details.style.marginBottom='18px';
-    details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button>'+(d.ai_extracted?' <button type="button" data-excluded-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button><button type="button" data-excluded-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+excludedDocumentRetryHtml(d,reqs,esc)+'</p>').join('');
-    details.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.excludedRetry){retryExcludedDocument(b,ensureSaved);return;}if(b.dataset.excludedOpen)openDocument(b.dataset.excludedOpen);if(b.dataset.excludedEditAi)editDocumentExtraction(b.dataset.excludedEditAi).catch(err=>alert(err.message));if(b.dataset.excludedData)reviewDocumentData(b.dataset.excludedData).catch(err=>alert(err.message))});content.querySelector('#docFilters').before(details);
+    details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button>'+(d.ai_extracted?' <button type="button" data-excluded-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button><button type="button" data-excluded-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+excludedDocumentRetryHtml(d,reqs,esc)+savedReviewButtonHtml(d,esc)+'</p>').join('');
+    details.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.docRecheck){retryExcludedDocument(b,ensureSaved);return;}if(b.dataset.excludedRetry){retryExcludedDocument(b,ensureSaved);return;}if(b.dataset.excludedOpen)openDocument(b.dataset.excludedOpen);if(b.dataset.excludedEditAi)editDocumentExtraction(b.dataset.excludedEditAi).catch(err=>alert(err.message));if(b.dataset.excludedData)reviewDocumentData(b.dataset.excludedData).catch(err=>alert(err.message))});content.querySelector('#docFilters').before(details);
   }
   const body=content.querySelector('#documentRows');
   body.innerHTML=rows.map(row=>{
@@ -137,6 +147,7 @@ async function showDocuments(id,options={}){
     b.disabled=true;CRMWorkspace.busy=true;
     try{
       if(b.dataset.docDelete)await setDocumentDeleted(allDocs.find(d=>d.id===b.dataset.docDelete),true);
+      if(b.dataset.docRecheck)await recheckSavedDocument(b.dataset.docRecheck);
       if(b.dataset.docRetry)await retryDocumentAI(b.dataset.docRetry);
       if(b.dataset.docConfirm)await confirmDocument(b.dataset.docConfirm);
     }catch(error){alert(error.message)}finally{CRMWorkspace.busy=false;if(b.isConnected)b.disabled=false}

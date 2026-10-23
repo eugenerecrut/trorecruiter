@@ -18,6 +18,7 @@ async function processDocument(req:Request){
   let body:any;
   try{body=await req.json();}catch{return json({error:'Некоректний JSON запиту'},400);}
   let queue:any=null;
+  if(staff.role==='processor'&&body?.action==='recheck_saved')return json({error:'Повторна звірка доступна лише працівнику CRM'},403);
   if(staff.role==='processor'){
     if(!body?.job_id||!body?.lease_token)return json({error:'Фоновий виконавець може працювати лише через чергу СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
     const access=await sb.rpc('crm_splav_validate',{job_id:body.job_id,token:body.lease_token});
@@ -59,6 +60,21 @@ async function processDocument(req:Request){
     const profile=crActive.data.profile_data||{};if(profile.merged_into||profile.workflow?.archived_at)return json({error:'Об’єднана або архівна картка: потрібна окрема звірка'},409);
     const requirementGuard=doc.requirement_id?await sb.from('document_requirements').select('ai_enabled').eq('id',doc.requirement_id).maybeSingle():{data:null,error:null};if(requirementGuard.error)throw requirementGuard.error;if(requirementGuard.data?.ai_enabled===false)return json({error:'Для цього документа AI вимкнено'},409);
     snapshot=doc;
+    if(body.action==='recheck_saved'){
+      if(!body.expected_revision||body.expected_revision!==doc.ai_processed_at)return stale();
+      if(profile.workflow?.archive_lock)return json({error:'Справу заблоковано'},409);
+      const requirement=await sb.from('document_requirements').select('id,document_type,ai_enabled').eq('document_type','Військовий облік (витяг Резерв+ / приписне)').limit(1).maybeSingle();
+      if(requirement.error)throw requirement.error;
+      const proposed=(globalThis as any).CRMDocumentPolicy.savedReview(doc,requirement.data);
+      if(!proposed.eligible)return json({error:proposed.reason,code:'SAVED_REVIEW_BLOCKED'},409);
+      const cr=await sb.from('candidates').select('*').eq('id',doc.candidate_id).single();if(cr.error||!cr.data)return json({error:'Картка недоступна'},403);
+      const planner=(globalThis as any).CRMDocumentSync,crosscheck=(globalThis as any).CRMDocumentCrosscheck;
+      const report=planner.plan({...doc,...proposed.patch},cr.data);
+      if(crosscheck)crosscheck.guard(report,await crosscheck.load(sb,cr.data));
+      if(!report.supported||report.blockedReason||proposed.reviewFields.some((field:string)=>!report.rows.some((r:any)=>r.key===field&&r.action==='leave'&&r.incoming!=null))||report.rows.some((r:any)=>r.action==='conflict')||report.selections.length)return json({error:'Є нові, відмінні або неперевірені дані. Потрібна звірка полів.',code:'SAVED_REVIEW_BLOCKED'},409);
+      const update=await persist(proposed.patch);if(update.error)throw update.error;if(!update.data?.length)return stale();
+      return json({ok:true,rechecked:true,documentId:id,document_revision:update.data[0].ai_processed_at,matched_fields:report.rows.filter((r:any)=>r.incoming!=null&&r.action==='leave').length,auto_filled:0});
+    }
     if(queue?.stage==='ocr_saved'){
       const sync_result=await reconcileSaved(doc.ai_processed_at);
       return json({...doc.ai_raw_response,ok:true,documentId:id,persistence_version:1,document_revision:doc.ai_processed_at,
@@ -105,6 +121,7 @@ async function processDocument(req:Request){
   }catch(error){
     console.error('process-id-document',error);
     if(queue&&!providerReceipt){await sb.rpc('crm_splav_release_waiting',{job_id:queue.job_id,token:queue.lease_token});return json({error:'Опрацювання буде відновлено без непідтвердженого платного повтору'},503);}
+    if(body?.action==='recheck_saved')return json({error:'Звірку не завершено; збережений OCR не змінено'},500);
     if(snapshot){const update=await persist({processing_status:'AI помилка',notes:'Обробку не завершено',ai_raw_response:{error:'Обробку не завершено'},ai_model:null,ai_processed_at:new Date().toISOString()});if(!update.error&&!update.data?.length)return stale();}
     return json({error:'Помилка обробки документа'},500);
   }

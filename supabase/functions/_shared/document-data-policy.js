@@ -51,6 +51,27 @@
     }
     return { category, type, extracted, warnings };
   }
+  function savedReview(doc, requirement) {
+    const raw=doc.ai_raw_response,canonical='Військовий облік (витяг Резерв+ / приписне)';
+    const deny=reason=>({eligible:false,reason});
+    if(doc.deleted_at||doc.verification_status==='Підтверджено'||doc.verified_at)return deny('Документ видалений або вже підтверджений.');
+    if(doc.processing_status!=='AI оброблено'||!raw||typeof raw!=='object')return deny('Немає успішного збереженого OCR.');
+    if(!/^(?:витяг (?:з|із) )?резерв\+$/u.test(norm(raw.document_type))||requirement?.document_type!==canonical||requirement.ai_enabled===false)return deny('Потрібна окрема звірка типу документа.');
+    if(raw.review_required||raw.extracted?.meta?.requires_review||doc.ai_extracted?.meta?.requires_review||doc.ai_extracted?.meta?.manual_review||raw.meta?.conflicts?.length||raw.extracted?.meta?.conflicts?.length)return deny('Джерело має окреме застереження або ручні уточнення.');
+    if(!Number.isFinite(Number(doc.ai_confidence))||Number(doc.ai_confidence)<0.85||Number(doc.ai_confidence)>1)return deny('Недостатня впевненість OCR.');
+    if(doc.notes!=='AI REVIEW REQUIRED model='+doc.ai_model)return deny('Примітка вже змінена; автоматичне очищення заборонено.');
+    const generic=['[Рекрутер] Є розбіжності або нерозбірливі дані. Збережені значення залишено без змін.','[Рекрутер] AI просить перевірити документ перед перенесенням.'];
+    const fallback='Попередній AI-сервіс не відповів; документ розпізнав наступний сервіс у черзі.';
+    if((raw.warnings||[]).some(w=>w!==fallback))return deny('AI має окреме застереження.');
+    const reviewFields=[];
+    for(const warning of (doc.ai_warnings||[])){
+      if(String(warning).startsWith('[CRM AI sync] ')){
+        try{const entry=JSON.parse(warning.slice('[CRM AI sync] '.length));if(entry.reason!=='AI просить перевірити документ перед перенесенням'||typeof entry.field!=='string')return deny('Є окрема суперечність поля.');reviewFields.push(entry.field);}catch{return deny('Нерозбірливе застереження поля.');}
+      }else if(!generic.includes(warning)&&warning!==fallback&&warning!=='AI визначив інший тип: '+raw.document_type+'. Звірте тип документа.')return deny('Є окреме застереження документа.');
+    }
+    const warnings=(doc.ai_warnings||[]).filter(w=>!String(w).startsWith('[CRM AI sync] ')&&!generic.includes(w)&&w!=='AI визначив інший тип: '+raw.document_type+'. Звірте тип документа.');
+    return {eligible:true,reviewFields,patch:{document_type:canonical,document_name:canonical,ai_document_type:canonical,requirement_id:requirement.id,notes:'AI OK model='+doc.ai_model,verification_status:'Не перевірено',ai_warnings:warnings,ai_processed_at:new Date().toISOString()}};
+  }
   function marriage(extracted, candidate) {
     const people = Array.isArray(extracted.relatives) ? extracted.relatives : [];
     const matches = people.filter(r => norm(r.full_name) === norm(candidate.name_nominative || candidate.full_name) &&
@@ -83,5 +104,5 @@
     const content = groups.map(([title,value]) => '<div style="padding:8px 0;border-top:1px solid #e1e7e9"><strong>'+escape(title)+'</strong><div>'+Object.entries(value).filter(([key,v])=>v!=null&&v!==''&&key!=='source_document_id').map(([key,v])=>escape(labels[key]||'Відомості')+': '+escape(Array.isArray(v)?v.join(', '):v)).join(' · ')+'</div>'+(/^[0-9a-f-]{36}$/i.test(value.source_document_id||'')?'<button type="button" data-extra-document="'+escape(value.source_document_id)+'">✦ Джерело</button>':'')+'</div>').join('');
     return '<details class="cc-wide"><summary>Інші реквізити документів</summary>'+content+'</details>';
   }
-  root.CRMDocumentPolicy = { kind, normalize, marriage, serviceSummary, cardExtras };
+  root.CRMDocumentPolicy = { kind, normalize, savedReview, marriage, serviceSummary, cardExtras };
 })(globalThis);
