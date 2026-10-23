@@ -46,6 +46,7 @@ Deno.serve(async req=>{
   if(users[0].role==='processor')return json({error:'Зональне розпізнавання потребує окремого доручення СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
   const raw=await req.text();if(raw.length>6000000)return json({error:'Фрагмент завеликий'},413);let body;try{body=JSON.parse(raw)}catch{return json({error:'Некоректний JSON'},400)}
   if(!/^[0-9a-f-]{36}$/i.test(body.document_id||'')||!['overview','zone'].includes(body.mode)||!Number.isInteger(body.page)||body.page<1||body.page>200||!contract.box(body.box))return json({error:'Некоректна сторінка або зона'},400);
+  if((body.coordinator_id!==undefined||body.coordinator_version!==undefined)&&(!/^[0-9a-f-]{36}$/i.test(body.coordinator_id||'')||!Number.isSafeInteger(body.coordinator_version)||body.coordinator_version<0))return json({error:'Некоректна контрольна точка'},400);
   if(typeof body.image_data!=='string'||body.image_data.length>5500000||!/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(body.image_data))return json({error:'Потрібне зображення JPEG/PNG до 4 МБ'},400);
   const imageBytes=atob(body.image_data.split(',')[1]);if(!((imageBytes.charCodeAt(0)===255&&imageBytes.charCodeAt(1)===216)||(imageBytes.charCodeAt(0)===137&&imageBytes.slice(1,4)==='PNG')))return json({error:'Некоректне зображення'},400);
   const docs=await request(backend+'/rest/v1/documents?id=eq.'+encodeURIComponent(body.document_id)+'&select=id,candidate_id,storage_path,file_hash,ai_processed_at,verification_status,verified_at,document_type,ai_document_type,requirement_id,deleted_at,version_group_id,version_number&limit=1',{headers});
@@ -65,12 +66,14 @@ Deno.serve(async req=>{
   if(body.render_sha256&&body.render_sha256!==digest)return json({error:'Контрольна сума фрагмента не збігається',code:'ZONE_IMAGE_HASH_MISMATCH'},400);
   const rpc=async(name:string,payload:any)=>{
    const response=await request(backend+'/rest/v1/rpc/'+name,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify(payload)});
-   if(!response.ok)throw Error('Zone ledger rejected request');
+   if(!response.ok){const detail=await response.json().catch(()=>({}));const error:any=Error('Zone ledger rejected request');error.code=detail?.code;throw error;}
    return await response.json();
   };
   let dispatch:any;
-  try{dispatch=await rpc('crm_zone_begin',{p_document_id:doc.id,p_source:doc,p_mode:body.mode,p_page:body.page,p_box:contract.box(body.box),p_render_sha256:digest});}
-  catch{return json({error:'Не вдалося перевірити журнал або версію документа. AI не запускався.',code:'ZONE_RECEIPT_UNAVAILABLE',automatic_retry:false},409);}
+  try{dispatch=body.coordinator_id
+   ?await rpc('crm_zone_coordinator_begin',{p_id:body.coordinator_id,p_version:body.coordinator_version,p_document_id:doc.id,p_mode:body.mode,p_page:body.page,p_box:contract.box(body.box),p_render_sha256:digest})
+   :await rpc('crm_zone_begin',{p_document_id:doc.id,p_source:doc,p_mode:body.mode,p_page:body.page,p_box:contract.box(body.box),p_render_sha256:digest});}
+  catch(e){return json({error:(e as any).code==='40001'?'Чергу або джерело вже змінено. Оновіть документ; AI не запускався.':'Не вдалося перевірити журнал або версію документа. AI не запускався.',code:(e as any).code==='40001'?'ZONE_COORDINATOR_CHANGED':'ZONE_RECEIPT_UNAVAILABLE',automatic_retry:false},409);}
   if(dispatch?.state==='completed'&&dispatch.result?.review_only)return json({...dispatch.result,request_replayed:true});
   if(dispatch?.state==='failed'&&dispatch.result?.error)return json({...dispatch.result,request_replayed:true},502);
   if(dispatch?.state!=='accepted'||!dispatch.id||!dispatch.receipt)return json({error:'Цей фрагмент уже відправлений. Результат ще не підтверджено; повторний AI-запит заблоковано.',code:'ZONE_ALREADY_DISPATCHED',automatic_retry:false},409);
