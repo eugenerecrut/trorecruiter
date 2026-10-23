@@ -2,8 +2,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{webcrypto}=require('node:crypto');
 const root=path.join(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
 const name='ТЕСТЕНКО Іван Петрович';
-function setup(){
- const state={candidate:{id:'c',full_name:name,birth_date:'1990-01-01',rnokpp:'1234567890',worked_before:true,served_before:false,profile_data:{service_type:'За мобілізацією'}},docs:[],uploads:[],calls:[],rpcs:0};
+function setup(options={}){
+ const state={candidate:{id:'c',full_name:name,birth_date:'1990-01-01',rnokpp:'1234567890',worked_before:true,served_before:false,profile_data:{service_type:'За мобілізацією'}},docs:[],uploads:[],calls:[],browserPatches:[],rpcs:0};
  const responses={
   'birth.pdf':{document_type:'Свідоцтво про народження',extracted:{full_name:name,birth_date:'1990-01-01',birth_place:'Дніпро',relatives:[{relationship:'Мати',full_name:'ТЕСТЕНКО Олена Петрівна',birth_date:'1970-01-01'}]}},
   'diploma.pdf':{document_type:'Копія диплома',extracted:{education_records:[{owner_full_name:name,owner_birth_date:'1990-01-01',degree:'кваліфікований робітник',institution:'Тестове училище',diploma_number:'123',diploma_series:'К',diploma_present:true,graduation_year:2008}]}},
@@ -14,15 +14,20 @@ function setup(){
  const requirements=[...new Set(Object.values(responses).map(r=>r.document_type))].map((document_type,i)=>({id:'r'+i,document_type}));
  const client={storage:{from:()=>({upload:async(p,f)=>{state.uploads.push({p,name:f.name});return {}},remove:async()=>({})})},functions:{invoke:async(fn,{body})=>{
   state.calls.push(body.document_id);const d=state.docs.find(d=>d.id===body.document_id);
-  if(d.file_name==='fail.pdf')return {error:{message:'Тестова помилка AI'}};
-  return {data:{ok:true,confidence:0.99,...responses[d.file_name]}};
+  if(options.stale){Object.assign(d,{processing_status:'AI оброблено',ai_extracted:{new_result:'preserve'}});return {error:{message:'Стан документа вже змінено'}};}
+  if(d.file_name==='fail.pdf'){d.processing_status='AI помилка';return {error:{message:'Тестова помилка AI'}};}
+  const data={ok:true,persistence_version:1,documentId:d.id,confidence:0.99,...responses[d.file_name]};
+  // Match the authoritative server contract; the browser must not save this again.
+  Object.assign(d,{document_type:data.document_type,ai_extracted:structuredClone(data.extracted),processing_status:'AI оброблено',ai_confidence:data.confidence,ai_warnings:[]});
+  if(options.legacy)delete data.persistence_version;
+  return {data};
  }},from(table){let filters=[],insert,patch;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},insert(v){insert=v;return q},update(v){patch=v;return q},single:run,maybeSingle:run,then(a,b){return run().then(a,b)}};
   async function run(){let data;if(table==='documents'){
    if(insert){data={...structuredClone(insert),id:'d'+(state.docs.length+1)};state.docs.push(data);}
    else data=state.docs.find(d=>filters.every(([k,v])=>d[k]===v));
   }else data=state.candidate;
   if(!data)return {error:{message:'Тестовий запис не знайдено'}};
-  if(patch)Object.assign(data,structuredClone(patch));return {data:structuredClone(data)};
+  if(patch){state.browserPatches.push(structuredClone(patch));Object.assign(data,structuredClone(patch));}return {data:structuredClone(data)};
   }return q;
  },async rpc(fn,{document_id,selections}){
   const doc=state.docs.find(d=>d.id===document_id);assert(doc);assert.equal(fn,'crm_apply_document_fields');
@@ -62,3 +67,6 @@ test('batch upload classifies, persists facts, isolates exceptions, reloads and 
   if(process.env.CRM_PIPELINE_PDF_OUTPUT)fs.writeFileSync(process.env.CRM_PIPELINE_PDF_OUTPUT,bytes);
  }
 });
+
+test('stale AI response cannot make the browser mark a newer success as failed',async()=>{const {state,upload}=setup({stale:true});const report=await upload(['birth.pdf']);assert(report.includes('Стан документа вже змінено'));assert.equal(state.docs.length,1);assert.equal(state.docs[0].processing_status,'AI оброблено');assert.equal(state.docs[0].ai_extracted.new_result,'preserve');assert.equal(state.browserPatches.length,0);});
+test('old server contract fails safely without browser AI writes or another upload',async()=>{const {state,upload}=setup({legacy:true});const report=await upload(['birth.pdf']);assert(report.includes('Потрібно оновити сервер СПЛАВ'));assert.equal(state.docs.length,1);assert.equal(state.calls.length,1);assert.equal(state.browserPatches.length,0);});

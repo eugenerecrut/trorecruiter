@@ -159,7 +159,7 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     if(cr.error)throw cr.error;
     const reqs=allReqs.filter(r=>requirementCondition(r,cr.data)!==false);
     const options='<option value="">AI визначить тип автоматично</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId&&r.ai_enabled===false?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
-    modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · додайте пакет файлів: AI визначить типи та збере дані. Для документів без AI виберіть тип вручну.</p><details><summary>Додатково: указати тип вручну</summary><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label></details><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><small class="muted">JPG/JPEG автоматично перетворюються на PDF перед завантаженням. Один знімок — один PDF, зі збереженням пропорцій.</small><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
+    modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · СПЛАВ визначить типи документів, розпізнає та зіставить дані. Під час обробки залишайте вкладку відкритою. Для документів без AI виберіть тип вручну.</p><details><summary>Додатково: указати тип вручну</summary><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label></details><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><small class="muted">JPG/JPEG автоматично перетворюються на PDF перед завантаженням. Один знімок — один PDF, зі збереженням пропорцій.</small><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
     if(replacementId)modal.querySelector('#docFileInput').removeAttribute('multiple');
     const input=modal.querySelector('#docFileInput'),rootType=modal.querySelector('#docRequirement'),plan=modal.querySelector('#docFilePlan'),upload=modal.querySelector('#docUploadButton');
     const render=()=>{
@@ -227,6 +227,7 @@ const doc={id:documentId};
 const{data:ai,error:aiError}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{document_id:doc.id}});
 if(aiError)throw new Error(await documentAIError(aiError));
 if(!ai?.ok&&!ai?.extracted)throw new Error(ai?.error||'AI не повернув структуровані дані');
+if(ai.persistence_version!==1||ai.documentId!==documentId)throw new Error('Потрібно оновити сервер СПЛАВ. Файл збережено; результат не перезаписувався браузером.');
 return ai
 }
 function normName(s){return String(s||'').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi,'')}
@@ -256,9 +257,11 @@ if(!aiEnabled)return{file:file.name,type:tempType,confidence:0,warnings:[],skipp
 // The authenticated server reads the original file. Browser OCR was unused and duplicated the work.
 const documentText='';
 let ai=null;
-try{ai=await classifyStoredDocument(storedDocument.id,path,file.name,documentText)}catch(e){await supabaseClient.from('documents').update({processing_status:'AI помилка',notes:e.message}).eq('id',storedDocument.id);throw new Error('Файл збережено. Розпізнавання не завершено: '+e.message)}
-const extracted=ai?.extracted||{},aiType=ai?.document_type||tempType,matchedReq=(forced?.document_type===aiType?forced:null)||reqs.find(r=>r.document_type===aiType),matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];if(forced&&aiType!==tempType)warnings.push('AI визначив інший тип: '+aiType+'. Звірте тип документа.');if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
-const{error:updateError}=await supabaseClient.from('documents').update({requirement_id:matchedReq?.id||null,document_type:aiType,document_name:aiType,status:'Завантажено',verification_status:(ai?.review_required||(forced&&aiType!==tempType))?'Потребує перевірки':'Не перевірено',processing_status:'AI оброблено',ai_document_type:aiType,ai_confidence:Number(ai?.confidence||0),ai_candidate_name:ai?.candidate_name||null,ai_extracted:extracted,ai_warnings:warnings,notes:(ai?.review_required||(forced&&aiType!==tempType))?`AI REVIEW REQUIRED model=${ai.model||''}`:ai?.model?`AI OK model=${ai.model}`:'AI OK'}).eq('id',storedDocument.id);if(updateError)throw new Error('Оновлення документа: '+updateError.message);try{const report=await CRMDocumentSync.automate(supabaseClient,storedDocument.id);warnings.push(...report.reasons);const conflicts=report.rows.filter(r=>r.action==='conflict');if(conflicts.length)warnings.push('Синхронізація: '+conflicts.length+' конфлікт(ів); збережені значення залишено.')}catch(err){warnings.push('AI розпізнано, але перенесення не виконано: '+err.message)}if(warnings.length){const saved=await supabaseClient.from('documents').select('ai_warnings').eq('id',storedDocument.id).single();if(!saved.error)await supabaseClient.from('documents').update({ai_warnings:[...new Set([...(saved.data.ai_warnings||[]),...warnings])]}).eq('id',storedDocument.id);}
+try{ai=await classifyStoredDocument(storedDocument.id,path,file.name,documentText)}catch(e){throw new Error('Файл збережено. Розпізнавання не завершено: '+e.message)}
+const aiType=ai?.document_type||tempType,matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];if(forced&&aiType!==tempType)warnings.push('AI визначив інший тип: '+aiType+'. Звірте тип документа.');if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
+// The server persists classification and OCR together under the source revision guard.
+// Browser transfer uses the existing fresh preview/CAS, never an AI patch from a stale response.
+try{const report=await CRMDocumentSync.automate(supabaseClient,storedDocument.id);warnings.push(...report.reasons);const conflicts=report.rows.filter(r=>r.action==='conflict');if(conflicts.length)warnings.push('Синхронізація: '+conflicts.length+' конфлікт(ів); збережені значення залишено.')}catch(err){warnings.push('AI розпізнано, але перенесення не виконано: '+err.message)}
 return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
 }
 async function uploadSelectedDocuments(){
@@ -274,7 +277,7 @@ async function uploadSelectedDocuments(){
   const results=[],hashes=new Set();
   try{
     for(let i=0;i<files.length;i++){
-      status.textContent='Обробка '+(i+1)+' із '+files.length+': '+files[i].name;
+      status.textContent='СПЛАВ · Документ '+(i+1)+' із '+files.length+': '+files[i].name;
       try{
         const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await files[i].arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
         if(hashes.has(digest)){results.push('↪ '+files[i].name+' — точний дублікат у цьому пакеті, пропущено.');continue;}
