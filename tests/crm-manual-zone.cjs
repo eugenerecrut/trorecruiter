@@ -23,8 +23,18 @@ test('manual entry saves workspace first and never enables autostart',async()=>{
 });
 test('the real reader gates primary OCR on autostart and provides the original with a verified hash',()=>{
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
- assert.match(source,/if\(autostart&&\(!doc.ai_extracted\|\|doc.processing_status==='AI помилка'\)\)/);
+ assert.match(source,/if\(autostart&&!canary&&\(!doc.ai_extracted\|\|doc.processing_status==='AI помилка'\)\)/);
  assert.match(source,/crypto.subtle.digest\('SHA-256',originalBytes\)/);
  assert.match(source,/originalLink.download=doc.file_name/);
  assert.match(source,/URL.revokeObjectURL\(originalURL\)/);
+});
+test('one-step canary is owner-only, sends a durable budget of one and never falls into browser AI',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert.match(source,/get\('zoneBudget'\)\s*===\s*'1'/);
+ assert.match(source,/supabaseClient.auth.getUser\(\)/);
+ assert.match(source,/p_budget:canary\?1:2600/);
+ assert.match(source,/if\(canary&&\(ready.error\|\|ready.data!==true\)\)throw/);
+ assert(source.indexOf("if(canary)throw Error('Немає придатного")<source.indexOf('await autopilot.run'));
+ assert.match(source,/async function read\(mode\)\{if\(canary\)/);
+ assert.match(source,/else if\(autostart&&!canary&&sourceReady\)/);
 });
