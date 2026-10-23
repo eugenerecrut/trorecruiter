@@ -22,7 +22,7 @@ Deno.serve(async req=>{
     if(!snapshot)return {data:[],error:null};
     let query=sb.from('documents').update(patch).eq('id',snapshot.id).eq('candidate_id',snapshot.candidate_id).eq('storage_path',snapshot.storage_path).is('deleted_at',null);
     query=snapshot.ai_processed_at==null?query.is('ai_processed_at',null):query.eq('ai_processed_at',snapshot.ai_processed_at);
-    for(const field of ['document_type','requirement_id','verification_status','verified_at'])query=snapshot[field]==null?query.is(field,null):query.eq(field,snapshot[field]);
+    for(const field of ['document_type','requirement_id','verification_status','verified_at','file_hash'])query=snapshot[field]==null?query.is(field,null):query.eq(field,snapshot[field]);
     return await query.select('id,ai_processed_at');
   };
   try{
