@@ -15,9 +15,9 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,ledger='accepted',finish='completed'}={}){
+function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,ledger='accepted',finish='completed'}={}){
  let handler;const calls=[];let savedReceipt=null;
- const context={globalThis:null,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini',OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
+ const context={globalThis:null,TextDecoder,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini',OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
   if(url.endsWith('/auth/v1/user'))return Response.json({id:'user'},{status:auth?200:401});
   if(url.includes('crm_staff?'))return Response.json(staff?[{user_id:'user',role:processor?'processor':'recruiter'}]:[]);
@@ -49,12 +49,16 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,e
   }
   if(url.includes('/documents?'))return Response.json(doc?[{id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',candidate_id:'c',storage_path:'c/original.pdf',document_type:type,version_group_id:'g',version_number:1}]:[]);
   if(url.includes('api.openai.com')){
+   if(provider==='quota')return Response.json({error:{code:'insufficient_quota',message:'SECRET PASSPORT DATA'}},{status:429,headers:{'retry-after':'30'}});
+   if(provider==='unknown-code')return Response.json({error:{code:'SECRET PASSPORT DATA',message:'SECRET'}},{status:429});
+   if(provider==='oversize')return new Response('x'.repeat(20000),{status:429});
    if(provider==='transport')throw Error('synthetic network failure');
    if(provider==='malformed')return Response.json({output:[]});
    if(provider==='body-lost')return new Response('{truncated');
    if(provider==='5xx')return Response.json({error:'synthetic'}, {status:503});
    return provider?Response.json({output:[{content:[{text:JSON.stringify({raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
   }
+  if(url.includes('generativelanguage.googleapis.com')&&geminiFailure)return Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'truncated SECRET'}]}}]});
   if(url.includes('generativelanguage.googleapis.com'))return Response.json({candidates:[{content:{parts:[{text:'{"rows":[]}' }]}}]});
   throw Error('Unexpected request '+url);
  }};context.globalThis=context;vm.createContext(context);
@@ -137,4 +141,19 @@ test('processor model access requires a live exact zonal lease and uses only sco
  const s=server({processor:true,zoneLease:true}),r=await s.invoke(extra);assert.equal(r.status,200);assert.equal((await r.json()).source.origin,'server_render');
  assert(s.calls.some(x=>x.url.includes('/rpc/crm_splav_zone_step')));assert(!s.calls.some(x=>/\/rpc\/crm_zone_(begin|finish|coordinator_begin)$/.test(x.url)));
  const human=server();assert.equal((await human.invoke(extra)).status,403);
+});
+
+
+test('provider diagnoses distinguish quota without persisting provider messages or unknown codes',async()=>{
+ for(const [provider,expected] of [['quota','insufficient_quota'],['unknown-code','QUOTA_OR_RATE_LIMIT'],['oversize','QUOTA_OR_RATE_LIMIT']]){
+  const s=server({provider});const result=await (await s.invoke()).json();
+  assert.equal(result.provider_errors[0].diagnosis,expected);assert.equal(result.provider_errors[0].http_status,429);
+  assert.equal(result.automatic_retry,false);assert(!JSON.stringify(result).includes('SECRET'));
+  if(provider==='quota')assert.equal(result.provider_errors[0].retry_after_seconds,30);
+ }
+});
+test('Gemini truncated output retains safe reason and prevents further provider dispatch',async()=>{
+ const s=server({provider:false,fallback:true,geminiFailure:true});const result=await (await s.invoke()).json();
+ assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[1].diagnosis,'MAX_TOKENS');
+ assert(!JSON.stringify(result).includes('SECRET'));assert(!s.calls.some(c=>c.url.includes('openrouter.ai')));
 });
