@@ -43,8 +43,16 @@ Deno.serve(async req=>{
   const user=await auth.json();if(!user.id)return json({error:'Потрібна чинна сесія'},401);
   const staff=await request(backend+'/rest/v1/crm_staff?user_id=eq.'+encodeURIComponent(user.id)+'&active=eq.true&select=user_id,role&limit=1',{headers});
   if(!staff.ok)return json({error:'Доступ заборонено'},403);const users=await staff.json();if(!Array.isArray(users)||!users.length)return json({error:'Користувач неактивний'},403);
-  if(users[0].role==='processor')return json({error:'Зональне розпізнавання потребує окремого доручення СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
+  const worker=users[0].role==='processor';
   const raw=await req.text();if(raw.length>6000000)return json({error:'Фрагмент завеликий'},413);let body;try{body=JSON.parse(raw)}catch{return json({error:'Некоректний JSON'},400)}
+  if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Некоректний JSON'},400);
+  if(worker){
+   if(!/^[0-9a-f-]{36}$/i.test(body.job_id||'')||!/^[0-9a-f-]{36}$/i.test(body.lease_token||'')||!body.coordinator_id)return json({error:'Зональне розпізнавання потребує окремого доручення СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
+   const lease=await request(backend+'/rest/v1/rpc/crm_splav_zone_step',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({p_job:body.job_id,p_token:body.lease_token,p_operation:'validate',p_data:{}})});
+   if(!lease.ok)return json({error:'Зональне доручення недоступне',code:'PROCESSOR_QUEUE_REQUIRED'},403);
+   const scope=await lease.json();
+   if(scope.document_id!==body.document_id||scope.coordinator_id!==body.coordinator_id||scope.version!==body.coordinator_version)return json({error:'Зональне доручення змінилося',code:'ZONE_COORDINATOR_CHANGED'},409);
+  }else if(body.job_id!==undefined||body.lease_token!==undefined)return json({error:'Службове доручення недоступне'},403);
   if(!/^[0-9a-f-]{36}$/i.test(body.document_id||'')||!['overview','zone'].includes(body.mode)||!Number.isInteger(body.page)||body.page<1||body.page>200||!contract.box(body.box))return json({error:'Некоректна сторінка або зона'},400);
   if((body.coordinator_id!==undefined||body.coordinator_version!==undefined)&&(!/^[0-9a-f-]{36}$/i.test(body.coordinator_id||'')||!Number.isSafeInteger(body.coordinator_version)||body.coordinator_version<0))return json({error:'Некоректна контрольна точка'},400);
   if(typeof body.image_data!=='string'||body.image_data.length>5500000||!/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(body.image_data))return json({error:'Потрібне зображення JPEG/PNG до 4 МБ'},400);
@@ -70,7 +78,7 @@ Deno.serve(async req=>{
    return await response.json();
   };
   let dispatch:any;
-  try{dispatch=body.coordinator_id
+  try{dispatch=worker?await rpc('crm_splav_zone_step',{p_job:body.job_id,p_token:body.lease_token,p_operation:'begin',p_data:{version:body.coordinator_version,mode:body.mode,page:body.page,box:contract.box(body.box),render_sha256:digest}}):body.coordinator_id
    ?await rpc('crm_zone_coordinator_begin',{p_id:body.coordinator_id,p_version:body.coordinator_version,p_document_id:doc.id,p_mode:body.mode,p_page:body.page,p_box:contract.box(body.box),p_render_sha256:digest})
    :await rpc('crm_zone_begin',{p_document_id:doc.id,p_source:doc,p_mode:body.mode,p_page:body.page,p_box:contract.box(body.box),p_render_sha256:digest});}
   catch(e){return json({error:(e as any).code==='40001'?'Чергу або джерело вже змінено. Оновіть документ; AI не запускався.':'Не вдалося перевірити журнал або версію документа. AI не запускався.',code:(e as any).code==='40001'?'ZONE_COORDINATOR_CHANGED':'ZONE_RECEIPT_UNAVAILABLE',automatic_retry:false},409);}
@@ -79,7 +87,7 @@ Deno.serve(async req=>{
   if(dispatch?.state!=='accepted'||!dispatch.id||!dispatch.receipt)return json({error:'Цей фрагмент уже відправлений. Результат ще не підтверджено; повторний AI-запит заблоковано.',code:'ZONE_ALREADY_DISPATCHED',automatic_retry:false},409);
   const finish=async(result:any)=>{
    try{
-    const saved=await rpc('crm_zone_finish',{p_request_id:dispatch.id,p_receipt:dispatch.receipt,p_result:result});
+    const saved=worker?await rpc('crm_splav_zone_step',{p_job:body.job_id,p_token:body.lease_token,p_operation:'finish',p_data:{request_id:dispatch.id,receipt:dispatch.receipt,result}}):await rpc('crm_zone_finish',{p_request_id:dispatch.id,p_receipt:dispatch.receipt,p_result:result});
     if(!['completed','failed'].includes(saved?.state))return json({error:'Версія документа змінилася. Застарілий результат не використано.',code:'ZONE_SOURCE_CHANGED',automatic_retry:false},409);
     return json(result,result.error?502:200);
    }catch{return json({error:'Не вдалося зберегти результат AI. Повторний платний запит заблоковано журналом.',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false},502);}
@@ -90,7 +98,7 @@ Deno.serve(async req=>{
    if(!provider.key)continue;
    try{
     const value=await run(provider,promptText,body.image_data);
-    const result=contract.result(body.mode,value,{document_id:doc.id,document_type:doc.document_type,page:body.page,box:contract.box(body.box),render_sha256:digest,origin:'client_render',provider:provider.name,model:provider.model});
+    const result=contract.result(body.mode,value,{document_id:doc.id,document_type:doc.document_type,page:body.page,box:contract.box(body.box),render_sha256:digest,origin:worker?'server_render':'client_render',provider:provider.name,model:provider.model});
     return await finish({...result,mode:body.mode,learning_examples_used:examples.length,provider_errors:errors});
    }catch(e){errors.push({provider:provider.name,error:String((e as Error).message).startsWith(provider.name+': HTTP ')?(e as Error).message:'Немає коректної відповіді'});
     if((e as any).uncertain!==false)return await finish({error:'Результат виклику AI невідомий. Автоматичний повтор цього фрагмента та перехід до іншого сервісу заблоковані.',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false,provider_errors:errors});

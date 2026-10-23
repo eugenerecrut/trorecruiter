@@ -15,7 +15,7 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,processor=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,ledger='accepted',finish='completed'}={}){
+function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,ledger='accepted',finish='completed'}={}){
  let handler;const calls=[];let savedReceipt=null;
  const context={globalThis:null,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini',OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
@@ -24,6 +24,14 @@ function server({auth=true,staff=true,processor=false,doc=true,enabled=true,type
   if(url.includes('version_number=gt.'))return Response.json(newer?[{id:'new'}]:[]);
   if(url.includes('/document_requirements?'))return Response.json([{ai_enabled:enabled}]);
   if(url.includes('/rpc/crm_military_zone_examples'))return Response.json([]);
+  if(url.includes('/rpc/crm_splav_zone_step')){
+   if(!zoneLease)return Response.json({error:'lease denied'},{status:403});
+   const payload=JSON.parse(init.body);
+   if(payload.p_operation==='validate')return Response.json({document_id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',version:7});
+   if(payload.p_operation==='begin')return Response.json({state:'accepted',id:'receipt-id',receipt:'secret-receipt'});
+   if(payload.p_operation==='finish')return Response.json({state:'completed'});
+   throw Error('Unexpected zonal operation');
+  }
   if(url.includes('/rpc/crm_zone_begin')||url.includes('/rpc/crm_zone_coordinator_begin')){
    if(ledger==='durable'){
     if(savedReceipt)return Response.json(savedReceipt);
@@ -120,4 +128,13 @@ test('coordinator dispatch uses its guarded RPC and malformed versions make no A
  for(const extra of [{coordinator_id:'invalid',coordinator_version:1},{coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',coordinator_version:-1},{coordinator_version:1}]){
   const bad=server();assert.equal((await bad.invoke(extra)).status,400);assert(!bad.calls.some(c=>c.url.includes('api.openai.com')));
  }
+});
+test('processor model access requires a live exact zonal lease and uses only scoped RPCs',async()=>{
+ const extra={job_id:'cccccccc-cccc-cccc-cccc-cccccccccccc',lease_token:'dddddddd-dddd-dddd-dddd-dddddddddddd',coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',coordinator_version:7};
+ for(const opts of [{processor:true},{processor:true,zoneLease:true}]){
+  const s=server(opts),r=await s.invoke({...extra,...(opts.zoneLease?{coordinator_version:6}:{})});assert.ok([403,409].includes(r.status));assert(!s.calls.some(x=>x.url.includes('api.openai.com')));
+ }
+ const s=server({processor:true,zoneLease:true}),r=await s.invoke(extra);assert.equal(r.status,200);assert.equal((await r.json()).source.origin,'server_render');
+ assert(s.calls.some(x=>x.url.includes('/rpc/crm_splav_zone_step')));assert(!s.calls.some(x=>/\/rpc\/crm_zone_(begin|finish|coordinator_begin)$/.test(x.url)));
+ const human=server();assert.equal((await human.invoke(extra)).status,403);
 });
