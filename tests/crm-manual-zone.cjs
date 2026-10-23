@@ -58,3 +58,22 @@ test('opening the reader shows an existing server job without dispatching a new 
  assert.match(source,/rpc\('crm_splav_job_status'/);
  assert.match(source,/line.textContent=note/);
 });
+
+
+test('terminal background UI hides dead controls, clears the stale reading hint and gives the next action',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert.match(source,/\$\('\[data-stop\]'\).hidden=true/);assert.match(source,/hidden=!reports.length;status\(''\)/);
+ const context={window:{}};vm.createContext(context);vm.runInContext(source,context);
+ const result=context.window.CRMMilitaryZoneReview.backgroundSummary({state:'uncertain'});
+ assert.match(JSON.stringify(result),/Наступна дія: адміністратору/);assert.match(JSON.stringify(result),/без окремого рішення/);
+});
+test('only the saved report matching this completed job can be displayed without another AI call',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const read=context.window.CRMMilitaryZoneReview.backgroundReports;
+ const report={review_only:true,source:{document_id:'d'},rows:[]};
+ const saved={status:'complete',saved_at:'2026-10-23',reports:[report,{...report,source:{document_id:'other'}}]};
+ const job={_detailed:true,zone_summary:{},document_id:'d',state:'completed',result:{status:'complete',saved_at:saved.saved_at}};
+ assert.equal(read(job,saved).length,1);
+ for(const changed of [{state:'running'},{_detailed:false},{zone_summary:{source_changed:true}},{result:{status:'complete',saved_at:'older'}},{document_id:'other-doc'}])assert.equal(read({...job,...changed},saved).length,0);
+ assert.equal(read(job,{...saved,status:'complete_with_gaps'}).length,0);
+});
