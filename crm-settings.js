@@ -9,7 +9,7 @@
   function renderWorkerState(){
     if(!byId('splav-worker-status'))return;
     byId('splav-worker-status').textContent=workerState?.active&&workerState?.enabled
-      ?'СПЛАВ працює. У черзі: '+workerState.queued+' · Опрацьовується: '+workerState.running+' · Потребує звірки: '+workerState.needs_review
+      ?'СПЛАВ працює. У черзі: '+workerState.queued+' · Опрацьовується: '+workerState.running+' · Історичних результатів для звірки: '+workerState.needs_review
       :workerState?.created?'Службовий запис створено. Фонове опрацювання вимкнено.':'Службовий запис ще не створено.';
     byId('splav-create').disabled=busy||!workerState||workerState.created;
     byId('splav-activate').disabled=busy||!workerState?.created||!!workerState?.active;
