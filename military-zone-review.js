@@ -32,6 +32,7 @@ async function open(doc,{autostart=false}={}){
   const {data,error}=await supabaseClient.functions.invoke('ai-military-zone',{body:{document_id:doc.id,mode,page:atPage,box:sourceBox,image_data,render_sha256}});
   if(error){let message='Немає підтвердженого результату AI. Автоматичний повтор цього фрагмента вимкнено.',code='ZONE_RESULT_UNCERTAIN';try{const detail=await error.context?.json();if(detail?.error)message=detail.error;if(detail?.code)code=detail.code;}catch{}const failure=Error(message);failure.code=code;throw failure}
   if(closed)return;if(!data?.review_only||data.error)throw Error(data?.error||'Некоректна відповідь AI');reports.push(data);$('[data-export]').disabled=false;
+  if(data.request_replayed)$('[data-auto-progress]').textContent='Відновлено збережений фрагмент. Новий AI-запит не виконувався.';
   if(mode==='overview'){
    $('[data-quality]').textContent=(data.quality_issues||[]).join(' · ');const zones=$('[data-zones]');zones.replaceChildren();
    for(const z of data.zones||[]){const button=document.createElement('button');button.type='button';button.textContent=z.label||z.kind;button.title=z.reason||'';button.onclick=()=>setBox(z.box);zones.append(button);}
