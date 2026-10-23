@@ -86,9 +86,10 @@ const authHeaders={Authorization:authorization,apikey:publicKey};
 const userResponse=await timedFetch(backend+'/auth/v1/user',{headers:authHeaders});
 if(!userResponse.ok)return json({error:'Потрібна чинна сесія'},401);
 const user=await userResponse.json();if(!user?.id)return json({error:'Потрібна чинна сесія'},401);
-const staffResponse=await timedFetch(backend+'/rest/v1/crm_staff?user_id=eq.'+encodeURIComponent(user.id)+'&active=eq.true&select=user_id&limit=1',{headers:authHeaders});
+const staffResponse=await timedFetch(backend+'/rest/v1/crm_staff?user_id=eq.'+encodeURIComponent(user.id)+'&active=eq.true&select=user_id,role&limit=1',{headers:authHeaders});
 if(!staffResponse.ok)return json({error:'Доступ заборонено'},403);
 const staff=await staffResponse.json();if(!Array.isArray(staff)||!staff.length)return json({error:'Користувач неактивний'},403);
+if(staff[0].role==='processor')return json({error:'Потрібне чинне доручення черги СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
 const body=await req.json().catch(()=>null);if(!body)return json({error:'Некоректний JSON запиту'},400);let text=String(body.text||'').trim(),fileUrl=String(body.file_url||'').trim(),fileName=String(body.file_name||'document').trim();
 let storedMime='';
 if(body.document_id){

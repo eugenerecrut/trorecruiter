@@ -25,6 +25,30 @@ export function createHandler(createClient, env) {
         department: String(user.user_metadata?.department || ''), position: String(user.user_metadata?.position || ''),
         created_at: user.created_at, last_sign_in_at: user.last_sign_in_at, owner: user.id === OWNER_ID});
       if (body.action === 'access') return reply(200, {allowed: true});
+      if (body.action === 'provision_splav') {
+        // Owner-authorized, deliberately inactive bootstrap. No credential leaves this function.
+        const email = 'splav-worker@trorecruiter.invalid';
+        let worker = null;
+        for (let page=1; page<=100; page++) {
+          const {data,error} = await admin.auth.admin.listUsers({page,perPage:100});
+          if (error) throw error;
+          worker = data.users.find(user=>String(user.email||'').toLowerCase()===email);
+          if (worker || data.users.length<100) break;
+          if (page===100) return reply(409,{error:'Не завершено перевірку службового логіна'});
+        }
+        if (worker && worker.app_metadata?.crm_account_type!=='splav_processor') return reply(409,{error:'Службовий логін зайнятий іншим обліковим записом'});
+        if (!worker) {
+          const random = new Uint8Array(48);crypto.getRandomValues(random);
+          const password = Array.from(random,byte=>byte.toString(16).padStart(2,'0')).join('');
+          const {data,error} = await admin.auth.admin.createUser({email,password,email_confirm:true,ban_duration:'876000h',
+            app_metadata:{crm_account_type:'splav_processor'},user_metadata:{full_name:'СПЛАВ',username:'splav-worker'}});
+          if (error) return reply(409,{error:'Не вдалося створити службовий запис. Перевірте стан перед повторною спробою'});
+          worker = data.user;
+        }
+        const {data:staff,error} = await admin.from('crm_staff').select('role,active').eq('user_id',worker.id).single();
+        if (error || staff?.role!=='processor' || staff?.active!==false) return reply(409,{error:'Стан доступу СПЛАВ потребує перевірки; активацію не виконано'});
+        return reply(200,{worker:{id:worker.id,display_name:'СПЛАВ',role:'processor',active:false,ready:false},message:'Службовий запис створено без доступу. Активація — після перевірки черги.'});
+      }
       if (body.action === 'list') {
         const page = Number(body.page || 1);
         if (!Number.isInteger(page) || page < 1 || page > 10000) return reply(400, {error: 'Некоректна сторінка'});

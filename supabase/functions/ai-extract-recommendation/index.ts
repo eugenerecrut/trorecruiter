@@ -146,6 +146,16 @@ export default {
   fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
     if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
+    // This legacy text endpoint has no leased-job contract. Never grant it to the worker.
+    const backend = Deno.env.get('SUPABASE_URL')
+    const publicKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_PUBLISHABLE_KEY')
+    const authorization = req.headers.get('Authorization')
+    const userId = String(ctx.userClaims?.sub || '')
+    if (!backend || !publicKey || !authorization || !userId) return jsonResponse({error:'Потрібна чинна сесія'},401)
+    const staffResponse = await fetch(backend+'/rest/v1/crm_staff?user_id=eq.'+encodeURIComponent(userId)+'&active=eq.true&select=role&limit=1', {headers:{Authorization:authorization,apikey:publicKey}})
+    if (!staffResponse.ok) return jsonResponse({error:'Доступ заборонено'},403)
+    const staff = await staffResponse.json()
+    if (!Array.isArray(staff) || !staff.length || staff[0].role==='processor') return jsonResponse({error:'Доступ лише активним працівникам CRM'},403)
     const apiKey = Deno.env.get('GEMINI_API_KEY') || Deno.env.get('Gemini API Key')
     if (!apiKey) return jsonResponse({ error: 'GEMINI_API_KEY не налаштовано в Supabase Secrets.' }, 500)
     let body: { text?: string }

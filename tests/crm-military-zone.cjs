@@ -15,12 +15,12 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true}={}){
+function server({auth=true,staff=true,processor=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true}={}){
  let handler;const calls=[];
  const context={globalThis:null,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key'}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
   if(url.endsWith('/auth/v1/user'))return Response.json({id:'user'},{status:auth?200:401});
-  if(url.includes('crm_staff?'))return Response.json(staff?[{user_id:'user'}]:[]);
+  if(url.includes('crm_staff?'))return Response.json(staff?[{user_id:'user',role:processor?'processor':'recruiter'}]:[]);
   if(url.includes('version_number=gt.'))return Response.json(newer?[{id:'new'}]:[]);
   if(url.includes('/document_requirements?'))return Response.json([{ai_enabled:enabled}]);
   if(url.includes('/rpc/crm_military_zone_examples'))return Response.json([]);
@@ -33,7 +33,7 @@ function server({auth=true,staff=true,doc=true,enabled=true,type='Копія в�
  return {calls,invoke:extra=>handler(new Request('https://test/zone',{method:'POST',headers:{Authorization:'Bearer test'},body:JSON.stringify({...body,...extra})}))};
 }
 test('edge requires authentication, active staff, accessible military document and latest version',async()=>{
- for(const [opts,status] of [[{auth:false},401],[{staff:false},403],[{doc:false},404],[{type:'Додаток 13'},400],[{enabled:false},403],[{newer:true},409]]){const s=server(opts),r=await s.invoke();assert.equal(r.status,status);assert(!s.calls.some(x=>x.url.includes('api.openai.com')));}
+ for(const [opts,status] of [[{auth:false},401],[{staff:false},403],[{processor:true},403],[{doc:false},404],[{type:'Додаток 13'},400],[{enabled:false},403],[{newer:true},409]]){const s=server(opts),r=await s.invoke();assert.equal(r.status,status);assert(!s.calls.some(x=>x.url.includes('api.openai.com')));}
 });
 test('edge rejects malformed page, image and box without AI calls',async()=>{
  for(const extra of [{page:0},{mode:'merge'},{box:{x:0,y:0,w:0,h:1}},{image_data:'data:image/jpeg;base64,YWJj'},{image_data:'https://external.invalid/doc'}]){const s=server(),r=await s.invoke(extra);assert.equal(r.status,400);assert(!s.calls.some(x=>x.url.includes('api.openai.com')));}

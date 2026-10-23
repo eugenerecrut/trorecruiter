@@ -13,8 +13,9 @@ async function processDocument(req:Request){
   const sb=createClient(Deno.env.get('SUPABASE_URL')!,key,{global:{headers:{Authorization:authorization}},auth:{persistSession:false}});
   const {data:auth,error:authError}=await sb.auth.getUser();
   if(authError||!auth.user)return json({error:'Потрібна чинна сесія'},401);
-  const {data:staff,error:staffError}=await sb.from('crm_staff').select('active').eq('user_id',auth.user.id).single();
+  const {data:staff,error:staffError}=await sb.from('crm_staff').select('active,role').eq('user_id',auth.user.id).single();
   if(staffError||!staff?.active)return json({error:'Користувач неактивний'},403);
+  if(staff.role==='processor')return json({error:'Фоновий виконавець може працювати лише через чергу СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
   let id:string|undefined,snapshot:any=null;
   const stale=()=>json({error:'Стан документа вже змінено під час розпізнавання. Оновіть картку, щоб побачити чинні дані.',code:'STALE_DOCUMENT'},409);
   // All success/error writes compare the same initial revision. Never let an old

@@ -5,7 +5,7 @@ async function run(options={}){
  const calls=[];let handler,providerCalls=0;
  const fetch=async(url,init={})=>{calls.push({url,init});const json=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'content-type':'application/json'}});
   if(url.endsWith('/auth/v1/user'))return json({id:'u'});
-  if(url.includes('/crm_staff?'))return json(options.inactive?[]:[{user_id:'u'}]);
+  if(url.includes('/crm_staff?'))return json(options.inactive?[]:[{user_id:'u',role:options.processor?'processor':'recruiter'}]);
   if(url.includes('/documents?id='))return json(options.hidden?[]:[{id,candidate_id:owner,storage_path:options.badPath||owner+'/incoming/test.pdf',file_name:'test.pdf',mime_type:'application/pdf',version_group_id:id,version_number:1,deleted_at:options.deleted?'2026-01-01':null}]);
   if(url.includes('/documents?version_group_id='))return json(options.archived?[{id:'new'}]:[]);
   if(url.includes('/storage/v1/object/sign/'))return init.method==='POST'?json({signedURL:'/object/sign/candidate-documents/'+owner+'/incoming/test.pdf?token=test'}):new Response(options.large||options.bytes?new Uint8Array(options.bytes||18149553):'%PDF-test',{headers:{'content-type':'application/pdf'}});
@@ -23,8 +23,8 @@ test('document-ID route resolves file through caller RLS and signed Storage URL'
  assert(r.calls.some(c=>c.init.method==='POST'&&c.url.includes('/object/sign/')));assert(!r.calls.some(c=>c.url.includes('untrusted.test')));
  const request=JSON.parse(r.calls.find(c=>c.url.includes('api.openai.com')).init.body);assert(!JSON.stringify(request).includes('Untrusted OCR'));
 });
-test('inactive user, hidden, deleted, old version and unsafe paths never reach AI',async()=>{
- for(const [options,status] of [[{inactive:true},403],[{hidden:true},404],[{deleted:true},404],[{archived:true},409],[{badPath:owner+'/../other'},400],[{body:{document_id:'bad'}},400]]){
+test('inactive user, processor, hidden, deleted, old version and unsafe paths never reach AI',async()=>{
+ for(const [options,status] of [[{inactive:true},403],[{processor:true},403],[{hidden:true},404],[{deleted:true},404],[{archived:true},409],[{badPath:owner+'/../other'},400],[{body:{document_id:'bad'}},400]]){
   const r=await run(options);assert.equal(r.response.status,status);assert(!r.calls.some(c=>c.url.includes('api.openai.com')));
  }
 });
