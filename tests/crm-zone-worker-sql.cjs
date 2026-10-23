@@ -150,6 +150,21 @@ try{
  assert.deepEqual((await db.query('select ai_extracted,verification_status from public.documents where id=$1',[id(50)])).rows[0],{ai_extracted:{preserve:true},verification_status:'Підтверджено'});checks++;
  await actor(2);assert.equal(await call('crm_splav_zone_claim'),null);checks++;
  await assert.rejects(step('load'),/Invalid zonal lease/);checks++;
+ // Saved summaries are human-only, source-bound, and exclude private receipts/payloads.
+ await owner();await db.exec(file('supabase/migrations/20261023202606_splav_zone_status_summary.sql'));
+ await actor(1);const status=await call('crm_splav_job_status',[cj.id]);
+ assert.equal(status.zone_summary.attempts,1);assert.equal(status.zone_summary.budget,1);checks+=2;
+ assert(!JSON.stringify(status).includes('lease_token'));assert(!JSON.stringify(status).includes('render_sha256'));checks+=2;
+ await actor(2);await assert.rejects(call('crm_splav_job_status',[cj.id]),/Human staff/);checks++;
+ await actor(3);await assert.rejects(call('crm_splav_job_status',[cj.id]),/Human staff/);checks++;
+ await owner();await db.query("update crm_private.zone_requests set state='failed',result=$1 where id=(select request_id from crm_private.zone_coordinator_steps where coordinator_id=$2 limit 1)",[{code:'ZONE_RESULT_UNCERTAIN',error:'SECRET',provider_errors:[{provider:'OpenAI',error:'OpenAI: HTTP 429'},{provider:'Gemini',diagnosis:'MAX_TOKENS',error:'SECRET'},{provider:'SECRET',diagnosis:'SECRET'}]},ca.id]);
+ await actor(1);const failure=await call('crm_splav_job_status',[cj.id]);
+ assert.equal(failure.zone_summary.providers[0].http_status,429);assert.equal(failure.zone_summary.providers[1].diagnosis,'MAX_TOKENS');checks+=2;
+ assert(!JSON.stringify(failure).includes('SECRET'));checks++;
+ await owner();await db.query(`update public.documents set ai_extracted=ai_extracted||'{"new_revision":true}'::jsonb where id=$1`,[id(50)]);await actor(1);
+ assert.equal((await call('crm_splav_job_status',[cj.id])).zone_summary.source_changed,true);checks++;
+ await owner();await db.exec("set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_job_status',[cj.id]),/permission denied|Human staff/);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
+

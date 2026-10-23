@@ -3,6 +3,27 @@
 'use strict';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const full={x:0,y:0,w:1,h:1};
+function backgroundSummary(job){
+ const s=job.zone_summary||{},notes=[];
+ const states={queued:'Документ у черзі',running:'Документ опрацьовується на сервері',completed:'Опрацювання завершено',needs_review:'Опрацювання зупинено',uncertain:'Відповідь AI не підтверджено',superseded:'Джерело документа змінилося'};
+ if(s.source_changed||job.state==='superseded')return {title:'Джерело документа змінилося',notes:['Відкрийте чинну версію документа. Попередній результат не застосовується.']};
+ if(['queued','running'].includes(job.state))notes.push('Можна закрити це вікно. СПЛАВ продовжить роботу на сервері.');
+ else if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Сервіс міг прийняти запит, але придатний результат не отримано. Автоматичний повтор заблоковано, щоб уникнути повторних витрат.');
+ else if(s.code==='ZONE_PROVIDERS_REJECTED')notes.push('AI-сервіси відхилили запит. Адміністратору потрібно перевірити їх доступність і ліміти.');
+ else if(job.state==='needs_review'&&s.error_count>0)notes.push('Один або кілька кроків не дали придатного результату. Адміністратору потрібно перевірити збережені причини; повтор автоматично не запускається.');
+ else if(job.state==='needs_review'&&s.attempts>=s.budget&&s.pending_steps>0)notes.push('Досягнуто погодженого ліміту кроків. Решту документа не запускали.');
+ else if(job.state==='needs_review')notes.push('Потрібна перевірка збереженого звіту. Нове розпізнавання автоматично не запускається.');
+ else if(job.state==='completed')notes.push('Звіт збережено. Відкрийте документ заново для перегляду.');
+ const labels={insufficient_quota:'вичерпано API-квоту або баланс; адміністратору перевірити білінг',rate_limit_exceeded:'перевищено частоту запитів; адміністратору перевірити ліміти',QUOTA_OR_RATE_LIMIT:'квота або частота запитів; точної причини сервіс не надав',MAX_TOKENS:'відповідь обрізана через обмеження довжини',max_output_tokens:'відповідь обрізана через обмеження довжини',length:'відповідь обрізана через обмеження довжини',SAFETY:'сервіс заблокував відповідь',content_filter:'сервіс заблокував відповідь',invalid_api_key:'адміністратору перевірити ключ доступу',AUTHENTICATION_FAILED:'адміністратору перевірити ключ доступу',UNAUTHENTICATED:'адміністратору перевірити ключ доступу',model_not_found:'адміністратору перевірити доступ до моделі',MODEL_OR_ENDPOINT_UNAVAILABLE:'адміністратору перевірити доступ до моделі',PERMISSION_DENIED:'адміністратору перевірити права сервісу',ACCESS_DENIED:'адміністратору перевірити права сервісу'};
+ for(const p of (Array.isArray(s.providers)?s.providers:[]).slice(0,8)){
+  if(!['OpenAI','Gemini','OpenRouter'].includes(p.provider))continue;
+  notes.push(p.provider+': '+(labels[p.diagnosis]||(p.http_status===429?labels.QUOTA_OR_RATE_LIMIT:p.http_status?'сервіс відхилив запит (HTTP '+Number(p.http_status)+')':'придатної відповіді немає; причина не збережена.')));
+ }
+ if(Number.isInteger(s.attempts)&&Number.isInteger(s.budget))notes.push('AI-кроків виконано: '+s.attempts+' з '+s.budget+' дозволених. Це кількість спроб, а не підтверджених списань.');
+ if(Number.isInteger(s.pages))notes.push('Сторінок у файлі: '+s.pages+'.');
+ notes.push('Дані картки та основне розпізнавання не перезаписуються.');
+ return {title:states[job.state]||'Перевіряємо стан документа',notes};
+}
 async function open(doc,{autostart=false}={}){
  if(!doc?.storage_path)throw Error('Документ не має файла');
  const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';dialog.style.width='min(1100px,96vw)';
@@ -91,13 +112,14 @@ async function open(doc,{autostart=false}={}){
  }
  $('[data-stop]').onclick=()=>{stopRequested=true;autopilot?.stop();};
  function showBackground(job){
-  $('[data-auto-progress]').textContent=({queued:'СПЛАВ: документ у фоновій черзі. Можна закрити це вікно.',running:'СПЛАВ опрацьовує документ на сервері. Можна закрити це вікно.',completed:'Готово. Фоновий звіт збережено. Відкрийте документ заново для перегляду.',needs_review:'Фонове опрацювання потребує перевірки. Збережені дані не перезаписано.',uncertain:'Результат кроку невідомий. Повторний AI-запит заблоковано.',superseded:'Джерело документа змінилося. Попереднє доручення зупинене.'})[job.state]||'Перевіряю фонове доручення…';
+  const explanation=backgroundSummary(job),host=$('[data-auto-progress]');host.replaceChildren();const title=document.createElement('strong');title.textContent=explanation.title;host.append(title);for(const note of explanation.notes){const line=document.createElement('span');line.style.display='block';line.textContent=note;host.append(line);}
   $('[data-auto]').hidden=true;
   if(backgroundPoll)clearInterval(backgroundPoll);
+  if(!job._detailed){supabaseClient.rpc('crm_splav_job_status',{job_id:job.id}).then(result=>{if(!closed&&!result.error&&result.data)showBackground({...result.data,_detailed:true});}).catch(()=>{});}
   if(['queued','running'].includes(job.state))backgroundPoll=setInterval(async()=>{
    if(closed){clearInterval(backgroundPoll);return;}
    const result=await supabaseClient.rpc('crm_splav_job_status',{job_id:job.id});
-   if(!closed&&!result.error&&result.data)showBackground(result.data);
+   if(!closed&&!result.error&&result.data)showBackground({...result.data,_detailed:true});
   },5000);
  }
  $('[data-auto]').onclick=async()=>{if(busy||autoActive||!sourceReady)return;autoActive=true;stopRequested=false;lock(false);try{
@@ -179,9 +201,10 @@ async function open(doc,{autostart=false}={}){
   if(/pdf/i.test(doc.mime_type||'')||/\.pdf$/i.test(doc.file_name||'')){
    await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';pdf=await pdfjsLib.getDocument({data:new Uint8Array(originalBytes)}).promise;total=pdf.numPages;if(total>200)throw Error('Поглиблене читання підтримує до 200 сторінок на файл.');
   }else if(blob.type.startsWith('image/'))bitmap=await createImageBitmap(blob);else throw Error('Потрібен PDF або зображення');
-  await render();const saved=doc.ai_extracted?._military_zone_report;if(saved&&Array.isArray(saved.reports)&&['complete','complete_with_gaps'].includes(saved.status)){reports.push(...saved.reports);for(const report of saved.reports)if(report.mode==='zone')showReport(report,report.source.page);$('[data-auto-progress]').textContent='Готовий результат збережено '+(saved.saved_at||'')+'. Повторне розпізнавання не запускалося.';$('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));try{await crosscheck()}catch(e){status('Зіставлення не завершено: '+e.message)}}else if(autostart&&!canary&&sourceReady)$('[data-auto]').onclick();
+  await render();let backgroundJob=null;try{const jobs=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:doc.candidate_id});if(!jobs.error&&Array.isArray(jobs.data))backgroundJob=jobs.data.find(j=>j.document_id===doc.id&&j.kind==='zone');}catch{}
+  const saved=doc.ai_extracted?._military_zone_report;if(backgroundJob)showBackground(backgroundJob);else if(saved&&Array.isArray(saved.reports)&&['complete','complete_with_gaps'].includes(saved.status)){reports.push(...saved.reports);for(const report of saved.reports)if(report.mode==='zone')showReport(report,report.source.page);$('[data-auto-progress]').textContent='Готовий результат збережено '+(saved.saved_at||'')+'. Повторне розпізнавання не запускалося.';$('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));try{await crosscheck()}catch(e){status('Зіставлення не завершено: '+e.message)}}else if(autostart&&!canary&&sourceReady)$('[data-auto]').onclick();
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open};
+window.CRMMilitaryZoneReview={open,backgroundSummary};
 })();

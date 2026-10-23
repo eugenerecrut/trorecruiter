@@ -39,3 +39,22 @@ test('one-step canary is owner-only, sends a durable budget of one and never fal
  assert.match(source,/async function read\(mode\)\{if\(canary\)/);
  assert.match(source,/else if\(autostart&&!canary&&sourceReady\)/);
 });
+
+
+test('background status explains the saved failure without model calls, raw errors or false completion',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ const result=describe({state:'needs_review',zone_summary:{attempts:1,budget:1,pages:2,pending_steps:1,code:'ZONE_RESULT_UNCERTAIN',providers:[{provider:'OpenAI',http_status:429},{provider:'Gemini',error:'SECRET'}]}});
+ const text=JSON.stringify(result);assert.match(text,/Автоматичний повтор заблоковано/);assert.match(text,/квота або частота/);assert.doesNotMatch(text,/SECRET|Опрацювання завершено/);
+ assert.match(JSON.stringify(describe({state:'needs_review',zone_summary:{attempts:1,budget:1,pending_steps:2}})),/погодженого ліміту/);
+ assert.match(JSON.stringify(describe({state:'completed'})),/Опрацювання завершено/);
+ assert.match(JSON.stringify(describe({state:'needs_review',zone_summary:{source_changed:true}})),/чинну версію/);
+});
+
+
+test('opening the reader shows an existing server job without dispatching a new step',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert.match(source,/if\(backgroundJob\)showBackground\(backgroundJob\);else if\(saved/);
+ assert.match(source,/rpc\('crm_splav_job_status'/);
+ assert.match(source,/line.textContent=note/);
+});
