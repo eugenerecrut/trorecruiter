@@ -41,3 +41,14 @@ test('failed reconciliation leaves saved OCR for recovery without completing or 
 
 test('losing duplicate process request cannot persist a failure over the winning provider execution',async()=>{const {state,run}=setup({processor:true,fetch:async()=>Response.json({error:'already consumed',code:'SPLAV_DISPATCH_UNCERTAIN'},{status:409})});const r=await run({job_id:'job',lease_token:'lease'});assert.equal(r.status,409);assert.equal(state.writes.length,0);assert(!state.rpcs.some(x=>x.name==='crm_splav_persist'));assert.equal(state.doc.ai_extracted.old,'preserve');});
 test('internal provider receipt is removed before storage and browser response',async()=>{const {state,run}=setup({processor:true});const r=await run({job_id:'job',lease_token:'lease'});assert.equal(r.status,200);assert.equal(r.body.provider_receipt,undefined);assert.equal(state.doc.ai_raw_response.provider_receipt,undefined);assert.equal(state.rpcs.find(x=>x.name==='crm_splav_persist').args.provider_receipt,'receipt');});
+
+
+test('Reserve+ alias retains the matching requirement without a false type review',async()=>{
+ const canonical='Військовий облік (витяг Резерв+ / приписне)';
+ const {state,run}=setup({requiredType:canonical,doc:{document_type:canonical,requirement_id:'r'},fetch:async()=>Response.json({document_type:'Витяг з Резерв+',confidence:1,extracted:{full_name:'Тестова Марія'}})});
+ const r=await run();assert.equal(r.status,200);assert.equal(state.doc.requirement_id,'r');assert.equal(state.doc.document_type,canonical);assert.equal(r.body.review_required,false);assert(!state.doc.notes.includes('AI REVIEW REQUIRED'));
+});
+test('a real document type mismatch still requires review',async()=>{
+ const {state,run}=setup({requiredType:'Військовий квиток',doc:{document_type:'Військовий квиток',requirement_id:'r'},fetch:async()=>Response.json({document_type:'Витяг з Резерв+',confidence:1,extracted:{full_name:'Тестова Марія'}})});
+ const r=await run();assert.equal(r.status,200);assert.equal(r.body.review_required,true);assert(state.doc.notes.includes('AI REVIEW REQUIRED'));
+});
