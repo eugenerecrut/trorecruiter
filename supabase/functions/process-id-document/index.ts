@@ -1,9 +1,10 @@
 import { reviewID } from '../_shared/id-validation.js';
 import '../_shared/document-data-policy.js';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { reconcileDocument } from '../_shared/sync-runtime.js';
 const cors={'Access-Control-Allow-Origin':'https://eugenerecrut.github.io','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json; charset=utf-8'}});
-Deno.serve(async req=>{
+async function processDocument(req:Request){
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
   if(req.method!=='POST')return json({error:'Method not allowed'},405);
   const key=Deno.env.get('SUPABASE_ANON_KEY')||Deno.env.get('SUPABASE_PUBLISHABLE_KEY');
@@ -68,10 +69,20 @@ Deno.serve(async req=>{
     const patch={requirement_id:matchedRequirement.data?.id||null,document_type:normalizedType,document_name:normalizedType,status:'Завантажено',ai_raw_response:result,ai_model:result.model||null,ai_processed_at:new Date().toISOString(),ai_document_type:normalizedType,ai_confidence:result.confidence??null,ai_candidate_name:result.candidate_name||ex.full_name||null,ai_extracted:ex,ai_warnings:warnings,processing_status:'AI оброблено',verification_status:reviewRequired?'Потребує перевірки':'Не перевірено',notes:`${reviewRequired?'AI REVIEW REQUIRED':'AI OK'} model=${result.model||''}`};
     const update=await persist(patch);
     if(update.error)throw update.error;if(!update.data?.length)return stale();
-    return json({...result,ok:true,documentId:id,persistence_version:1,document_revision:update.data[0].ai_processed_at,document_type:normalizedType,extracted:ex,warnings,review_required:reviewRequired});
+    let reconciliation;
+    try{reconciliation=await reconcileDocument(sb,id,update.data[0].ai_processed_at);}
+    catch{console.error('splav-reconciliation-failed');reconciliation={state:'failed',auto_filled:0,conflict_count:0,reasons:['Розпізнавання збережено, але узгодження даних не завершено. Потрібна повторна перевірка без нового AI.']};}
+    const sync_result={...reconciliation,version:1,document_id:id,source_revision:update.data[0].ai_processed_at};
+    return json({...result,ok:true,documentId:id,persistence_version:1,document_revision:update.data[0].ai_processed_at,document_type:normalizedType,extracted:ex,warnings,review_required:reviewRequired,sync_result});
   }catch(error){
     console.error('process-id-document',error);
     if(snapshot){const update=await persist({processing_status:'AI помилка',notes:'Обробку не завершено',ai_raw_response:{error:'Обробку не завершено'},ai_model:null,ai_processed_at:new Date().toISOString()});if(!update.error&&!update.data?.length)return stale();}
     return json({error:'Помилка обробки документа'},500);
   }
+}
+Deno.serve(req=>{
+  const task=processDocument(req);
+  // Keep accepted work tracked after a client disconnect, within Edge runtime limits.
+  (globalThis as any).EdgeRuntime?.waitUntil(task.catch(()=>undefined));
+  return task;
 });

@@ -1,4 +1,4 @@
-(function(){
+(function(root){
 'use strict';
 const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ]/g,"'").replace(/\s+/g,' ').trim().toLocaleLowerCase('uk-UA');
 const isDocument=t=>/військов(?:ий|ого) квиток|військового квитка|посвідчення офіцера/iu.test(String(t||''));
@@ -23,5 +23,5 @@ function review(e,c,p={},documentId){
  }
  return {blocked:false,issues,fields,records,accepted,history:records.filter(r=>r.kind==='military_service').map(r=>[r.start_date,r.end_date||'завершення не зазначене',r.employer,r.military_specialty&&'ВОС '+r.military_specialty,r.position,r.order_number&&'наказ '+r.order_number].filter(Boolean).join(' · ')).concat(extra).join('\n')};
 }
-window.CRMMilitary={isDocument,review};
-})();
+root.CRMMilitary={isDocument,review};
+})(typeof window==='undefined'?globalThis:window);

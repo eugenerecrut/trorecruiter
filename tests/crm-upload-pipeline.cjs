@@ -3,7 +3,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const root=path.join(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
 const name='ТЕСТЕНКО Іван Петрович';
 function setup(options={}){
- const state={candidate:{id:'c',full_name:name,birth_date:'1990-01-01',rnokpp:'1234567890',worked_before:true,served_before:false,profile_data:{service_type:'За мобілізацією'}},docs:[],uploads:[],calls:[],browserPatches:[],rpcs:0};
+ const state={candidate:{id:'c',full_name:name,birth_date:'1990-01-01',rnokpp:'1234567890',worked_before:true,served_before:false,profile_data:{service_type:'За мобілізацією'}},docs:[],uploads:[],calls:[],browserPatches:[],automations:0,rpcs:0};
  const responses={
   'birth.pdf':{document_type:'Свідоцтво про народження',extracted:{full_name:name,birth_date:'1990-01-01',birth_place:'Дніпро',relatives:[{relationship:'Мати',full_name:'ТЕСТЕНКО Олена Петрівна',birth_date:'1970-01-01'}]}},
   'diploma.pdf':{document_type:'Копія диплома',extracted:{education_records:[{owner_full_name:name,owner_birth_date:'1990-01-01',degree:'кваліфікований робітник',institution:'Тестове училище',diploma_number:'123',diploma_series:'К',diploma_present:true,graduation_year:2008}]}},
@@ -19,6 +19,7 @@ function setup(options={}){
   const data={ok:true,persistence_version:1,documentId:d.id,confidence:0.99,...responses[d.file_name]};
   // Match the authoritative server contract; the browser must not save this again.
   Object.assign(d,{document_type:data.document_type,ai_extracted:structuredClone(data.extracted),processing_status:'AI оброблено',ai_confidence:data.confidence,ai_warnings:[]});
+  if(options.serverSync){const report=options.serverSync==='failed'?null:await c.CRMDocumentSync.automate(client,d.id);data.document_revision='server-revision';data.sync_result={version:1,document_id:d.id,source_revision:options.badSyncRevision?'wrong':'server-revision',state:report?(report.needsRecruiter?'needs_review':'completed'):'failed',reasons:report?report.reasons:['Узгодження потребує повторної перевірки'],auto_filled:report?.autoFilled||0};}
   if(options.legacy)delete data.persistence_version;
   return {data};
  }},from(table){let filters=[],insert,patch;const q={select(){return q},eq(k,v){filters.push([k,v]);return q},insert(v){insert=v;return q},update(v){patch=v;return q},single:run,maybeSingle:run,then(a,b){return run().then(a,b)}};
@@ -39,6 +40,7 @@ function setup(options={}){
  const modal={dataset:{candidateId:'c'},querySelector:s=>elements[s],querySelectorAll:()=>[]};
  const c=vm.createContext({console,structuredClone,crypto:webcrypto,TextEncoder,URL,supabaseClient:client,CRMWorkspace:{busy:false},CRMUploadPDF:{isJPEG:()=>false,prepare:async f=>f},DOC_MAX_SIZE:20e6,DOC_BUCKET:'test',AI_DOC_FUNCTION:'test-ai',document:{getElementById:id=>id==='documentModal'?modal:null},getCurrentUser:async()=>({id:'u'}),getCandidates:async()=>[structuredClone(state.candidate)],getDocumentRequirements:async()=>requirements,alert:m=>{throw Error(m)}});c.window=c;
  for(const f of ['supabase/functions/_shared/document-data-policy.js','education-document.js','work-document.js','document-ai-sync.js','candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(read(f),c);
+ const automate=c.CRMDocumentSync.automate;c.CRMDocumentSync.automate=async(...args)=>{state.automations++;return automate(...args)};
  c.documentAIError=async e=>e.message;c.findCandidateByName=()=>null;
  const src=read('documents.js');vm.runInContext(src.slice(src.indexOf('async function classifyStoredDocument('),src.indexOf('let scannerBatchFiles=')),c);
  async function upload(names){elements['#docFileInput'].files=names.map(n=>({name:n,type:'application/pdf',size:100,arrayBuffer:async()=>new TextEncoder().encode(n).buffer}));await c.uploadSelectedDocuments();return elements['#docUploadStatus'].textContent;}
@@ -70,3 +72,8 @@ test('batch upload classifies, persists facts, isolates exceptions, reloads and 
 
 test('stale AI response cannot make the browser mark a newer success as failed',async()=>{const {state,upload}=setup({stale:true});const report=await upload(['birth.pdf']);assert(report.includes('Стан документа вже змінено'));assert.equal(state.docs.length,1);assert.equal(state.docs[0].processing_status,'AI оброблено');assert.equal(state.docs[0].ai_extracted.new_result,'preserve');assert.equal(state.browserPatches.length,0);});
 test('old server contract fails safely without browser AI writes or another upload',async()=>{const {state,upload}=setup({legacy:true});const report=await upload(['birth.pdf']);assert(report.includes('Потрібно оновити сервер СПЛАВ'));assert.equal(state.docs.length,1);assert.equal(state.calls.length,1);assert.equal(state.browserPatches.length,0);});
+
+test('source-bound server reconciliation prevents a second browser transfer',async()=>{const {state,upload}=setup({serverSync:true});const result=await upload(['birth.pdf']);assert(result.includes('розпізнано й узгоджено'));assert.equal(state.automations,1);assert.equal(state.candidate.birth_place,'Дніпро');assert.equal(state.docs.length,1);});
+test('mismatched reconciliation metadata falls back to the existing guarded planner',async()=>{const {state,upload}=setup({serverSync:true,badSyncRevision:true});await upload(['birth.pdf']);assert.equal(state.automations,2);assert.equal(state.candidate.profile_data.relatives.length,1);});
+test('server reconciliation failure stays visible without a silent second application',async()=>{const {state,upload}=setup({serverSync:'failed'});const result=await upload(['birth.pdf']);assert(result.includes('Узгодження потребує повторної перевірки'));assert.equal(state.automations,0);assert.equal(state.docs[0].processing_status,'AI оброблено');});
+test('manual retry also consumes the source-bound server outcome without duplicate sync',async()=>{const {c,state,upload}=setup({serverSync:true});await upload(['birth.pdf']);state.automations=0;const alerts=[];c.alert=m=>alerts.push(m);c.activeDocumentsCandidateId='c';c.reloadDocumentView=async()=>{};c.reviewDocumentData=async()=>{};const src=read('documents.js');vm.runInContext(src.slice(src.indexOf('async function retryDocumentAI('),src.indexOf('async function openDocument(')),c);await c.retryDocumentAI('d1');assert.equal(state.automations,1);assert(alerts.some(m=>m.includes('СПЛАВ завершив')));assert.equal(state.candidate.profile_data.relatives.length,1);});

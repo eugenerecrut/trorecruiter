@@ -1,4 +1,4 @@
-(function(){
+(function(root){
   'use strict';
   function normalize(value){
     const text=String(value??'').trim();
@@ -10,12 +10,12 @@
     if(/^\+380\d{9}$/.test(compact))return compact;
     return text;
   }
-  window.CRMPhone={normalize};
-  document.addEventListener('focusout',function(event){
+  root.CRMPhone={normalize};
+  if(typeof document!=='undefined')document.addEventListener('focusout',function(event){
     const field=event.target;
     if(field.matches?.('input[name="phone"],input[name="phone_secondary"]')){
       const value=normalize(field.value);
       if(value!==field.value){field.value=value;field.dispatchEvent(new Event('input',{bubbles:true}));}
     }
   });
-})();
+})(typeof window==='undefined'?globalThis:window);

@@ -1,4 +1,4 @@
-(function(){
+(function(root){
 'use strict';
 const norm=v=>String(v||'').normalize('NFKC').replace(/[’ʼ]/g,"'").replace(/\s+/g,' ').trim().toLocaleLowerCase('uk-UA');
 const profile=c=>{try{return typeof c.profile_data==='string'?JSON.parse(c.profile_data):c.profile_data||{}}catch{return {}}};
@@ -26,5 +26,5 @@ function review(e,c,d){
 }
 function editor(c){const esc=CRMWorkspace.escape;return '<details class="cc-wide"><summary>Попередні ПІБ ('+records(c).length+')</summary>'+records(c).map(r=>'<p>'+esc(r.previous_full_name)+' → '+esc(r.new_full_name||'')+' · '+esc(r.change_date||'Дата не зазначена')+(r.source_document_id?' <button type="button" data-name-source="'+esc(r.source_document_id)+'">Документ</button>':'')+'</p>').join('')+'<label>Попереднє ПІБ<input name="previous_full_name"></label><label>Дата зміни<input name="name_change_date" type="date"></label><small>Ручний запис зберігається в історії; для звірки старих документів підтвердьте свідоцтво.</small></details>';}
 function save(fd,c,p){const name=String(fd.get('previous_full_name')||'').trim();if(!name)return;const history=Array.isArray(p.name_history)?p.name_history:[];if(!history.some(r=>norm(r.previous_full_name)===norm(name)))history.push({previous_full_name:name,new_full_name:String(fd.get('name_nominative')||c.full_name).trim(),change_date:fd.get('name_change_date')||null,verified:false});p.name_history=history;}
-window.CRMNameHistory={chain,birthLinks,matches,records,isDocument,review,editor,save};
-})();
+root.CRMNameHistory={chain,birthLinks,matches,records,isDocument,review,editor,save};
+})(typeof window==='undefined'?globalThis:window);

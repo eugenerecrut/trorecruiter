@@ -230,6 +230,7 @@ if(!ai?.ok&&!ai?.extracted)throw new Error(ai?.error||'AI не повернув 
 if(ai.persistence_version!==1||ai.documentId!==documentId)throw new Error('Потрібно оновити сервер СПЛАВ. Файл збережено; результат не перезаписувався браузером.');
 return ai
 }
+function acceptedServerReconciliation(ai,documentId){const r=ai?.sync_result;return r?.version===1&&r.document_id===documentId&&ai.document_revision&&r.source_revision===ai.document_revision&&['completed','needs_review','superseded','failed'].includes(r.state)?r:null;}
 function normName(s){return String(s||'').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi,'')}
 function findCandidateByName(name,candidates){const n=normName(name);if(!n)return null;return candidates.find(c=>{const cn=normName(c.full_name);return cn===n||cn.includes(n)||n.includes(cn)})||null}
 function identityDocumentTypeValue(documentType=''){
@@ -261,8 +262,12 @@ try{ai=await classifyStoredDocument(storedDocument.id,path,file.name,documentTex
 const aiType=ai?.document_type||tempType,matchedCandidate=findCandidateByName(ai?.candidate_name,candidates),warnings=Array.isArray(ai?.warnings)?ai.warnings.slice():[];if(forced&&aiType!==tempType)warnings.push('AI визначив інший тип: '+aiType+'. Звірте тип документа.');if(matchedCandidate&&matchedCandidate.id!==forcedCandidateId)warnings.push('AI визначив кандидата: '+matchedCandidate.full_name+'. Документ завантажено до відкритої справи.');
 // The server persists classification and OCR together under the source revision guard.
 // Browser transfer uses the existing fresh preview/CAS, never an AI patch from a stale response.
-try{const report=await CRMDocumentSync.automate(supabaseClient,storedDocument.id);warnings.push(...report.reasons);const conflicts=report.rows.filter(r=>r.action==='conflict');if(conflicts.length)warnings.push('Синхронізація: '+conflicts.length+' конфлікт(ів); збережені значення залишено.')}catch(err){warnings.push('AI розпізнано, але перенесення не виконано: '+err.message)}
-return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',warnings};
+const reconciliation=acceptedServerReconciliation(ai,storedDocument.id);
+if(reconciliation){
+ warnings.push(...(Array.isArray(reconciliation.reasons)?reconciliation.reasons:[]));
+ if(reconciliation.state==='superseded')warnings.push('Документ уже змінився; показано чинні дані справи.');
+}else try{const report=await CRMDocumentSync.automate(supabaseClient,storedDocument.id);warnings.push(...report.reasons);const conflicts=report.rows.filter(r=>r.action==='conflict');if(conflicts.length)warnings.push('Синхронізація: '+conflicts.length+' конфлікт(ів); збережені значення залишено.')}catch(err){warnings.push('AI розпізнано, але перенесення не виконано: '+err.message)}
+return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate:ai?.candidate_name||'',syncState:reconciliation?.state||null,warnings};
 }
 async function uploadSelectedDocuments(){
   const modal=document.getElementById('documentModal');if(!modal||CRMWorkspace.busy)return;
@@ -283,7 +288,7 @@ async function uploadSelectedDocuments(){
         if(hashes.has(digest)){results.push('↪ '+files[i].name+' — точний дублікат у цьому пакеті, пропущено.');continue;}
         hashes.add(digest);
         const result=await processOneDocument(files[i],types[i],user,candidates,id,modal.dataset.replacementId||null);
-        results.push('✓ '+files[i].name+' — '+result.type+(result.skipped?' · без AI/OCR':' · розпізнано')+(result.warnings.length?'\n  '+result.warnings.join('; '):''));
+        results.push('✓ '+files[i].name+' — '+result.type+(result.skipped?' · без AI/OCR':result.syncState==='completed'?' · розпізнано й узгоджено':result.syncState==='needs_review'?' · розпізнано, потрібна звірка':result.syncState==='failed'?' · розпізнано, узгодження не завершено':result.syncState==='superseded'?' · стан документа вже оновлено':' · розпізнано')+(result.warnings.length?'\n  '+result.warnings.join('; '):''));
       }catch(e){results.push('✕ '+files[i].name+' — '+e.message)}
     }
   }finally{
@@ -305,7 +310,9 @@ const{data,error}=await supabaseClient.functions.invoke(AI_DOC_FUNCTION,{body:{d
 if(error){alert('Не вдалося повторити AI: '+await documentAIError(error));if(activeDocumentsCandidateId===doc.candidate_id)await reloadDocumentView(doc.candidate_id);return}
 if(!data?.ok&&!data?.extracted){alert(data?.error||'AI не повернув структуровані дані');return}
 let needsReview=false;
-try{const report=await CRMDocumentSync.automate(supabaseClient,id);needsReview=report.needsRecruiter;alert(report.supported?'Повторне AI завершено. Порожні поля перенесено; конфліктів: '+report.rows.filter(r=>r.action==='conflict').length:'AI завершено. Відкриваю звірку та вибір даних для перенесення.')}catch(err){alert('AI завершено, але синхронізація не виконана: '+err.message)}
+const reconciliation=acceptedServerReconciliation(data,id);
+if(reconciliation){needsReview=['needs_review','failed'].includes(reconciliation.state);alert(reconciliation.state==='completed'?'СПЛАВ завершив розпізнавання та узгодження. Заповнено полів: '+reconciliation.auto_filled:[...(reconciliation.reasons||[]),...(reconciliation.state==='superseded'?['Документ уже змінився. Оновлюємо справу.']:[])].join('\n'));}
+else try{const report=await CRMDocumentSync.automate(supabaseClient,id);needsReview=report.needsRecruiter;alert(report.supported?'Повторне AI завершено. Порожні поля перенесено; конфліктів: '+report.rows.filter(r=>r.action==='conflict').length:'AI завершено. Відкриваю звірку та вибір даних для перенесення.')}catch(err){alert('AI завершено, але синхронізація не виконана: '+err.message)}
 if(activeDocumentsCandidateId===doc.candidate_id)await reloadDocumentView(doc.candidate_id)
 if(needsReview)await reviewDocumentData(id);
 }
