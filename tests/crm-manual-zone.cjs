@@ -21,3 +21,10 @@ test('manual entry saves workspace first and never enables autostart',async()=>{
  await c.openManualZoneDocument('d',[doc],async()=>false);assert.equal(calls.length,1);
  c.CRMWorkspace.busy=true;await c.openManualZoneDocument('d',[doc],async()=>{throw Error('should not save');});assert.equal(calls.length,1);
 });
+test('the real reader gates primary OCR on autostart and provides the original with a verified hash',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert.match(source,/if\(autostart&&\(!doc.ai_extracted\|\|doc.processing_status==='AI помилка'\)\)/);
+ assert.match(source,/crypto.subtle.digest\('SHA-256',originalBytes\)/);
+ assert.match(source,/originalLink.download=doc.file_name/);
+ assert.match(source,/URL.revokeObjectURL\(originalURL\)/);
+});
