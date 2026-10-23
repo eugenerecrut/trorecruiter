@@ -31,6 +31,37 @@
     byId('users-content').prepend(panel);
     const probe=document.createElement('button');probe.type='button';probe.id='splav-probe';probe.textContent='Перевірити доступ';probe.disabled=true;
     probe.addEventListener('click',()=>task(async()=>{const result=await api({action:'probe_splav'});notice(result.probe?.idle_isolation===true?'СПЛАВ: вхід працює; доступ поза дорученнями й адміністрування заборонені.':'СПЛАВ: службовий вхід і заборона адміністрування перевірені. Перевірку порожньої черги пропущено, оскільки є активне доручення.');}));panel.append(probe);
+    const diagnostic=document.createElement('details'),summary=document.createElement('summary');
+    summary.textContent='Діагностика рендеру · без AI';diagnostic.append(summary);
+    const explanation=document.createElement('p');explanation.textContent='Пілотна перевірка першої сторінки PDF до 20 МіБ. Файл не зберігається і не додається до справи. Для перевірки використовуйте штучний зразок.';
+    const file=document.createElement('input');file.type='file';file.accept='application/pdf,.pdf';file.setAttribute('aria-label','PDF для діагностики рендеру');
+    const run=document.createElement('button');run.type='button';run.textContent='Підготувати першу сторінку';
+    const result=document.createElement('p');result.setAttribute('role','status');
+    const preview=document.createElement('img');preview.alt='Перша сторінка діагностичного PDF';preview.hidden=true;preview.style.maxWidth='100%';
+    let imageURL=null;
+    run.addEventListener('click',async()=>{
+      if(run.disabled)return;
+      const selected=file.files?.[0];
+      if(!selected||selected.size>20*1024*1024){result.textContent='Виберіть PDF до 20 МіБ.';return;}
+      run.disabled=true;preview.hidden=true;result.textContent='Готую сторінку без AI…';
+      if(imageURL){URL.revokeObjectURL(imageURL);imageURL=null;}
+      try{
+        const {data:{session},error}=await client.auth.getSession();
+        if(error||!session||session.user.id!==OWNER||!allowed)throw Error('Потрібна чинна сесія власника CRM');
+        const response=await fetch('https://vhfysipxorlhuiaatxqi.supabase.co/functions/v1/splav-render-probe',{
+          method:'POST',headers:{'Content-Type':'application/pdf',apikey:'sb_publishable_o8ZTKE4Ek0m58zq1q0QpFQ_domIX0Yz',Authorization:'Bearer '+session.access_token},
+          body:selected,signal:AbortSignal.timeout(60000)});
+        if(!response.ok){const detail=await response.json().catch(()=>({}));throw Error(detail.error||'Рендер недоступний ('+response.status+')');}
+        const metrics=JSON.parse(response.headers.get('x-splav-render-metrics')||'{}');
+        const blob=await response.blob();
+        if(!allowed||session.user.id!==OWNER)return;
+        imageURL=URL.createObjectURL(blob);preview.src=imageURL;preview.hidden=false;
+        result.textContent='Готово: '+metrics.width+' × '+metrics.height+'; сторінок у PDF: '+metrics.pages+'; '+metrics.total_ms+' мс; AI-запитів: 0. Файл не збережено.';
+      }catch(error){result.textContent=error.message||'Не вдалося підготувати сторінку.';}
+      finally{run.disabled=false;}
+    });
+    window.addEventListener('pagehide',()=>{if(imageURL)URL.revokeObjectURL(imageURL);});
+    diagnostic.append(explanation,file,run,result,preview);panel.append(diagnostic);
   }
   function route() {
     const requested = location.hash.slice(1);
