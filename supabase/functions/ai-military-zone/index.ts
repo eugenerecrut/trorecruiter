@@ -9,6 +9,23 @@ function config(){return [
  {name:'Gemini',key:Deno.env.get('GEMINI_API_KEY')||Deno.env.get('Gemini API Key')||Deno.env.get('GOOGLE_API_KEY'),model:Deno.env.get('GEMINI_MODEL')||'gemini-3.8-flash'},
  {name:'OpenRouter',key:Deno.env.get('OPENROUTER_API_KEY'),model:Deno.env.get('OPENROUTER_MODEL')||'openai/gpt-4.1-mini'}
 ];}
+// Persist only an allowlisted diagnosis; provider bodies can contain document text or secrets.
+const diagnosisCodes=new Set(['insufficient_quota','rate_limit_exceeded','invalid_api_key','model_not_found','permission_denied','RESOURCE_EXHAUSTED','UNAUTHENTICATED','PERMISSION_DENIED','NOT_FOUND','INVALID_ARGUMENT','UNAVAILABLE','INTERNAL']);
+function diagnosis(value:any,status:number){
+ const code=[value?.error?.code,value?.error?.type,value?.error?.status].find(v=>typeof v==='string'&&diagnosisCodes.has(v));
+ return code||({401:'AUTHENTICATION_FAILED',403:'ACCESS_DENIED',404:'MODEL_OR_ENDPOINT_UNAVAILABLE',413:'INPUT_TOO_LARGE',429:'QUOTA_OR_RATE_LIMIT'} as any)[status]||'PROVIDER_HTTP_ERROR';
+}
+async function errorBody(response:Response){
+ const reader=response.body?.getReader();if(!reader)return null;const timer=setTimeout(()=>reader.cancel().catch(()=>{}),2000);let size=0;const chunks:Uint8Array[]=[];
+ try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>16384)return null;chunks.push(value);}
+ const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return JSON.parse(new TextDecoder().decode(bytes));
+ }catch{return null;}finally{clearTimeout(timer);await reader.cancel().catch(()=>{});}
+}
+function outputDiagnosis(p:any,value:any){
+ const reasons=p.name==='Gemini'?[value?.promptFeedback?.blockReason,value?.candidates?.[0]?.finishReason]:p.name==='OpenAI'?[value?.incomplete_details?.reason,value?.status]:[value?.choices?.[0]?.finish_reason];
+ const allowed=new Set(['SAFETY','RECITATION','MAX_TOKENS','PROHIBITED_CONTENT','BLOCKLIST','STOP','OTHER','FINISH_REASON_UNSPECIFIED','max_output_tokens','content_filter','incomplete','failed','length','stop']);
+ return reasons.find(v=>allowed.has(v))||'UNREADABLE_OUTPUT';
+}
 async function run(p:any,prompt:string,data:string){
  let url,headers:any={'Content-Type':'application/json'},body:any;
  if(p.name==='Gemini'){
@@ -24,12 +41,13 @@ async function run(p:any,prompt:string,data:string){
  let response;
  try{response=await request(url,{method:'POST',headers,body:JSON.stringify(body)});}
  catch{const error:any=Error('Результат запиту невідомий');error.uncertain=true;throw error;}
- if(!response.ok){const error:any=Error(p.name+': HTTP '+response.status);error.uncertain=![400,401,403,404,413,415,422,429].includes(response.status);throw error;}
+ if(!response.ok){const error:any=Error(p.name+': HTTP '+response.status);error.http_status=response.status;error.diagnosis=diagnosis(await errorBody(response),response.status);const retry=response.headers.get('retry-after');if(retry&&/^\d{1,5}$/.test(retry))error.retry_after_seconds=Math.min(Number(retry),86400);error.uncertain=![400,401,403,404,413,415,422,429].includes(response.status);throw error;}
+ let value:any;
  try{
- const value=await response.json();
+ value=await response.json();
  const raw=p.name==='Gemini'?(value.candidates?.[0]?.content?.parts||[]).map((x:any)=>x.text||'').join(''):p.name==='OpenAI'?(value.output||[]).flatMap((x:any)=>x.content||[]).map((x:any)=>x.text||'').join(''):value.choices?.[0]?.message?.content;
  return parse(String(raw||''));
- }catch{const error:any=Error('Немає коректної відповіді після прийняття запиту');error.uncertain=true;throw error;}
+ }catch{const error:any=Error('Немає коректної відповіді після прийняття запиту');error.uncertain=true;error.diagnosis=outputDiagnosis(p,value);throw error;}
 }
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:cors});
@@ -100,7 +118,7 @@ Deno.serve(async req=>{
     const value=await run(provider,promptText,body.image_data);
     const result=contract.result(body.mode,value,{document_id:doc.id,document_type:doc.document_type,page:body.page,box:contract.box(body.box),render_sha256:digest,origin:worker?'server_render':'client_render',provider:provider.name,model:provider.model});
     return await finish({...result,mode:body.mode,learning_examples_used:examples.length,provider_errors:errors});
-   }catch(e){errors.push({provider:provider.name,error:String((e as Error).message).startsWith(provider.name+': HTTP ')?(e as Error).message:'Немає коректної відповіді'});
+   }catch(e){errors.push({provider:provider.name,error:String((e as Error).message).startsWith(provider.name+': HTTP ')?(e as Error).message:'Немає коректної відповіді',diagnosis:(e as any).diagnosis||'TRANSPORT_RESULT_UNKNOWN',...((e as any).http_status?{http_status:(e as any).http_status}:{}),...((e as any).retry_after_seconds!==undefined?{retry_after_seconds:(e as any).retry_after_seconds}:{})});
     if((e as any).uncertain!==false)return await finish({error:'Результат виклику AI невідомий. Автоматичний повтор цього фрагмента та перехід до іншого сервісу заблоковані.',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false,provider_errors:errors});
    }
   }
