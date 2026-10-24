@@ -84,3 +84,15 @@ test('saved manual receipts reopen in the reader without a new AI call and pass 
  assert.match(source,/Array.isArray\(job.zone_reports\)/);assert.match(source,/CRMMilitaryZoneContract.projectField\(f\)/);
  assert.match(source,/Відновлено збережені читання/);assert.match(source,/f.partial_value/);
 });
+
+test('manual reading snapshots visible inputs before dispatch and never falls back to stale full-page bounds',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ const context={window:{},CRMMilitaryZoneContract:require('../supabase/functions/_shared/military-zone.js')};vm.createContext(context);vm.runInContext(source,context);
+ const read=context.window.CRMMilitaryZoneReview.selectedBox;
+ const inputs=v=>Object.entries(v).map(([key,value])=>({dataset:{box:key},value}));
+ assert.deepEqual(JSON.parse(JSON.stringify(read(inputs({x:'5',y:'20',w:'90',h:'5'})))),{x:.05,y:.2,w:.9,h:.05});
+ for(const v of [{x:'',y:0,w:90,h:5},{x:5,y:20,w:100,h:5},{x:0,y:0,w:0,h:5},{x:'bad',y:0,w:90,h:5},{x:0,y:0,w:90}])assert.equal(read(inputs(v)),null);
+ assert(source.indexOf("selectedBox(dialog.querySelectorAll('[data-box]'))")<source.indexOf("supabaseClient.functions.invoke('ai-military-zone'"));
+ assert.match(source,/if\(!selected\|\|!sourceReady\)/);assert.match(source,/el.oninput=el.onchange=/);
+ assert.doesNotMatch(source,/setBox\(box\)/);
+});
