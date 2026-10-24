@@ -204,6 +204,14 @@ test('partial source dates retain month/year without inventing a day, including 
  const unclear=contract.projectField({key:'start_date',raw_text:'вересня 2019',value:'2019-09',legibility:'uncertain'});assert.equal(unclear.partial_value,undefined);
 });
 
+test('criminal responsibility is never accepted as marital status, including cached source text',()=>{
+ const raw='Я та мої родичі до кримінальної відповідальності не притягувалися.';
+ for(const value of [raw,'неодружена']){const f={key:'marital_status',raw_text:raw,value,legibility:'clear'},original=JSON.stringify(f),p=contract.projectField(f);assert.equal(p.value,null);assert.match(p.reason,/не є сімейним станом/);assert.equal(JSON.stringify(f),original);}
+ assert.equal(contract.projectField({key:'marital_status',raw_text:'Незаміжня',value:'Незаміжня',legibility:'clear'}).value,'Незаміжня');
+ const result=contract.result('zone',{rows:[{fields:[{key:'criminal_record_statement',raw_text:raw,value:raw,legibility:'clear'}]}]},{});assert.equal(result.rows[0].fields[0].value,raw);
+ assert.match(contract.prompt('zone','Автобіографія друкована'),/military_registration_statement/);
+});
+
 
 test('replayed legacy receipts get semantic review without changing stored facts or calling a provider',async()=>{
  const cached={contract:'military-zones-1',review_only:true,mode:'zone',source:{page:1},rows:[{fields:[{key:'vlk_conclusion',raw_text:'сержант поліції',value:'сержант поліції',legibility:'clear'},{key:'start_date',raw_text:'вересня 2019',value:null,legibility:'clear'}]}]};

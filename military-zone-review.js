@@ -3,6 +3,10 @@
 'use strict';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const full={x:0,y:0,w:1,h:1};
+function selectedBox(inputs){
+ const values={};for(const el of inputs){if(!['x','y','w','h'].includes(el.dataset.box)||String(el.value).trim()==='')return null;values[el.dataset.box]=Number(el.value)/100;}
+ return CRMMilitaryZoneContract.box(values);
+}
 function backgroundSummary(job){
  const s=job.zone_summary||{},notes=[];
  const states={queued:'Документ у черзі',running:'Документ опрацьовується на сервері',completed:'Опрацювання завершено',needs_review:'Опрацювання зупинено',uncertain:'Відповідь AI не підтверджено',superseded:'Джерело документа змінилося'};
@@ -50,7 +54,7 @@ async function open(doc,{autostart=false}={}){
   else{const scale=Math.min(1,Math.sqrt(8000000/(bitmap.width*bitmap.height)));source.width=Math.ceil(bitmap.width*scale);source.height=Math.ceil(bitmap.height*scale);source.getContext('2d').drawImage(bitmap,0,0,source.width,source.height);}
   if(closed||token!==renderId)return;sourceReady=true;setBox(full);$('[data-page]').textContent=page+' / '+total;$('[data-zones]').replaceChildren();$('[data-quality]').textContent='';status('Огляньте сторінку або виділіть рядок таблиці.');
  }catch(e){status(e.message);if(autoActive)throw e;}finally{if(!closed&&token===renderId)lock(false)}}
- async function read(mode){if(canary){status('Контроль одного кроку виконується лише серверною чергою. Ручний AI не запускався.');return;}if(busy)return;lock(true);const selected=mode==='overview'?full:{...box},atPage=page;let dispatched=false;try{
+ async function read(mode){if(canary){status('Контроль одного кроку виконується лише серверною чергою. Ручний AI не запускався.');return;}if(busy)return;const selected=mode==='overview'?full:selectedBox(dialog.querySelectorAll('[data-box]'));if(!selected||!sourceReady){status('AI не запускався: перевірте межі зони та дочекайтеся відкриття сторінки.');return;}if(mode!=='overview')setBox(selected);lock(true);const atPage=page;let dispatched=false;try{
   status(mode==='overview'?'AI визначає зони сторінки…':'AI перечитує фрагмент; очікуйте…');
   const crop=document.createElement('canvas'),context=.015,left=Math.max(0,selected.x-context),top=Math.max(0,selected.y-context),right=Math.min(1,selected.x+selected.w+context),bottom=Math.min(1,selected.y+selected.h+context);
   const sourceBox=mode==='overview'?full:{x:left,y:top,w:right-left,h:bottom-top};
@@ -76,7 +80,7 @@ async function open(doc,{autostart=false}={}){
  }catch(e){e.safe_to_retry=!dispatched;if(!closed)status('Не розпізнано: '+e.message);if(autoActive)throw e;}finally{if(!closed)lock(false)}}
  function showReport(data,atPage){
    data={...data,rows:(data.rows||[]).map(row=>({...row,fields:(row.fields||[]).map(f=>CRMMilitaryZoneContract.projectField(f))}))};
-   const labels={special_rank:'Спеціальне звання',service_statement:'Відомості про службу — дослівно',marital_status:'Сімейний стан',rnokpp:'РНОКПП',desired_position:'Бажана посада',military_unit:'Військова частина',shpk:'ШПК',tariff_grade:'Тарифний розряд',signatory:'Підписант',recruiter_name:'Рекрутер',driver_license_categories:'Категорії водія',award_name:'Нагорода',full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',document_number:'Номер документа',document_series:'Серія',document_date:'Дата документа',issuer:'Орган видачі',address:'Адреса',relative_name:'ПІБ родича',relationship:'Ступінь споріднення',institution:'Заклад освіти',specialty:'Спеціальність',qualification:'Кваліфікація',graduation_year:'Рік закінчення',employer:'Роботодавець',vlk_conclusion:'Висновок ВЛК',vlk_category:'Категорія ВЛК',start_date:'Початок',end_date:'Завершення',unit:'Частина / установа',position:'Посада',military_specialty:'ВОС',order_number:'Номер наказу',order_date:'Дата наказу',rank:'Звання',other:'Інше'};
+   const labels={criminal_record_statement:'Кримінальна відповідальність — заява автора',military_registration_statement:'Військовий облік — дослівно',special_rank:'Спеціальне звання',service_statement:'Відомості про службу — дослівно',marital_status:'Сімейний стан',rnokpp:'РНОКПП',desired_position:'Бажана посада',military_unit:'Військова частина',shpk:'ШПК',tariff_grade:'Тарифний розряд',signatory:'Підписант',recruiter_name:'Рекрутер',driver_license_categories:'Категорії водія',award_name:'Нагорода',full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',document_number:'Номер документа',document_series:'Серія',document_date:'Дата документа',issuer:'Орган видачі',address:'Адреса',relative_name:'ПІБ родича',relationship:'Ступінь споріднення',institution:'Заклад освіти',specialty:'Спеціальність',qualification:'Кваліфікація',graduation_year:'Рік закінчення',employer:'Роботодавець',vlk_conclusion:'Висновок ВЛК',vlk_category:'Категорія ВЛК',start_date:'Початок',end_date:'Завершення',unit:'Частина / установа',position:'Посада',military_specialty:'ВОС',order_number:'Номер наказу',order_date:'Дата наказу',rank:'Звання',other:'Інше'};
    const report=document.createElement('details');const uncertain=(data.rows||[]).flatMap(r=>r.fields||[]).filter(f=>f.value===null||f.legibility!=='clear'||f.alternatives?.length).length;report.open=false;report.innerHTML='<summary>Сторінка '+atPage+' · '+uncertain+' невизначених значень</summary><h3>Результат · сторінка '+atPage+'</h3><p style="white-space:pre-wrap">'+esc(data.raw_text)+'</p>'+(data.rows||[]).map((row,i)=>'<h4>Рядок '+(i+1)+'</h4><p>'+esc(row.raw_text)+'</p><div style="overflow:auto"><table><thead><tr><th>Поле</th><th>Дослівно</th><th>Прочитане значення</th><th>Альтернативи / питання</th></tr></thead><tbody>'+(row.fields||[]).map(f=>'<tr><td>'+esc(labels[f.key]||f.key)+'</td><td>'+esc(f.raw_text)+'</td><td>'+esc(f.value??(f.partial_value?f.partial_value+' ('+(f.date_precision==='month'?'місяць; день невідомий':'рік; місяць і день невідомі')+')':'Не визначено'))+'</td><td>'+esc([...(f.alternatives||[]),f.reason].filter(Boolean).join(' · '))+'</td></tr>').join('')+'</tbody></table></div>').join('')+'<p>'+esc((data.warnings||[]).join(' · '))+'</p>';
    status('Прочитано через '+data.source.provider+'. Дані картки та початкове AI-розпізнавання не змінено.');
    $('[data-result]').append(report);learning(data,report);
@@ -204,7 +208,7 @@ async function open(doc,{autostart=false}={}){
  $('[data-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close()});
  $('[data-overview]').onclick=()=>read('overview');$('[data-read]').onclick=()=>read('zone');$('[data-full]').onclick=()=>setBox(full);
  $('[data-prev]').onclick=()=>{if(page>1){page--;render()}};$('[data-next]').onclick=()=>{if(page<total){page++;render()}};
- dialog.querySelectorAll('[data-box]').forEach(el=>el.onchange=()=>{const next=Object.fromEntries([...dialog.querySelectorAll('[data-box]')].map(x=>[x.dataset.box,Number(x.value)/100]));if(!setBox(next)){status('Зона повинна бути в межах 0–100% і мати ненульову площу.');setBox(box)}});
+ dialog.querySelectorAll('[data-box]').forEach(el=>{el.oninput=el.onchange=()=>{const next=selectedBox(dialog.querySelectorAll('[data-box]'));if(next){box=next;paint();}else status('Зона повинна бути в межах 0–100% і мати ненульову площу. AI не запускався.');};});
  let start=null;const point=e=>{const r=canvas.getBoundingClientRect();return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))}};
  canvas.onpointerdown=e=>{if(busy)return;start=point(e);canvas.setPointerCapture(e.pointerId)};
  canvas.onpointermove=e=>{if(!start)return;const end=point(e);setBox({x:Math.min(start.x,end.x),y:Math.min(start.y,end.y),w:Math.abs(end.x-start.x),h:Math.abs(end.y-start.y)})};canvas.onpointerup=canvas.onpointercancel=()=>start=null;
@@ -231,5 +235,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox};
 })();
