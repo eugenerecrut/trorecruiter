@@ -130,7 +130,7 @@ function compareZones(documents,candidate,{reports=[],context,binding}={}){
   const conflict=values.size>1||current!=null&&String(current).trim()&&group.sources.some(s=>s.value!=='Не визначено'&&norm(s.value)!==norm(current));
   group.status=group.uncertain?'needs_review':conflict?'conflict':new Set(group.sources.map(s=>s.fingerprint)).size>1?'corroborated':'single_source';
   group.reason=group.uncertain?'Зональне читання непевне або має альтернативи; підтвердження потрібне.':'Зіставлено збережене зональне читання. Збіг не є ручним підтвердженням; картка не змінюється.';
-  if(group.key==='birth_place'&&birthplaceReview(group.sources.filter(s=>s.value!=='Не визначено'),current)){group.status='needs_review';group.reason='Записи місця народження відрізняються форматом або повнотою; потрібне підтвердження, картка не змінена.';}
+  if(!group.uncertain&&group.key==='birth_place'&&birthplaceReview(group.sources.filter(s=>s.value!=='Не визначено'),current)){group.status='needs_review';group.reason='Записи місця народження відрізняються форматом або повнотою; потрібне підтвердження, картка не змінена.';}
   delete group.uncertain;return group;
  });
 }
