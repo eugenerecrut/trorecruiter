@@ -2,7 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inflateSync} from 'node:zlib';
 import {renderPDFZone, cropGray, zoneRasterBox} from '../supabase/functions/_shared/pdf-zone-raster.mjs';
+import {nativePageZones} from '../supabase/functions/_shared/pdf-native-zones.mjs';
 const bytes = new TextEncoder().encode('%PDF-synthetic');
+function nativeFixture(options={}){
+ const heap=new Float32Array(32),calls={freed:0};const bounds=options.bounds??[[100,900,500,910],[100,880,500,890],[100,860,500,870],[100,400,500,410]];
+ const put=values=>heap.set(values,4);
+ const module={HEAPF32:heap,wasmExports:{malloc:()=>16,free:()=>calls.freed++},_FPDFPage_GetRotation:()=>options.rotation??0,_FPDFPage_GetAnnotCount:()=>options.annotations??0,
+  _FPDFPage_GetMediaBox:()=>{put([0,0,1800,1000]);return 1;},_FPDFPage_GetCropBox:()=>{put(options.crop??[0,0,1800,1000]);return options.noCrop?0:1;},
+  _FPDFPageObj_GetBounds:id=>{put(bounds[id]);return options.failed?0:1;}};
+ return {calls,page:{module,pageIdx:1,getObjectCount:()=>options.count??bounds.length,getObject:i=>({type:options.image?'image':'text',objectIdx:i,getText:()=>options.short?'title':'Synthetic text with enough characters for a native paragraph.'})}};
+}
+
+test('native PDFium bounds preserve real paragraph positions and release memory without AI',()=>{
+ const f=nativeFixture(),zones=nativePageZones(f.page,{originalWidth:1800,originalHeight:1000});assert.equal(zones.length,2);assert.equal(zones[0].box.y,.09);assert.equal(zones[1].box.y,.59);assert.equal(f.calls.freed,1);
+ for(const option of [{image:true},{rotation:1},{annotations:1},{crop:[20,0,1800,1000]},{failed:true},{short:true},{count:2001}]){const f=nativeFixture(option);assert.equal(nativePageZones(f.page,{originalWidth:1800,originalHeight:1000}),null);}
+ const absent=nativeFixture({noCrop:true});assert.equal(nativePageZones(absent.page,{originalWidth:1800,originalHeight:1000}).length,2);
+ const many=nativeFixture({bounds:Array.from({length:7},(_,i)=>[100,900-i*100,500,910-i*100])});assert.equal(nativePageZones(many.page,{originalWidth:1800,originalHeight:1000}),null);
+ assert.equal(nativePageZones({},{}),null);
+});
 function fixture({pages = 3, fail = false, malformed = false} = {}) {
   const calls = {load: 0, page: null, close: 0, destroy: 0};
   return {calls, getLibrary: async () => ({loadDocument: async () => {calls.load++; return {

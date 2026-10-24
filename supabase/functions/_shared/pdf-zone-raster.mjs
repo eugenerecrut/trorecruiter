@@ -1,4 +1,5 @@
 import {MAX_PDF_BYTES, MAX_PIXELS, rasterDimensions, grayPNG} from './pdf-raster.js';
+import {nativePageZones} from './pdf-native-zones.mjs';
 
 const full = {x: 0, y: 0, w: 1, h: 1};
 export function zoneRasterBox(mode = 'overview', box = full) {
@@ -51,7 +52,8 @@ export async function renderPDFZone({bytes, page: number = 1, mode = 'overview',
     // Both the existing Edge body cap and base64 data-URL cap must be respected.
     if (png.length > 4 * 1024 * 1024 || 22 + Math.ceil(png.length / 3) * 4 > 5500000) throw Error('Rendered fragment exceeds AI transport budget');
     const renderHash = await digest(png), end = performance.now();
-    return {png, metrics: {pages, page: number, mode, box: sourceBox, pixel_box: crop.pixel_box,
+    const native_zones=mode==='overview'?nativePageZones(page,original):null;
+    return {png, native_zones, metrics: {pages, page: number, mode, box: sourceBox, pixel_box: crop.pixel_box,
       width: crop.width, height: crop.height, page_width: size.width, page_height: size.height,
       file_sha256: originalHash, render_sha256: renderHash, pdf_bytes: bytes.length, png_bytes: png.length,
       init_ms: Math.round(initAt - start), load_ms: Math.round(loadAt - initAt), render_ms: Math.round(renderAt - loadAt),

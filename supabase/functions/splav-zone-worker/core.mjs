@@ -45,6 +45,19 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
       const rendered=await renderPDFZone({bytes,page:task.page,mode:task.mode,box:task.box,
        expected_sha256:context.source.file_sha256,getLibrary});
       if(rendered.metrics.pages!==state.snapshot().pages){structuralFailure=true;throw Error('Source page count changed');}
+      if(task.mode==='overview'&&rendered.native_zones?.length){
+       dispatched=true;
+       const receipt=await rpc('begin',{version:context.version,mode:task.mode,page:task.page,box:rendered.metrics.box,render_sha256:rendered.metrics.render_sha256});
+       // Existing receipts, including uncertain ones, always win over a new local interpretation.
+       if(receipt.state==='completed'&&receipt.result?.review_only)return receipt.result;
+       if(receipt.state!=='accepted'||!receipt.id||!receipt.receipt){dispatched=true;throw Error('Native overview receipt unavailable');}
+       dispatched=true;
+       const native={contract:'pdf-native-overview-1',review_only:true,requires_review:true,mode:'overview',page_type:'native_text',
+        zones:rendered.native_zones,quality_issues:[],scope_notice:'Локальні межі тексту; зміст не підтверджений.',ai_requests:0,
+        source:{document_id:context.document.id,page:task.page,box:rendered.metrics.box,render_sha256:rendered.metrics.render_sha256,
+         file_sha256:rendered.metrics.file_sha256,provider:'PDFium · без AI',model:'pdfium-3.0.0',origin:'server_text_layer'},created_at:new Date().toISOString()};
+       const finished=await rpc('finish',{request_id:receipt.id,receipt:receipt.receipt,result:native});if(finished?.state!=='completed')throw Error('Native overview not persisted');return native;
+      }
       dispatched=true;
       const result=await fetchImpl(url+'/functions/v1/ai-military-zone',{method:'POST',headers:{Authorization:authorization,apikey:key,'Content-Type':'application/json'},
        signal:AbortSignal.timeout(120000),body:JSON.stringify({document_id:context.document.id,coordinator_id:context.id,coordinator_version:context.version,
