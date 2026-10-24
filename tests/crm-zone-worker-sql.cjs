@@ -231,6 +231,14 @@ try{
   assert.equal(p.snapshot().errors[0].code,n===63?'ZONE_NO_READABLE_FIELDS':'ZONE_FIELDS_UNCERTAIN');checks++;
   assert.equal((await step('final')).status,'complete_with_gaps');checks++;
  }
+ await owner();await db.exec(file('supabase/migrations/20261024121203_splav_zone_source_navigation.sql'));
+ const sourceJob=(await db.query('select id from crm_private.splav_jobs where document_id=$1',[id(64)])).rows[0].id;
+ await actor(1);const navigable=await call('crm_splav_job_status',[sourceJob]);assert.equal(navigable.zone_binding.document_id,id(64));assert.equal(navigable.zone_binding.file_sha256,hash);checks+=2;
+ assert.deepEqual(Object.keys(navigable.zone_binding).sort(),['document_id','file_sha256','revision']);checks++;
+ await actor(2);await assert.rejects(call('crm_splav_job_status',[sourceJob]),/Human staff/);checks++;
+ await owner();await db.exec("set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_job_status',[sourceJob]),/permission denied|Human staff/);checks++;
+ await actor(1);await db.query("update public.documents set verification_status='Підтверджено' where id=$1",[id(64)]);
+ await actor(1);const replacedSourceStatus=await call('crm_splav_job_status',[sourceJob]);assert.equal(replacedSourceStatus.zone_binding,null);assert.equal(replacedSourceStatus.zone_reports.length,0);checks+=2;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

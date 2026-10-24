@@ -69,6 +69,13 @@ function readingSummary(data){
  const uncertain=fields.filter(f=>f?.value==null||typeof f.value==='string'&&!f.value.trim()||f?.legibility!=='clear'||Array.isArray(f.alternatives)&&f.alternatives.length>0).length;
  return {count:fields.length,uncertain,label:fields.length?fields.length+' полів · '+uncertain+' потребують перевірки':'Структурованих полів немає · потрібна перевірка',notice:!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':uncertain?'Є непевні значення. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.'};
 }
+function sourceTarget(report,current,binding){
+ const s=report?.source;if(report?.mode!=='zone'||s?.document_id!==current.document_id||!Number.isInteger(s.page)||s.page<1||s.page>current.pages||!/^[a-f0-9]{64}$/.test(current.file_sha256||''))return null;
+ const box=CRMMilitaryZoneContract.box(s.box);if(!box)return null;
+ if(s.file_sha256!==undefined){if(s.file_sha256!==current.file_sha256)return null;}
+ else if(!binding||binding.document_id!==current.document_id||binding.file_sha256!==current.file_sha256||!current.revision||binding.revision!==current.revision)return null;
+ return {page:s.page,box};
+}
 function backgroundReports(job,saved){
  if(!job._detailed||!job.zone_summary||job.zone_summary.source_changed||!['completed','needs_review'].includes(job.state)||!saved||!['complete','complete_with_gaps'].includes(saved.status)||saved.status!==job.result?.status||!saved.saved_at||saved.saved_at!==job.result?.saved_at||!Array.isArray(saved.reports))return [];
  return saved.reports.filter(r=>r?.review_only===true&&r.source?.document_id===job.document_id);
@@ -80,7 +87,7 @@ async function open(doc,{autostart=false}={}){
  document.body.append(dialog);dialog.showModal();
  const $=s=>dialog.querySelector(s),canvas=$('[data-source]'),ctx=canvas.getContext('2d'),source=document.createElement('canvas'),reports=[];
  const canary=new URLSearchParams(location.search).get('zoneBudget')==='1',nativeCanary=canary&&new URLSearchParams(location.search).get('zoneNativeOnly')==='1';
- let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false,nativeZones=[];
+ let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false,nativeZones=[],reportBinding=null;
  if(!autostart){$('[data-manual]').open=true;dialog.querySelector('h2').textContent='Документ · оригінал і ручне читання';dialog.querySelectorAll('p')[1].textContent='Оригінал відкривається без AI. Огляд сторінки або читання зони починається лише після вашого натискання. Дані картки не перезаписуються.';if(!doc.ai_extracted||doc.processing_status==='AI помилка')$('[data-auto]').hidden=true;}
  if(canary){$('[data-auto]').textContent=nativeCanary?'Контроль сервера · без AI':'Контроль СПЛАВ · один крок';dialog.querySelectorAll('p')[1].textContent=nativeCanary?'Контроль власника: один локальний серверний огляд PDF. AI та запис у картку й документ заборонені в дорученні. Сканкопія зупиниться без AI.':'Контроль власника: лише один новий серверний AI-крок. Наступні зони не запускаються; основний OCR і картка не змінюються.';}
  const status=value=>$('[data-status]').textContent=value;
@@ -128,6 +135,14 @@ async function open(doc,{autostart=false}={}){
    const labels={criminal_record_statement:'Кримінальна відповідальність — заява автора',military_registration_statement:'Військовий облік — дослівно',special_rank:'Спеціальне звання',service_statement:'Відомості про службу — дослівно',marital_status:'Сімейний стан',rnokpp:'РНОКПП',desired_position:'Бажана посада',military_unit:'Військова частина',shpk:'ШПК',tariff_grade:'Тарифний розряд',signatory:'Підписант',recruiter_name:'Рекрутер',driver_license_categories:'Категорії водія',award_name:'Нагорода',full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',document_number:'Номер документа',document_series:'Серія',document_date:'Дата документа',issuer:'Орган видачі',address:'Адреса',relative_name:'ПІБ родича',relationship:'Ступінь споріднення',institution:'Заклад освіти',specialty:'Спеціальність',qualification:'Кваліфікація',graduation_year:'Рік закінчення',employer:'Роботодавець',vlk_conclusion:'Висновок ВЛК',vlk_category:'Категорія ВЛК',start_date:'Початок',end_date:'Завершення',unit:'Частина / установа',position:'Посада',military_specialty:'ВОС',order_number:'Номер наказу',order_date:'Дата наказу',rank:'Звання',other:'Інше'};
    const report=document.createElement('details'),summary=readingSummary(data);report.open=false;report.innerHTML='<summary>Сторінка '+atPage+' · '+esc(summary.label)+'</summary><h3>Результат · сторінка '+atPage+'</h3><p>'+esc(summary.notice)+'</p><p style="white-space:pre-wrap">'+esc(data.raw_text)+'</p>'+(data.rows||[]).map((row,i)=>'<h4>Рядок '+(i+1)+'</h4><p>'+esc(row.raw_text)+'</p><div style="overflow:auto"><table><thead><tr><th>Поле</th><th>Дослівно</th><th>Прочитане значення</th><th>Альтернативи / питання</th></tr></thead><tbody>'+(row.fields||[]).map(f=>'<tr><td>'+esc(labels[f.key]||f.key)+'</td><td>'+esc(f.raw_text)+'</td><td>'+esc(f.value??(f.partial_value?f.partial_value+' ('+(f.date_precision==='month'?'місяць; день невідомий':'рік; місяць і день невідомі')+')':'Не визначено'))+'</td><td>'+esc([...(f.alternatives||[]),f.reason].filter(Boolean).join(' · '))+'</td></tr>').join('')+'</tbody></table></div>').join('')+'<p>'+esc((data.warnings||[]).join(' · '))+'</p>';
    status('Збережено відповідь через '+(data.source?.provider||'сервіс')+'. Дані картки та початкове AI-розпізнавання не змінено.');
+   const currentSource=()=>({document_id:doc.id,file_sha256:originalDigest,pages:total,revision:doc.ai_processed_at||''});
+   const binding=()=>reportBinding||coordinatorSession?.source;
+   if(sourceTarget(data,currentSource(),binding())){
+    const original=document.createElement('button');original.type='button';original.textContent='Показати фрагмент оригіналу';
+    original.onclick=async()=>{if(busy||autoActive||closed)return;const target=sourceTarget(data,currentSource(),binding());if(!target){status('Джерело фрагмента не підтверджено. AI не запускався.');return;}
+     $('[data-manual]').open=true;page=target.page;await render();if(closed||!sourceReady)return;setBox(target.box);canvas.scrollIntoView({block:'center'});status('Показано сторінку '+target.page+' і рамку зі збереженого результату. Новий AI-запит не виконувався.');};
+    report.append(original);
+   }else{const notice=document.createElement('p');notice.textContent='Прив’язку цього фрагмента до відкритого оригіналу не підтверджено. Автоматичний перехід заблоковано.';report.append(notice);}
    $('[data-result]').append(report);learning(data,report);
  }
  function learning(data,host){
@@ -169,6 +184,7 @@ async function open(doc,{autostart=false}={}){
  }
  $('[data-stop]').onclick=()=>{stopRequested=true;autopilot?.stop();};
  function showBackground(job){
+  if(job._detailed)reportBinding=!job.zone_summary?.source_changed?job.zone_binding:null;
   const explanation=backgroundSummary(job),host=$('[data-auto-progress]');host.replaceChildren();const title=document.createElement('strong');title.textContent=explanation.title;host.append(title);for(const note of explanation.notes){const line=document.createElement('span');line.style.display='block';line.textContent=note;host.append(line);}
   $('[data-auto]').hidden=true;$('[data-stop]').hidden=true;$('[data-export]').hidden=!reports.length;status('');
   dialog.querySelector('h2').textContent='Документ · результат СПЛАВ';dialog.querySelectorAll('p')[1].textContent='Показано збережений стан опрацювання. Перегляд не запускає нове розпізнавання.';
@@ -280,5 +296,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox,textLayerZones,readingSummary};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox,textLayerZones,readingSummary,sourceTarget};
 })();
