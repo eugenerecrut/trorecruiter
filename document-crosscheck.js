@@ -4,6 +4,18 @@
 const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ`]/g,"'").trim().replace(/\s+/g,' ').toLocaleLowerCase('uk');
 const obj=v=>{try{return typeof v==='string'?JSON.parse(v):v||{}}catch(_){return {}}};
 const keys=['rnokpp','birth_date','birth_place'];
+// Similar wording warrants review, never an automatic assertion of geographic identity.
+function birthplaceReview(sources,current){
+ const values=[...sources.map(s=>s.value),current].filter(v=>typeof v==='string'&&v.trim());
+ const tokens=v=>norm(v).replace(/обл\./gu,'область').replace(/р-н/gu,'район').replace(/[,.;:]/gu,' ').split(/\s+/u).filter(Boolean).sort();
+ let different=false;
+ for(let i=0;i<values.length;i++)for(let j=i+1;j<values.length;j++){
+  if(norm(values[i])===norm(values[j]))continue;different=true;
+  const a=tokens(values[i]),b=tokens(values[j]),small=a.length<=b.length?a:b,remaining=[...(a.length<=b.length?b:a)];
+  if(small.length<2||!small.every(t=>{const k=remaining.indexOf(t);if(k<0)return false;remaining.splice(k,1);return true;}))return false;
+ }
+ return different;
+}
 function facts(d){const e=obj(d.ai_extracted),p=obj(e.personal);return Object.fromEntries(keys.map(k=>[k,e[k]??p[k]]));}
 function eligibleDocuments(documents,candidate){
  const latest=new Map();
@@ -37,6 +49,7 @@ function compare(documents,candidate){
   const values=new Set(sources.map(s=>norm(s.value))),current=candidate[key];
   return {key,current:current??null,sources,status:values.size>1||current!=null&&String(current).trim()&&sources.some(s=>norm(s.value)!==norm(current))?'conflict':new Set(sources.map(s=>s.fingerprint)).size>1?'corroborated':sources.length?'single_source':'missing',learning_eligible:false};
  });
+ for(const entry of scalar)if(entry.key==='birth_place'&&birthplaceReview(entry.sources,entry.current)){entry.status='needs_review';entry.reason='Записи відрізняються форматом або повнотою. Тотожність місця потрібно підтвердити; картка не змінена.';}
  return [...scalar,...structured(eligible,candidate),...periodLinks(eligible)];
 }
 function structured(documents,candidate){
@@ -117,6 +130,7 @@ function compareZones(documents,candidate,{reports=[],context,binding}={}){
   const conflict=values.size>1||current!=null&&String(current).trim()&&group.sources.some(s=>s.value!=='Не визначено'&&norm(s.value)!==norm(current));
   group.status=group.uncertain?'needs_review':conflict?'conflict':new Set(group.sources.map(s=>s.fingerprint)).size>1?'corroborated':'single_source';
   group.reason=group.uncertain?'Зональне читання непевне або має альтернативи; підтвердження потрібне.':'Зіставлено збережене зональне читання. Збіг не є ручним підтвердженням; картка не змінюється.';
+  if(group.key==='birth_place'&&birthplaceReview(group.sources.filter(s=>s.value!=='Не визначено'),current)){group.status='needs_review';group.reason='Записи місця народження відрізняються форматом або повнотою; потрібне підтвердження, картка не змінена.';}
   delete group.uncertain;return group;
  });
 }
