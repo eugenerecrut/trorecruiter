@@ -30,6 +30,7 @@ function textLayerZones(items,viewport){
 }
 function backgroundSummary(job){
  const s=job.zone_summary||{},notes=[];
+ const gaps=job.result?.status==='complete_with_gaps'||s.error_count>0;
  const states={queued:'Документ у черзі',running:'Документ опрацьовується на сервері',completed:'Опрацювання завершено',needs_review:'Опрацювання зупинено',uncertain:'Відповідь AI не підтверджено',superseded:'Джерело документа змінилося'};
  if(s.source_changed||job.state==='superseded')return {title:'Джерело документа змінилося',notes:['Відкрийте чинну версію документа. Попередній результат не застосовується.']};
  if(job.result?.native_only===true){
@@ -49,9 +50,9 @@ function backgroundSummary(job){
  else if(job.state==='needs_review'&&s.error_count>0)notes.push('Один або кілька кроків не дали придатного результату. Адміністратору потрібно перевірити збережені причини; повтор автоматично не запускається.');
  else if(job.state==='needs_review'&&s.attempts>=s.budget&&s.pending_steps>0)notes.push('Досягнуто погодженого ліміту кроків. Решту документа не запускали. Наступна дія: переглянути збережені результати й окремо погодити продовження.');
  else if(job.state==='needs_review')notes.push('Потрібна перевірка збереженого звіту. Нове розпізнавання автоматично не запускається.');
- else if(job.state==='completed')notes.push('Звіт збережено. Результати читання відображаються нижче; повторний AI-запит не потрібен.');
+ else if(job.state==='completed')notes.push(gaps?'Звіт збережено з прогалинами. Перевірте непрочитані або непевні фрагменти нижче; повноту даних не підтверджено.':'Звіт збережено. Результати читання відображаються нижче; повторний AI-запит не потрібен.');
  if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Наступна дія: адміністратору перевірити ліміти та доступ AI-сервісів. Цей фрагмент не запускати повторно без окремого рішення.');
- if(Array.isArray(job.zone_reports)&&job.zone_reports.length)notes.push('Збережених успішних читань: '+job.zone_reports.length+'. Вони доступні нижче незалежно від стану попереднього доручення.');
+ if(Array.isArray(job.zone_reports)&&job.zone_reports.length)notes.push('Збережених результатів: '+job.zone_reports.length+'. Це відповіді огляду та читання, а не кількість підтверджених полів.');
  if(job.zone_reports_truncated)notes.push('Збережений звіт перевищує ліміт перегляду. Новий AI-запит не потрібен; зверніться до адміністратора.');
  const labels={insufficient_quota:'вичерпано API-квоту або баланс; адміністратору перевірити білінг',rate_limit_exceeded:'перевищено частоту запитів; адміністратору перевірити ліміти',QUOTA_OR_RATE_LIMIT:'квота або частота запитів; точної причини сервіс не надав',MAX_TOKENS:'відповідь обрізана через обмеження довжини',max_output_tokens:'відповідь обрізана через обмеження довжини',length:'відповідь обрізана через обмеження довжини',SAFETY:'сервіс заблокував відповідь',content_filter:'сервіс заблокував відповідь',invalid_api_key:'адміністратору перевірити ключ доступу',AUTHENTICATION_FAILED:'адміністратору перевірити ключ доступу',UNAUTHENTICATED:'адміністратору перевірити ключ доступу',model_not_found:'адміністратору перевірити доступ до моделі',MODEL_OR_ENDPOINT_UNAVAILABLE:'адміністратору перевірити доступ до моделі',PERMISSION_DENIED:'адміністратору перевірити права сервісу',ACCESS_DENIED:'адміністратору перевірити права сервісу'};
  for(const p of (Array.isArray(s.providers)?s.providers:[]).slice(0,8)){
@@ -61,7 +62,12 @@ function backgroundSummary(job){
  if(Number.isInteger(s.attempts)&&Number.isInteger(s.budget))notes.push('Кроків опрацювання виконано: '+s.attempts+' з '+s.budget+' дозволених. Це кількість спроб, а не підтверджених списань.');
  if(Number.isInteger(s.pages))notes.push('Сторінок у файлі: '+s.pages+'.');
  notes.push('Дані картки та основне розпізнавання не перезаписуються.');
- return {title:states[job.state]||'Перевіряємо стан документа',notes};
+ return {title:job.state==='completed'&&gaps?'Звіт збережено з прогалинами':states[job.state]||'Перевіряємо стан документа',notes};
+}
+function readingSummary(data){
+ const fields=(Array.isArray(data?.rows)?data.rows:[]).flatMap(row=>Array.isArray(row?.fields)?row.fields:[]);
+ const uncertain=fields.filter(f=>f?.value==null||typeof f.value==='string'&&!f.value.trim()||f?.legibility!=='clear'||Array.isArray(f.alternatives)&&f.alternatives.length>0).length;
+ return {count:fields.length,uncertain,label:fields.length?fields.length+' полів · '+uncertain+' потребують перевірки':'Структурованих полів немає · потрібна перевірка',notice:!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':uncertain?'Є непевні значення. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.'};
 }
 function backgroundReports(job,saved){
  if(!job._detailed||!job.zone_summary||job.zone_summary.source_changed||!['completed','needs_review'].includes(job.state)||!saved||!['complete','complete_with_gaps'].includes(saved.status)||saved.status!==job.result?.status||!saved.saved_at||saved.saved_at!==job.result?.saved_at||!Array.isArray(saved.reports))return [];
@@ -120,8 +126,8 @@ async function open(doc,{autostart=false}={}){
  function showReport(data,atPage){
    data={...data,rows:(data.rows||[]).map(row=>({...row,fields:(row.fields||[]).map(f=>CRMMilitaryZoneContract.projectField(f))}))};
    const labels={criminal_record_statement:'Кримінальна відповідальність — заява автора',military_registration_statement:'Військовий облік — дослівно',special_rank:'Спеціальне звання',service_statement:'Відомості про службу — дослівно',marital_status:'Сімейний стан',rnokpp:'РНОКПП',desired_position:'Бажана посада',military_unit:'Військова частина',shpk:'ШПК',tariff_grade:'Тарифний розряд',signatory:'Підписант',recruiter_name:'Рекрутер',driver_license_categories:'Категорії водія',award_name:'Нагорода',full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',document_number:'Номер документа',document_series:'Серія',document_date:'Дата документа',issuer:'Орган видачі',address:'Адреса',relative_name:'ПІБ родича',relationship:'Ступінь споріднення',institution:'Заклад освіти',specialty:'Спеціальність',qualification:'Кваліфікація',graduation_year:'Рік закінчення',employer:'Роботодавець',vlk_conclusion:'Висновок ВЛК',vlk_category:'Категорія ВЛК',start_date:'Початок',end_date:'Завершення',unit:'Частина / установа',position:'Посада',military_specialty:'ВОС',order_number:'Номер наказу',order_date:'Дата наказу',rank:'Звання',other:'Інше'};
-   const report=document.createElement('details');const uncertain=(data.rows||[]).flatMap(r=>r.fields||[]).filter(f=>f.value===null||f.legibility!=='clear'||f.alternatives?.length).length;report.open=false;report.innerHTML='<summary>Сторінка '+atPage+' · '+uncertain+' невизначених значень</summary><h3>Результат · сторінка '+atPage+'</h3><p style="white-space:pre-wrap">'+esc(data.raw_text)+'</p>'+(data.rows||[]).map((row,i)=>'<h4>Рядок '+(i+1)+'</h4><p>'+esc(row.raw_text)+'</p><div style="overflow:auto"><table><thead><tr><th>Поле</th><th>Дослівно</th><th>Прочитане значення</th><th>Альтернативи / питання</th></tr></thead><tbody>'+(row.fields||[]).map(f=>'<tr><td>'+esc(labels[f.key]||f.key)+'</td><td>'+esc(f.raw_text)+'</td><td>'+esc(f.value??(f.partial_value?f.partial_value+' ('+(f.date_precision==='month'?'місяць; день невідомий':'рік; місяць і день невідомі')+')':'Не визначено'))+'</td><td>'+esc([...(f.alternatives||[]),f.reason].filter(Boolean).join(' · '))+'</td></tr>').join('')+'</tbody></table></div>').join('')+'<p>'+esc((data.warnings||[]).join(' · '))+'</p>';
-   status('Прочитано через '+data.source.provider+'. Дані картки та початкове AI-розпізнавання не змінено.');
+   const report=document.createElement('details'),summary=readingSummary(data);report.open=false;report.innerHTML='<summary>Сторінка '+atPage+' · '+esc(summary.label)+'</summary><h3>Результат · сторінка '+atPage+'</h3><p>'+esc(summary.notice)+'</p><p style="white-space:pre-wrap">'+esc(data.raw_text)+'</p>'+(data.rows||[]).map((row,i)=>'<h4>Рядок '+(i+1)+'</h4><p>'+esc(row.raw_text)+'</p><div style="overflow:auto"><table><thead><tr><th>Поле</th><th>Дослівно</th><th>Прочитане значення</th><th>Альтернативи / питання</th></tr></thead><tbody>'+(row.fields||[]).map(f=>'<tr><td>'+esc(labels[f.key]||f.key)+'</td><td>'+esc(f.raw_text)+'</td><td>'+esc(f.value??(f.partial_value?f.partial_value+' ('+(f.date_precision==='month'?'місяць; день невідомий':'рік; місяць і день невідомі')+')':'Не визначено'))+'</td><td>'+esc([...(f.alternatives||[]),f.reason].filter(Boolean).join(' · '))+'</td></tr>').join('')+'</tbody></table></div>').join('')+'<p>'+esc((data.warnings||[]).join(' · '))+'</p>';
+   status('Збережено відповідь через '+(data.source?.provider||'сервіс')+'. Дані картки та початкове AI-розпізнавання не змінено.');
    $('[data-result]').append(report);learning(data,report);
  }
  function learning(data,host){
@@ -274,5 +280,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox,textLayerZones};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox,textLayerZones,readingSummary};
 })();
