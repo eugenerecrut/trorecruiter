@@ -15,7 +15,7 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,geminiThoughts=false,router=false,cachedResult=null,ledger='accepted',finish='completed'}={}){
+function server({auth=true,staff=true,processor=false,zoneLease=false,nativeOnly=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,geminiThoughts=false,router=false,cachedResult=null,ledger='accepted',finish='completed'}={}){
  let handler;const calls=[];let savedReceipt=null;
  const context={globalThis:null,TextDecoder,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini'}:{}),...(router?{OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
@@ -27,6 +27,7 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,e
   if(url.includes('/rpc/crm_splav_zone_step')){
    if(!zoneLease)return Response.json({error:'lease denied'},{status:403});
    const payload=JSON.parse(init.body);
+   if(payload.p_operation==='validate'&&nativeOnly)return Response.json({error:'AI disabled for native canary'},{status:403});
    if(payload.p_operation==='validate')return Response.json({document_id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',version:7});
    if(payload.p_operation==='begin')return Response.json({state:'accepted',id:'receipt-id',receipt:'secret-receipt'});
    if(payload.p_operation==='finish')return Response.json({state:'completed'});
@@ -218,4 +219,9 @@ test('replayed legacy receipts get semantic review without changing stored facts
  const original=JSON.stringify(cached),s=server({ledger:'completed',cachedResult:cached}),result=await (await s.invoke()).json();
  assert.equal(result.request_replayed,true);assert.equal(result.rows[0].fields[0].value,null);assert.equal(result.rows[0].fields[1].partial_value,'2019-09');
  assert.equal(JSON.stringify(cached),original);assert(!s.calls.some(c=>c.url.includes('api.openai.com')||c.url.includes('openrouter.ai')));
+});
+
+test('native-only delegated lease is rejected by AI validation before any provider or receipt',async()=>{
+ const s=server({processor:true,zoneLease:true,nativeOnly:true}),r=await s.invoke({job_id:'11111111-1111-1111-1111-111111111111',lease_token:'22222222-2222-2222-2222-222222222222',coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',coordinator_version:7});
+ assert.equal(r.status,403);assert(!s.calls.some(c=>/api.openai.com|generativelanguage|openrouter.ai|crm_zone_begin/.test(c.url)));
 });

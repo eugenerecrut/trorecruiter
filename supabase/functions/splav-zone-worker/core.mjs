@@ -35,6 +35,7 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
     },
     read:async task=>{let dispatched=false;
      try{
+      if(context.native_only===true&&task.mode!=='overview'){structuralFailure=true;throw Error('Native canary permits overview only');}
       const signed=await client.storage.from('candidate-documents').createSignedUrl(context.document.storage_path,120);
       if(signed.error||!signed.data?.signedUrl)throw Error('Source unavailable');
       const target=new URL(signed.data.signedUrl),backend=new URL(url);
@@ -58,6 +59,7 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
          file_sha256:rendered.metrics.file_sha256,provider:'PDFium · без AI',model:'pdfium-3.0.0',origin:'server_text_layer'},created_at:new Date().toISOString()};
        const finished=await rpc('finish',{request_id:receipt.id,receipt:receipt.receipt,result:native});if(finished?.state!=='completed')throw Error('Native overview not persisted');return native;
       }
+      if(context.native_only===true){structuralFailure=true;throw Error('Native canary requires visual review; AI is disabled');}
       dispatched=true;
       const result=await fetchImpl(url+'/functions/v1/ai-military-zone',{method:'POST',headers:{Authorization:authorization,apikey:key,'Content-Type':'application/json'},
        signal:AbortSignal.timeout(120000),body:JSON.stringify({document_id:context.document.id,coordinator_id:context.id,coordinator_version:context.version,
@@ -70,6 +72,7 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
     }});
    if(structuralFailure){await rpc('hold');return json(200,{state:'needs_review'});}
    if(summary.blocked){await rpc('block');return json(200,{state:'uncertain'});}
+   if(context.native_only===true){await rpc('hold');return json(200,{state:'native_control_finished',ai_requests:0});}
    if(summary.budget_exhausted){await rpc('hold');return json(200,{state:'budget_exhausted'});}
    if(summary.done){await rpc('final');return json(200,{state:'finished'});}
    await rpc('yield');return json(200,{state:'queued'});
