@@ -1,6 +1,22 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),pilot=require('../military-autopilot.js');
 const source={document_id:'synthetic-document',file_sha256:'a'.repeat(64),revision:'synthetic-revision'};
 const read=async task=>task.mode==='overview'?{zones:[{label:'Запис',box:{x:.1,y:.1,w:.5,h:.2}}]}:{rows:[{fields:[{value:'synthetic',legibility:'clear'}]}]};
+test('empty or uncertain fields get one larger context then a durable gap; full-page read is never repeated',async()=>{
+ for(const result of [{rows:[],raw_text:'PRIVATE raw transcript'},{rows:[{fields:[{value:' ',legibility:'clear'}]}]},{rows:[{fields:[{value:'x',legibility:'clear',alternatives:['y']}]}]}]){
+  const state=pilot.create(1,{source}),calls=[];
+  await state.run({read:async task=>{calls.push(task);return task.mode==='overview'?{zones:[{box:{x:.2,y:.2,w:.2,h:.2}}]}:result;}});
+  assert.equal(calls.length,3);assert.equal(calls[2].retry,true);assert(calls[2].box.w>calls[1].box.w);assert.equal(state.errors.length,1);
+  assert.equal(state.errors[0].code,result.rows.length?'ZONE_FIELDS_UNCERTAIN':'ZONE_NO_READABLE_FIELDS');
+  assert(!JSON.stringify(state.snapshot()).includes('PRIVATE'));
+  const resumed=pilot.restore(state.snapshot(),{source});await resumed.run({read:async()=>{throw Error('no new reading');}});assert.equal(resumed.errors.length,1);
+ }
+ const full=pilot.create(1,{source});let calls=0;
+ await full.run({read:async task=>{calls++;return task.mode==='overview'?{zones:[{box:{x:0,y:0,w:1,h:1}}]}:{rows:[]};}});
+ assert.equal(calls,2);assert.equal(full.errors[0].code,'ZONE_NO_READABLE_FIELDS');
+ for(const value of [0,false,'clear text']){
+  const state=pilot.create(1,{source});await state.run({read:async task=>task.mode==='overview'?{zones:[{box:{x:0,y:0,w:1,h:1}}]}:{rows:[{fields:[{value,legibility:'clear'}]}]}});assert.equal(state.errors.length,0);
+ }
+});
 test('all distinct valid text and graphic zones survive labels; duplicate geometry is read once',async()=>{
  const state=pilot.create(1,{source}),calls=[],b={x:.1,y:.1,w:.2,h:.2};
  await state.run({read:async task=>{calls.push(task);return task.mode==='overview'?{zones:[{label:'Не порожній запис',box:b},{label:'Same bounds graphic',kind:'other',box:{h:.2,w:.2,y:.1,x:.1}},{kind:'other',box:{x:.5,y:.5,w:.2,h:.2}}]}:{rows:[{fields:[{value:'ok',legibility:'clear'}]}]};}});

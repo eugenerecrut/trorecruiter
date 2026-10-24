@@ -219,6 +219,18 @@ try{
   assert.equal(p.snapshot().errors[0].code,n===61?'ZONE_OVERVIEW_TOO_MANY_ZONES':'ZONE_OVERVIEW_INVALID');checks++;
   const finished=await step('final');assert.equal(finished.status,'complete_with_gaps');checks++;
  }
+ const {zoneRasterBox}=await import('../supabase/functions/_shared/pdf-zone-raster.mjs');
+ for(const n of [63,64]){
+  await fresh(n);const ctx=await step('load'),p=pilot.restore(ctx.snapshot,{source:ctx.source});let reads=0;
+  await p.run({checkpoint:async snapshot=>{ctx.version=await step('save',{version:ctx.version,snapshot});},read:async task=>{
+   reads++;const box=zoneRasterBox(task.mode,task.box||full),receipt=await step('begin',{version:ctx.version,mode:task.mode,page:1,box,render_sha256:hash});
+   const result={review_only:true,mode:task.mode,...(task.mode==='overview'?{zones:[{box:n===63?full:{x:.2,y:.2,w:.2,h:.2}}]}:{rows:n===63?[]:[{fields:[{value:null,legibility:'uncertain'}]}]}),source:{document_id:id(n),page:1,box,render_sha256:hash}};
+   await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result});return result;
+  }});
+  assert.equal(reads,n===63?2:3,JSON.stringify(p.snapshot()));checks++;
+  assert.equal(p.snapshot().errors[0].code,n===63?'ZONE_NO_READABLE_FIELDS':'ZONE_FIELDS_UNCERTAIN');checks++;
+  assert.equal((await step('final')).status,'complete_with_gaps');checks++;
+ }
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
