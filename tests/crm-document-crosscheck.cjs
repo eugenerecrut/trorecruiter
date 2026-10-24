@@ -86,3 +86,25 @@ test('explicit birthplace labels and administrative case endings allow review wi
  const report={review_only:true,mode:'zone',source:{document_id:'0',page:1,box:{x:0,y:0,w:1,h:1}},rows:[{fields:[{key:'birth_place',value:inputs[2],legibility:'clear'}]}]};
  const zonal=x.compareZones(docs,candidate,{context,binding,reports:[report]})[0];assert.equal(zonal.status,'needs_review');assert.equal(zonal.sources[0].page,1);
 });
+
+test('incomplete parent names suggest review without overwriting manual values or creating relatives',()=>{
+ const mother={relationship:'Мати',full_name:'Тестенко (Коваленко) Світлана',birth_date:'1979-06-28',confirmed_by_user:true};
+ const father={relationship:'Батько',full_name:'Тестенко Олександр Іванович'};
+ const candidate={...c,profile_data:{relatives:[mother,father]}};
+ const parent=(id,name,date='1979-06-28',extra={})=>d(id,null,{ai_extracted:{full_name:c.full_name,relatives:[{relationship:'mother',full_name:name,birth_date:date,...extra}]}});
+ const docs=[parent('a','ТЕСТЕНКО (Коваленко) Світлана Олексіївна'),parent('b','Тестенко Світлана Олексіївна')],before=JSON.stringify([docs,candidate]);
+ const evidence=x.compare(docs,candidate),entry=evidence.find(e=>e.key==='relatives');
+ assert.equal(entry.status,'needs_review');assert.equal(entry.current,mother.full_name);assert.equal(entry.sources.length,2);assert.equal(entry.sources[0].birth_date,mother.birth_date);assert.equal(entry.learning_eligible,false);
+ const guarded=x.guard({rows:[{target:'profile',key:'relatives',action:'fill'}],selections:[{target:'profile',key:'relatives'}]},evidence);
+ assert.equal(guarded.selections.length,0);assert.equal(JSON.stringify([docs,candidate]),before);assert.equal(candidate.profile_data.relatives.length,2);
+ for(const name of ['Тестенко Світлана Іванівна','Інша Світлана Олексіївна','Тестенко Олена Олексіївна','Тестенко С. Олексіївна','Тестенко (Іваненко) Світлана Олексіївна']){
+  const full={...candidate,profile_data:{relatives:[{...mother,full_name:'Тестенко (Коваленко) Світлана Олексіївна'}]}};
+  assert.equal(x.compare([parent('a',name)],full).find(e=>e.key==='relatives').status,'conflict');
+ }
+ assert.equal(x.compare([parent('a','Тестенко Світлана Олексіївна','1980-01-01')],candidate).find(e=>e.key==='relatives').status,'conflict');
+ const ambiguous={...candidate,profile_data:{relatives:[mother,{...mother,full_name:'Тестенко Світлана Олексіївна'}]}};
+ assert.match(x.compare(docs,ambiguous).find(e=>e.key==='relatives').reason,/кілька записів/);
+ assert.equal(x.compare([parent('a','Тестенко (Коваленко) Світлана','1979-06-28'),parent('b','Тестенко (Коваленко) Світлана','1980-01-01')],c).find(e=>e.key==='relatives').status,'conflict');
+ const sameFile=[parent('a','Тестенко Світлана Олексіївна'),parent('b','Тестенко Світлана Олексіївна')].map(v=>({...v,file_hash:'same'}));
+ assert.equal(x.compare(sameFile,c).find(e=>e.key==='relatives').status,'single_source');
+});
