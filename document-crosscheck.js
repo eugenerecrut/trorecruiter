@@ -5,7 +5,7 @@ const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ`]/g,"'").trim().re
 const obj=v=>{try{return typeof v==='string'?JSON.parse(v):v||{}}catch(_){return {}}};
 const keys=['rnokpp','birth_date','birth_place'];
 function facts(d){const e=obj(d.ai_extracted),p=obj(e.personal);return Object.fromEntries(keys.map(k=>[k,e[k]??p[k]]));}
-function compare(documents,candidate){
+function eligibleDocuments(documents,candidate){
  const latest=new Map();
  for(const d of documents){if(d.deleted_at||d.candidate_id!==candidate.id||!d.storage_path)continue;
   const group=d.version_group_id||d.id,old=latest.get(group);
@@ -20,6 +20,10 @@ function compare(documents,candidate){
   if(name&&norm(name)===norm(candidate.full_name))return true;
   return !!(name&&root.CRMNameHistory?.matches(name,candidate));
  });
+ return eligible;
+}
+function compare(documents,candidate){
+ const eligible=eligibleDocuments(documents,candidate);
  const scalar=keys.map(key=>{
   const sources=[],seen=new Set();
   for(const d of eligible){const raw=obj(d.ai_extracted),personal=obj(raw.personal);if(raw[key]!=null&&personal[key]!=null&&norm(raw[key])!==norm(personal[key]))continue;
@@ -85,12 +89,43 @@ function periodLinks(documents){
  }
  return links;
 }
-async function load(client,candidate){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return compare(r.data,candidate);}
+function compareZones(documents,candidate,{reports=[],context,binding}={}){
+ if(!context||typeof context.revision!=='string'||!context.revision||!/^[a-f0-9]{64}$/.test(context.file_sha256||'')||!Number.isInteger(context.pages)||context.pages<1||context.pages>200)return [];
+ const document=eligibleDocuments(documents,candidate).find(d=>d.id===context.document_id);if(!document||document.ai_processed_at!==context.revision||document.file_hash&&document.file_hash!==context.file_sha256)return [];
+ const base=compare(documents,candidate),groups=new Map(),seen=new Set();
+ const validBox=b=>b&&['x','y','w','h'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<=1)&&b.w>0&&b.h>0&&b.x+b.w<=1.000001&&b.y+b.h<=1.000001;
+ for(const report of Array.isArray(reports)?reports:[]){
+  const s=report?.source;if(report?.review_only!==true||report.mode!=='zone'||s?.document_id!==document.id||!Number.isInteger(s.page)||s.page<1||s.page>context.pages||!validBox(s.box))continue;
+  if(s.file_sha256!==undefined?s.file_sha256!==context.file_sha256:!binding||binding.document_id!==document.id||binding.file_sha256!==context.file_sha256||binding.revision!==context.revision)continue;
+  const rows=Array.isArray(report.rows)?report.rows:[];
+  // Generic birth fields in a family/mixed-person region must never become candidate identity facts.
+  if(rows.some(row=>(Array.isArray(row?.fields)?row.fields:[]).some(f=>['relative_name','relationship'].includes(f?.key)||f?.key==='full_name'&&norm(f.value)!==norm(candidate.full_name)&&!root.CRMNameHistory?.matches(f.value,candidate))))continue;
+  for(const row of rows)for(const field of Array.isArray(row?.fields)?row.fields:[]){
+   if(!keys.includes(field?.key))continue;const value=field.value;
+   const valid=typeof value==='string'&&!!value.trim()&&(field.key!=='rnokpp'||/^\d{10}$/.test(value))&&(field.key!=='birth_date'||/^\d{4}-\d{2}-\d{2}$/.test(value)&&!isNaN(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value);
+   const uncertain=!valid||field.legibility!=='clear'||Array.isArray(field.alternatives)&&field.alternatives.length>0;
+   const signature=JSON.stringify([field.key,s.page,s.box.x,s.box.y,s.box.w,s.box.h,value,uncertain]);if(seen.has(signature))continue;seen.add(signature);
+   const group=groups.get(field.key)||{key:field.key,current:candidate[field.key]??null,sources:[],zone_crosscheck:true,learning_eligible:false,uncertain:false};
+   group.uncertain ||= uncertain;
+   group.sources.push({document_id:document.id,document_type:document.document_type,file_name:document.file_name,value:valid?value:'Не визначено',raw_text:field.raw_text||null,page:s.page,box:{...s.box},fingerprint:context.file_sha256,verified:false,kind:'zone_reading'});groups.set(field.key,group);
+  }
+ }
+ return [...groups.values()].map(group=>{
+  const others=base.find(e=>e.key===group.key)?.sources||[];
+  for(const source of others)group.sources.push({...source,fingerprint:source.document_id===document.id||source.fingerprint===context.file_sha256?context.file_sha256:source.fingerprint});
+  const values=new Set(group.sources.filter(s=>s.value!=='Не визначено').map(s=>norm(s.value))),current=group.current;
+  const conflict=values.size>1||current!=null&&String(current).trim()&&group.sources.some(s=>s.value!=='Не визначено'&&norm(s.value)!==norm(current));
+  group.status=group.uncertain?'needs_review':conflict?'conflict':new Set(group.sources.map(s=>s.fingerprint)).size>1?'corroborated':'single_source';
+  group.reason=group.uncertain?'Зональне читання непевне або має альтернативи; підтвердження потрібне.':'Зіставлено збережене зональне читання. Збіг не є ручним підтвердженням; картка не змінюється.';
+  delete group.uncertain;return group;
+ });
+}
+async function load(client,candidate,options){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return [...compare(r.data,candidate),...compareZones(r.data,candidate,options)];}
 function guard(report,evidence){report.crosscheck=evidence;const conflicts=evidence.filter(e=>['conflict','needs_review'].includes(e.status));
  // Block proposed writes, retaining the original reason for existing conflicts.
  // An unchanged/absent value in an unrelated document is not another conflicting fact.
  for(const row of report.rows){if(row.action!=='fill'||!conflicts.some(e=>e.key===row.key)||!['candidate','profile'].includes(row.target))continue;row.action='conflict';row.reason='Розбіжність між документами кандидата';}
  report.selections=report.selections.filter(s=>!(['candidate','profile'].includes(s.target)&&conflicts.some(e=>e.key===s.key)));return report;
 }
-const api={compare,load,guard,dateRange,periodLinks};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={compare,load,guard,dateRange,periodLinks,compareZones};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

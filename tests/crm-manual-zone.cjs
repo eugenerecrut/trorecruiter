@@ -153,3 +153,12 @@ test('source navigation requires the current document, page, bounds and verified
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');const handler=code.slice(code.indexOf('original.onclick=async'),code.indexOf('report.append(original)'));
  assert.match(handler,/sourceTarget\(data,currentSource\(\),binding\(\)\)/);assert.match(handler,/await render\(\)/);assert.match(handler,/setBox\(target.box\)/);assert.doesNotMatch(handler,/functions.invoke|read\('zone'\)|rpc\(/);
 });
+test('saved zonal crosscheck is read-only, source filtered and rendered without duplicate panels',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ const start=source.indexOf('async function crosscheck()'),end=source.indexOf('async function saveFinal()',start),body=source.slice(start,end);
+ assert.match(body,/reports.filter\(r=>sourceTarget\(r,context,binding\)\)/);assert.match(body,/CRMDocumentCrosscheck.load/);
+ assert.match(body,/section.dataset.crosscheck/);assert(body.includes("querySelector('[data-crosscheck]')?.remove()"));
+ assert.match(body,/if\(closed\|\|version!==crosscheckVersion\)return/);assert.doesNotMatch(body,/functions.invoke|\.update\(|\.insert\(|\.upsert\(/);
+ assert.match(source,/crosscheck\(\).catch/);assert.match(body,/зональне читання, сторінка/);
+ assert.match(source,/if\(job.zone_summary\?\.source_changed\)\{crosscheckVersion\+\+/);
+});
