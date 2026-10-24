@@ -27,7 +27,7 @@ async function fixture(options={}){
  },storage:{from:bucket=>{assert.equal(bucket,'candidate-documents');return {createSignedUrl:async path=>{calls.push(path);return {data:{signedUrl:options.foreign?'https://foreign.invalid/secret':'https://test.supabase.co/storage/v1/object/sign/candidate-documents/source.pdf?token=synthetic'}};}};}}};
  const heap=new Float32Array(32),put=values=>heap.set(values,4),module={HEAPF32:heap,wasmExports:{malloc:()=>16,free(){}},_FPDFPage_GetRotation:()=>0,_FPDFPage_GetAnnotCount:()=>0,
   _FPDFPage_GetMediaBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPage_GetCropBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPageObj_GetBounds:i=>{put([100,80-i*15,500,90-i*15]);return 1;}};
- const native=options.native?{module,pageIdx:1,getObjectCount:()=>3,getObject:i=>({type:'text',objectIdx:i,getText:()=> 'Synthetic native paragraph containing enough characters.'})}:{};
+ const native=options.native?{module,pageIdx:1,getObjectCount:()=>options.graphics?4:3,getObject:i=>({type:options.graphics&&i===3?'path':'text',objectIdx:i,getText:()=> 'Synthetic native paragraph containing enough characters.'})}:{};
  const dependencies={planner,env:key=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public'})[key],createClient:(_url,key,opts)=>{assert.equal(key,'public');assert.equal(opts.global.headers.Authorization,'Bearer processor');return client;},
  getLibrary:async()=>({loadDocument:async()=>({getPageCount:()=>options.pages??1,destroy(){},getPage:()=>({...native,getOriginalSize:()=>({originalWidth:1800,originalHeight:100}),close(){},render:async({width,height})=>({width,height,data:new Uint8Array(width*height)})})})}),
  fetchImpl:async(url,init)=>{
@@ -65,6 +65,14 @@ test('changed digest, page count or foreign signed URL never reaches AI',async()
 
 test('native overview uses the same begin/finish ledger with zero AI and preserves one-step budgets',async()=>{
  const f=await fixture({native:true,budget:1});assert.equal((await f.invoke()).status,200);assert.deepEqual(f.ai,[]);assert(f.rpc.includes('begin'));assert(f.rpc.includes('finish'));assert.equal(f.rpc.at(-1),'hold');assert.equal(f.context.snapshot.attempts,1);assert.equal(f.context.in_flight_response.result.source.origin,'server_text_layer');
+});
+test('native-only mixed page persists graphic review zones without AI or finalization',async()=>{
+ const f=await fixture({native:true,graphics:true,nativeOnly:true,budget:1});
+ assert.equal((await f.invoke()).status,200);assert.deepEqual(f.ai,[]);
+ const result=f.context.in_flight_response.result;
+ assert.equal(result.page_type,'native_text_with_graphics');assert.equal(result.zones.filter(z=>z.kind==='other').length,1);
+ assert.equal(result.quality_issues.length,1);assert.equal(result.ai_requests,0);
+ assert.equal(f.rpc.at(-1),'hold');assert(!f.rpc.includes('final'));assert(!f.rpc.includes('yield'));
 });
 test('lost native checkpoint restores its saved zones without another AI overview',async()=>{
  const f=await fixture({native:true,checkpointLoss:true});assert.equal((await f.invoke()).status,503);assert.deepEqual(f.ai,[]);assert.equal((await f.invoke()).status,200);assert.deepEqual(f.ai,['zone']);assert.equal(f.rpc.filter(x=>x==='begin').length,1);

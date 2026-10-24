@@ -10,8 +10,27 @@ function nativeFixture(options={}){
  const module={HEAPF32:heap,wasmExports:{malloc:()=>16,free:()=>calls.freed++},_FPDFPage_GetRotation:()=>options.rotation??0,_FPDFPage_GetAnnotCount:()=>options.annotations??0,
   _FPDFPage_GetMediaBox:()=>{put([0,0,1800,1000]);return 1;},_FPDFPage_GetCropBox:()=>{put(options.crop??[0,0,1800,1000]);return options.noCrop?0:1;},
   _FPDFPageObj_GetBounds:id=>{put(bounds[id]);return options.failed?0:1;}};
- return {calls,page:{module,pageIdx:1,getObjectCount:()=>options.count??bounds.length,getObject:i=>({type:options.image?'image':'text',objectIdx:i,getText:()=>options.short?'title':'Synthetic text with enough characters for a native paragraph.'})}};
+ return {calls,page:{module,pageIdx:1,getObjectCount:()=>options.count??bounds.length,getObject:i=>({type:options.types?.[i]??(options.image?'image':'text'),objectIdx:i,getText:()=>options.short?'title':'Synthetic text with enough characters for a native paragraph.'})}};
 }
+
+test('vector strokes are retained as explicit review zones, never discarded as decoration',()=>{
+ const base=[[100,900,500,910],[100,880,500,890],[100,860,500,870]];
+ const f=nativeFixture({bounds:[...base,[100,100,300,100],[120,130,120,150]],types:['text','text','text','path','path']});
+ const zones=nativePageZones(f.page,{originalWidth:1800,originalHeight:1000});
+ assert.equal(zones.length,3);assert.equal(zones[0].kind,'text');
+ for(const zone of zones.slice(1)){assert.equal(zone.kind,'other');assert(zone.box.w>0&&zone.box.h>0);assert.match(zone.reason,/рукописний/);}
+ assert.equal(f.calls.freed,1);
+ for(const type of ['image','form','unknown']){
+  const a=nativeFixture({bounds:[...base,[100,100,300,200]],types:['text','text','text',type]});
+  assert.equal(nativePageZones(a.page,{originalWidth:1800,originalHeight:1000}),null);
+ }
+ for(const bad of [[-1,100,200,200],[100,100,1900,200],[300,100,100,200],[100,NaN,200,200]]){
+  const a=nativeFixture({bounds:[...base,bad],types:['text','text','text','path']});
+  assert.equal(nativePageZones(a.page,{originalWidth:1800,originalHeight:1000}),null);
+ }
+ const a=nativeFixture({bounds:[...base,...Array.from({length:6},(_,i)=>[100,100+i*10,300,100+i*10])],types:['text','text','text',...Array(6).fill('path')]});
+ assert.equal(nativePageZones(a.page,{originalWidth:1800,originalHeight:1000}),null);
+});
 
 test('native PDFium bounds preserve real paragraph positions and release memory without AI',()=>{
  const f=nativeFixture(),zones=nativePageZones(f.page,{originalWidth:1800,originalHeight:1000});assert.equal(zones.length,2);assert.equal(zones[0].box.y,.09);assert.equal(zones[1].box.y,.59);assert.equal(f.calls.freed,1);
