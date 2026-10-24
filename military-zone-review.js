@@ -32,6 +32,13 @@ function backgroundSummary(job){
  const s=job.zone_summary||{},notes=[];
  const states={queued:'Документ у черзі',running:'Документ опрацьовується на сервері',completed:'Опрацювання завершено',needs_review:'Опрацювання зупинено',uncertain:'Відповідь AI не підтверджено',superseded:'Джерело документа змінилося'};
  if(s.source_changed||job.state==='superseded')return {title:'Джерело документа змінилося',notes:['Відкрийте чинну версію документа. Попередній результат не застосовується.']};
+ if(job.result?.native_only===true){
+  const saved=(job.zone_reports||[]).some(r=>r?.mode==='overview'&&r.ai_requests===0&&r.source?.origin==='server_text_layer');
+  return {title:['queued','running'].includes(job.state)?'Контроль сервера без AI':saved?'Локальний огляд збережено':'Контроль зупинено без AI',notes:[
+   'У цьому дорученні AI заборонений, включно зі сканкопіями та повторним запуском виконавця.',
+   saved?'Текстові рамки визначено; зміст документа цим контролем не підтверджується.':'Якщо текстових зон немає або підготовку не завершено, зовнішнє розпізнавання не запускається.',
+   'Картка, основне розпізнавання та підтвердження документа не змінюються. Наступні зони не запускаються.']};
+ }
  if(['queued','running'].includes(job.state))notes.push('Можна закрити це вікно. СПЛАВ продовжить роботу на сервері.');
  else if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Сервіс міг прийняти запит, але придатний результат не отримано. Автоматичний повтор заблоковано, щоб уникнути повторних витрат.');
  else if(s.code==='ZONE_PROVIDERS_REJECTED')notes.push('AI-сервіси відхилили запит. Адміністратору потрібно перевірити їх доступність і ліміти.');
@@ -62,10 +69,10 @@ async function open(doc,{autostart=false}={}){
  dialog.innerHTML='<h2>Документ · автоматичне опрацювання</h2><p>'+esc(doc.file_name)+'</p><p>Система сама опрацює всі сторінки, повторить складні читання та збереже кінцевий звіт. Дочекайтеся завершення. Ручні інструменти й навчальні виправлення необов’язкові. Дані картки не перезаписуються.</p><div class="crm-actions"><button data-auto>Опрацювати автоматично</button><button data-stop disabled>Зупинити</button></div><p data-auto-progress role="status"></p><details data-manual><summary>Додатково: оригінал і ручне читання</summary><div class="crm-actions"><button data-prev>←</button><span data-page></span><button data-next>→</button><button data-overview>Оглянути сторінку</button></div><div data-quality></div><div data-zones class="crm-actions"></div><div style="max-height:55vh;overflow:auto;border:1px solid #ccd"><canvas data-source style="display:block;max-width:100%;height:auto;touch-action:none" aria-label="Сторінка документа, виділіть зону мишею"></canvas></div><fieldset><legend>Зона читання, % від сторінки</legend><div style="display:flex;gap:10px;flex-wrap:wrap">'+[['x','Ліворуч'],['y','Згори'],['w','Ширина'],['h','Висота']].map(([k,l])=>'<label>'+l+'<input data-box="'+k+'" aria-label="'+l+'" type="number" min="0" max="100" step="0.1" value="'+(k==='w'||k==='h'?100:0)+'" style="width:80px;display:block"></label>').join('')+'</div><button data-read>Перечитати зону</button><button data-full>Уся сторінка</button></fieldset></details><p role="status" data-status></p><section data-result></section><div class="crm-actions"><button data-export disabled>Завантажити звіт JSON</button><button data-close>Закрити</button></div>';
  document.body.append(dialog);dialog.showModal();
  const $=s=>dialog.querySelector(s),canvas=$('[data-source]'),ctx=canvas.getContext('2d'),source=document.createElement('canvas'),reports=[];
- const canary=new URLSearchParams(location.search).get('zoneBudget')==='1';
+ const canary=new URLSearchParams(location.search).get('zoneBudget')==='1',nativeCanary=canary&&new URLSearchParams(location.search).get('zoneNativeOnly')==='1';
  let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false,nativeZones=[];
  if(!autostart){$('[data-manual]').open=true;dialog.querySelector('h2').textContent='Документ · оригінал і ручне читання';dialog.querySelectorAll('p')[1].textContent='Оригінал відкривається без AI. Огляд сторінки або читання зони починається лише після вашого натискання. Дані картки не перезаписуються.';if(!doc.ai_extracted||doc.processing_status==='AI помилка')$('[data-auto]').hidden=true;}
- if(canary){$('[data-auto]').textContent='Контроль СПЛАВ · один крок';dialog.querySelectorAll('p')[1].textContent='Контроль власника: лише один новий серверний AI-крок. Наступні зони не запускаються; основний OCR і картка не змінюються.';}
+ if(canary){$('[data-auto]').textContent=nativeCanary?'Контроль сервера · без AI':'Контроль СПЛАВ · один крок';dialog.querySelectorAll('p')[1].textContent=nativeCanary?'Контроль власника: один локальний серверний огляд PDF. AI та запис у картку й документ заборонені в дорученні. Сканкопія зупиниться без AI.':'Контроль власника: лише один новий серверний AI-крок. Наступні зони не запускаються; основний OCR і картка не змінюються.';}
  const status=value=>$('[data-status]').textContent=value;
  function lock(value){busy=value;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=value||autoActive);$('[data-export]').disabled=value||!reports.length;if(autoActive)$('[data-stop]').disabled=false;else $('[data-stop]').disabled=true;if(!value&&!autoActive){$('[data-prev]').disabled=page===1;$('[data-next]').disabled=page===total;}}
  function paint(){canvas.width=source.width;canvas.height=source.height;ctx.drawImage(source,0,0);ctx.lineWidth=Math.max(2,source.width/500);ctx.strokeStyle='#1676ba';ctx.strokeRect(box.x*source.width,box.y*source.height,box.w*source.width,box.h*source.height);}
@@ -187,7 +194,7 @@ async function open(doc,{autostart=false}={}){
    if(jobs.error)throw Error('Не вдалося перевірити доручення. AI не запускався.');
    const existing=(jobs.data||[]).find(j=>j.document_id===doc.id&&j.kind==='zone');if(existing){showBackground(existing);return;}
    await loadCoordinator();
-   const queued=await supabaseClient.rpc('crm_splav_zone_canary_enqueue',{p_id:coordinatorSession.id,p_pages:total});
+   const queued=await supabaseClient.rpc(nativeCanary?'crm_splav_zone_native_canary_enqueue':'crm_splav_zone_canary_enqueue',{p_id:coordinatorSession.id,p_pages:total});
    if(queued.error||!queued.data?.id)throw Error('Точковий контроль не дозволено. Загальний фон не вмикався; AI не запускався.');
    showBackground(queued.data);return;
   }

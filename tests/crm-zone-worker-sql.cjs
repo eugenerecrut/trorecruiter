@@ -181,6 +181,32 @@ try{
  await owner();await db.query(`update public.documents set ai_extracted=ai_extracted||'{"new_revision":true}'::jsonb where id=$1`,[id(50)]);await actor(1);
  const changed=await call('crm_splav_job_status',[cj.id]);assert.equal(changed.zone_summary.source_changed,true);assert.equal(changed.zone_reports.length,0);checks+=2;
  await owner();await db.exec("set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_job_status',[cj.id]),/permission denied|Human staff/);checks++;
+ // Native-only control uses the same owner/lease scope and denies AI/final writes in SQL.
+ await owner();await db.exec(file('supabase/migrations/20261024110557_splav_native_only_canary.sql'));
+ await actor(1);
+ await db.query(`insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status)
+ values($1,$2,'native-control.pdf',$1,1,'Автобіографія друкована',$3,'{"manual":"preserve"}','Підтверджено')`,[id(60),id(10),id(30)]);
+ await actor(1);const nc=await call('crm_zone_coordinator_open',[id(60),hash,false]);
+ await actor(3);await assert.rejects(call('crm_splav_zone_native_canary_enqueue',[nc.id,1]),/Active owner/);checks++;
+ await actor(2);await assert.rejects(call('crm_splav_zone_native_canary_enqueue',[nc.id,1]),/Active owner/);checks++;
+ await owner();await db.exec("set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_zone_native_canary_enqueue',[nc.id,1]),/permission denied/);checks++;
+ await actor(1);const nj=await call('crm_splav_zone_native_canary_enqueue',[nc.id,1]);assert.equal(nj.native_only,true);checks++;
+ await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,nj.id);checks++;
+ const nx=await step('load');assert.equal(nx.native_only,true);checks++;
+ await assert.rejects(step('validate',{native_only:false}),/AI disabled/);checks++;
+ await assert.rejects(step('final'),/cannot finalize/);checks++;
+ const np=pilot.restore(nx.snapshot,{source:nx.source});await np.run({limit:1,checkpoint:async s=>{nx.version=await step('save',{version:nx.version,snapshot:s,native_only:false});},read:async()=>{
+  const receipt=await step('begin',{version:nx.version,mode:'overview',page:1,box:full,render_sha256:hash});
+  const result={review_only:true,requires_review:true,mode:'overview',ai_requests:0,zones:[{label:'Текстовий блок 1',box:{x:.1,y:.1,w:.5,h:.2}}],source:{document_id:id(60),page:1,box:full,render_sha256:hash,origin:'server_text_layer'}};
+  await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result});return result;
+ }});
+ await assert.rejects(step('validate'),/AI disabled/);checks++;
+ await assert.rejects(step('final'),/cannot finalize/);checks++;
+ await step('hold');await owner();
+ assert.equal((await db.query('select result from crm_private.splav_jobs where id=$1',[nj.id])).rows[0].result.native_only,true);checks++;
+ assert.deepEqual((await db.query('select ai_extracted,verification_status from public.documents where id=$1',[id(60)])).rows[0],{ai_extracted:{manual:'preserve'},verification_status:'Підтверджено'});checks++;
+ const nativeSettings=(await db.query('select zones_enabled,zone_canary_coordinator from crm_private.splav_settings')).rows[0];assert.equal(nativeSettings.zones_enabled,false);assert.equal(nativeSettings.zone_canary_coordinator,null);checks+=2;
+ await actor(1);await assert.rejects(call('crm_splav_zone_native_canary_enqueue',[nc.id,1]),/already consumed/);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -32,7 +32,7 @@ test('one-step canary is owner-only, sends a durable budget of one and never fal
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
  assert.match(source,/get\('zoneBudget'\)\s*===\s*'1'/);
  assert.match(source,/supabaseClient.auth.getUser\(\)/);
- assert.match(source,/rpc\('crm_splav_zone_canary_enqueue'/);
+ assert.match(source,/rpc\(nativeCanary\?'crm_splav_zone_native_canary_enqueue':'crm_splav_zone_canary_enqueue'/);
  assert.match(source,/p_budget:canary\?1:2600/);
  assert.match(source,/if\(canary&&\(ready.error\|\|ready.data!==true\)\)throw/);
  assert(source.indexOf("if(canary)throw Error('Немає придатного")<source.indexOf('await autopilot.run'));
@@ -112,4 +112,12 @@ test('PDF text geometry gives source-bound paragraphs without guessed semantic l
  assert.equal(zones([item('x',0,0)],{width:0,height:0}).length,0);
  assert.match(source,/await p.getTextContent\(\)/);assert.match(source,/nativeZones.length\?showNativeZones\(\):read\('overview'\)/);
  assert.match(source,/рукописні дописи й зображення можуть бути відсутні/);
+});
+
+test('native-only background control never claims content recognition or suggests a paid continuation',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ const job={state:'needs_review',result:{native_only:true},zone_reports:[]};
+ assert.equal(describe(job).title,'Контроль зупинено без AI');
+ const saved=describe({...job,zone_reports:[{mode:'overview',ai_requests:0,source:{origin:'server_text_layer'}}]});assert.equal(saved.title,'Локальний огляд збережено');assert.match(JSON.stringify(saved),/зміст документа цим контролем не підтверджується/);
 });

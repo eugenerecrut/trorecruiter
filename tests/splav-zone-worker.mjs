@@ -5,7 +5,7 @@ const id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',token='bbbbbbbb-bbbb-bbbb-bbbb-b
 const bytes=new TextEncoder().encode('%PDF-synthetic');
 async function fixture(options={}){
  const hash=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex');
- const context={id:doc,version:0,source:{document_id:doc,file_sha256:options.hashMismatch?'0'.repeat(64):hash,revision:'r1'},document:{id:doc,storage_path:'source.pdf'},reports:[]};
+ const context={id:doc,version:0,native_only:options.nativeOnly===true,source:{document_id:doc,file_sha256:options.hashMismatch?'0'.repeat(64):hash,revision:'r1'},document:{id:doc,storage_path:'source.pdf'},reports:[]};
  context.snapshot=planner.create(1,{source:context.source,budget:options.budget??2600}).snapshot();
  const calls=[],ai=[],rpc=[];let failed=false;
  const client={rpc:async(name,payload)=>{assert.equal(name,'crm_splav_zone_step');assert.equal(payload.p_job,id);assert.equal(payload.p_token,token);rpc.push(payload.p_operation);
@@ -39,7 +39,7 @@ async function fixture(options={}){
   const result={review_only:true,mode:body.mode,zones:body.mode==='overview'?[{box:{x:.1,y:.1,w:.4,h:.2},label:'row'}]:undefined,rows:body.mode==='zone'?[{fields:[{value:'synthetic',legibility:'clear'}]}]:undefined};
   context.in_flight_response={state:'completed',result};return Response.json(result);
  }};
- const invoke=()=>createZoneWorker(dependencies)(new Request('https://test/worker',{method:'POST',headers:{Authorization:'Bearer processor'},body:JSON.stringify({job_id:id,lease_token:token})}));
+ const invoke=(extra={})=>createZoneWorker(dependencies)(new Request('https://test/worker',{method:'POST',headers:{Authorization:'Bearer processor'},body:JSON.stringify({job_id:id,lease_token:token,...extra})}));
  return {invoke,context,ai,rpc,calls};
 }
 test('invalid/denied lease makes no source or AI request',async()=>{
@@ -73,4 +73,12 @@ test('native overview never replaces an existing cached or uncertain receipt',as
  const cached={review_only:true,mode:'overview',zones:[],source:{provider:'OpenRouter'}};
  const a=await fixture({native:true,nativeCached:cached});assert.equal((await a.invoke()).status,200);assert.deepEqual(a.ai,[]);assert(!a.rpc.includes('finish'));
  const b=await fixture({native:true,nativeUncertain:true});await b.invoke();assert.deepEqual(b.ai,[]);assert(!b.rpc.includes('finish'));assert.equal((await b.invoke()).status,200);assert.equal(b.rpc.at(-1),'block');assert.deepEqual(b.ai,[]);
+});
+
+test('persisted native-only control blocks scans and zone tasks without AI or final document writes',async()=>{
+ for(const native of [false,true]){const f=await fixture({nativeOnly:true,native,budget:1});assert.equal((await f.invoke({native_only:false})).status,200);assert.deepEqual(f.ai,[]);assert.equal(f.rpc.at(-1),'hold');assert(!f.rpc.includes('final'));assert(!f.rpc.includes('yield'));}
+ const f=await fixture({nativeOnly:true});f.context.snapshot.tasks=[{mode:'zone',page:1,box:{x:.1,y:.1,w:.2,h:.2}}];await f.invoke();assert.deepEqual(f.ai,[]);assert.deepEqual(f.calls,[]);assert.equal(f.rpc.at(-1),'hold');
+});
+test('native-only restriction survives checkpoint loss and recovery without a paid zone',async()=>{
+ const f=await fixture({native:true,nativeOnly:true,checkpointLoss:true,budget:1});assert.equal((await f.invoke()).status,503);assert.equal((await f.invoke()).status,200);assert.deepEqual(f.ai,[]);assert.equal(f.rpc.at(-1),'hold');assert(!f.rpc.includes('final'));
 });
