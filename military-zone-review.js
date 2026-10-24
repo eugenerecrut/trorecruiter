@@ -7,6 +7,27 @@ function selectedBox(inputs){
  const values={};for(const el of inputs){if(!['x','y','w','h'].includes(el.dataset.box)||String(el.value).trim()==='')return null;values[el.dataset.box]=Number(el.value)/100;}
  return CRMMilitaryZoneContract.box(values);
 }
+function textLayerZones(items,viewport){
+ const [a,b,c,d,e,f]=viewport.transform||[],width=viewport.width,height=viewport.height;
+ if(![a,b,c,d,e,f,width,height].every(Number.isFinite)||width<=0||height<=0)return [];
+ const lines=[];
+ for(const item of (items||[]).slice(0,5000)){
+  if(!item||typeof item.str!=='string'||!item.str.trim()||!Array.isArray(item.transform))continue;
+  const [ia,ib,ic,id,ix,iy]=item.transform;if(![ia,ib,ic,id,ix,iy,item.width].every(Number.isFinite))continue;
+  const x=a*ix+c*iy+e,y=b*ix+d*iy+f,h=Math.hypot(a*ic+c*id,b*ic+d*id),w=Math.abs(item.width)*Math.hypot(a,b);
+  // Rotated/vertical text needs visual reading; do not invent horizontal bounds.
+  if(Math.abs(b*ia+d*ib)>Math.abs(a*ia+c*ib)*.1||h<=0||w<=0)continue;
+  const left=Math.max(0,x),top=Math.max(0,y-h),right=Math.min(width,x+w),bottom=Math.min(height,y+h*.2);
+  if(right<=left||bottom<=top)continue;
+  let line=lines.find(l=>Math.abs(l.baseline-y)<=Math.max(l.h,h)*.35);
+  if(!line){line={left,top,right,bottom,baseline:y,h,text:[]};lines.push(line);}
+  line.left=Math.min(line.left,left);line.top=Math.min(line.top,top);line.right=Math.max(line.right,right);line.bottom=Math.max(line.bottom,bottom);line.h=Math.max(line.h,h);line.text.push({x,text:item.str});
+ }
+ if(lines.length<3||lines.reduce((n,l)=>n+l.text.reduce((s,t)=>s+t.text.trim().length,0),0)<80)return [];
+ lines.sort((x,y)=>x.top-y.top||x.left-y.left);
+ const blocks=[];for(const line of lines){const last=blocks[blocks.length-1];if(last&&line.top-last.bottom<Math.max(last.h,line.h)*.65){last.left=Math.min(last.left,line.left);last.right=Math.max(last.right,line.right);last.bottom=Math.max(last.bottom,line.bottom);last.h=Math.max(last.h,line.h);last.lines.push(line);}else blocks.push({...line,lines:[line]});}
+ return blocks.map((block,i)=>({label:'Текстовий блок '+(i+1),kind:'text',reason:'Межі з текстового шару PDF; зміст і рукописні дописи не перевірені.',preview:block.lines.map(l=>l.text.sort((x,y)=>x.x-y.x).map(t=>t.text).join(' ')).join('\n').slice(0,4000),box:{x:block.left/width,y:block.top/height,w:(block.right-block.left)/width,h:(block.bottom-block.top)/height}}));
+}
 function backgroundSummary(job){
  const s=job.zone_summary||{},notes=[];
  const states={queued:'Документ у черзі',running:'Документ опрацьовується на сервері',completed:'Опрацювання завершено',needs_review:'Опрацювання зупинено',uncertain:'Відповідь AI не підтверджено',superseded:'Джерело документа змінилося'};
@@ -42,18 +63,25 @@ async function open(doc,{autostart=false}={}){
  document.body.append(dialog);dialog.showModal();
  const $=s=>dialog.querySelector(s),canvas=$('[data-source]'),ctx=canvas.getContext('2d'),source=document.createElement('canvas'),reports=[];
  const canary=new URLSearchParams(location.search).get('zoneBudget')==='1';
- let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false;
+ let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false,nativeZones=[];
  if(!autostart){$('[data-manual]').open=true;dialog.querySelector('h2').textContent='Документ · оригінал і ручне читання';dialog.querySelectorAll('p')[1].textContent='Оригінал відкривається без AI. Огляд сторінки або читання зони починається лише після вашого натискання. Дані картки не перезаписуються.';if(!doc.ai_extracted||doc.processing_status==='AI помилка')$('[data-auto]').hidden=true;}
  if(canary){$('[data-auto]').textContent='Контроль СПЛАВ · один крок';dialog.querySelectorAll('p')[1].textContent='Контроль власника: лише один новий серверний AI-крок. Наступні зони не запускаються; основний OCR і картка не змінюються.';}
  const status=value=>$('[data-status]').textContent=value;
  function lock(value){busy=value;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=value||autoActive);$('[data-export]').disabled=value||!reports.length;if(autoActive)$('[data-stop]').disabled=false;else $('[data-stop]').disabled=true;if(!value&&!autoActive){$('[data-prev]').disabled=page===1;$('[data-next]').disabled=page===total;}}
  function paint(){canvas.width=source.width;canvas.height=source.height;ctx.drawImage(source,0,0);ctx.lineWidth=Math.max(2,source.width/500);ctx.strokeStyle='#1676ba';ctx.strokeRect(box.x*source.width,box.y*source.height,box.w*source.width,box.h*source.height);}
  function setBox(value){const next=CRMMilitaryZoneContract.box(value);if(!next)return false;box=next;dialog.querySelectorAll('[data-box]').forEach(el=>el.value=+(box[el.dataset.box]*100).toFixed(2));paint();return true;}
- async function render(){sourceReady=false;const token=++renderId;lock(true);status('Відкриваємо оригінал сторінки…');try{
-  if(pdf){const p=await pdf.getPage(page),base=p.getViewport({scale:1}),scale=Math.min(3.5,Math.sqrt(8000000/(base.width*base.height))),viewport=p.getViewport({scale});source.width=Math.ceil(viewport.width);source.height=Math.ceil(viewport.height);await p.render({canvasContext:source.getContext('2d'),viewport}).promise;}
+ async function render(){sourceReady=false;nativeZones=[];let pageZones=[];const token=++renderId;lock(true);status('Відкриваємо оригінал сторінки…');try{
+  if(pdf){const p=await pdf.getPage(page),base=p.getViewport({scale:1}),scale=Math.min(3.5,Math.sqrt(8000000/(base.width*base.height))),viewport=p.getViewport({scale});source.width=Math.ceil(viewport.width);source.height=Math.ceil(viewport.height);await p.render({canvasContext:source.getContext('2d'),viewport}).promise;try{const text=await p.getTextContent();pageZones=textLayerZones(text.items,viewport);}catch{} }
   else{const scale=Math.min(1,Math.sqrt(8000000/(bitmap.width*bitmap.height)));source.width=Math.ceil(bitmap.width*scale);source.height=Math.ceil(bitmap.height*scale);source.getContext('2d').drawImage(bitmap,0,0,source.width,source.height);}
-  if(closed||token!==renderId)return;sourceReady=true;setBox(full);$('[data-page]').textContent=page+' / '+total;$('[data-zones]').replaceChildren();$('[data-quality]').textContent='';status('Огляньте сторінку або виділіть рядок таблиці.');
+  if(closed||token!==renderId)return;nativeZones=pageZones;sourceReady=true;$('[data-overview]').textContent=nativeZones.length?'Знайти зони · без AI':'Оглянути сторінку';setBox(full);$('[data-page]').textContent=page+' / '+total;$('[data-zones]').replaceChildren();$('[data-quality]').textContent='';if(nativeZones.length&&!autoActive)showNativeZones();else status('Огляньте сторінку або виділіть рядок таблиці.');
  }catch(e){status(e.message);if(autoActive)throw e;}finally{if(!closed&&token===renderId)lock(false)}}
+ function showNativeZones(){
+  const host=$('[data-zones]');host.replaceChildren();
+  for(const z of nativeZones.slice(0,24)){const button=document.createElement('button');button.type='button';button.textContent=z.label;button.title=z.preview;button.onclick=()=>{setBox(z.box);status(z.preview+'\nМежі з PDF, без AI. Перевірте оригінал перед читанням.');};host.append(button);}
+  $('[data-overview]').textContent=nativeZones.length?'Знайти зони · без AI':'Оглянути сторінку';
+  $('[data-quality]').textContent='Зони визначено локально з текстового шару PDF. Це не перевірка змісту; рукописні дописи й зображення можуть бути відсутні в текстовому шарі.';
+  status('Текстових блоків: '+nativeZones.length+'. Показано '+Math.min(nativeZones.length,24)+'. AI не запускався.');
+ }
  async function read(mode){if(canary){status('Контроль одного кроку виконується лише серверною чергою. Ручний AI не запускався.');return;}if(busy)return;const selected=mode==='overview'?full:selectedBox(dialog.querySelectorAll('[data-box]'));if(!selected||!sourceReady){status('AI не запускався: перевірте межі зони та дочекайтеся відкриття сторінки.');return;}if(mode!=='overview')setBox(selected);lock(true);const atPage=page;let dispatched=false;try{
   status(mode==='overview'?'AI визначає зони сторінки…':'AI перечитує фрагмент; очікуйте…');
   const crop=document.createElement('canvas'),context=.015,left=Math.max(0,selected.x-context),top=Math.max(0,selected.y-context),right=Math.min(1,selected.x+selected.w+context),bottom=Math.min(1,selected.y+selected.h+context);
@@ -206,7 +234,7 @@ async function open(doc,{autostart=false}={}){
  }
  function close(){if(busy||autoActive){status('Дочекайтеся завершення операції.');return;}closed=true;if(backgroundPoll)clearInterval(backgroundPoll);if(originalURL)URL.revokeObjectURL(originalURL);pdf?.destroy();bitmap?.close?.();source.width=source.height=canvas.width=canvas.height=1;dialog.close();dialog.remove();}
  $('[data-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close()});
- $('[data-overview]').onclick=()=>read('overview');$('[data-read]').onclick=()=>read('zone');$('[data-full]').onclick=()=>setBox(full);
+ $('[data-overview]').onclick=()=>nativeZones.length?showNativeZones():read('overview');$('[data-read]').onclick=()=>read('zone');$('[data-full]').onclick=()=>setBox(full);
  $('[data-prev]').onclick=()=>{if(page>1){page--;render()}};$('[data-next]').onclick=()=>{if(page<total){page++;render()}};
  dialog.querySelectorAll('[data-box]').forEach(el=>{el.oninput=el.onchange=()=>{const next=selectedBox(dialog.querySelectorAll('[data-box]'));if(next){box=next;paint();}else status('Зона повинна бути в межах 0–100% і мати ненульову площу. AI не запускався.');};});
  let start=null;const point=e=>{const r=canvas.getBoundingClientRect();return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))}};
@@ -235,5 +263,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox,textLayerZones};
 })();

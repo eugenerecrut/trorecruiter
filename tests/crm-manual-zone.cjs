@@ -96,3 +96,20 @@ test('manual reading snapshots visible inputs before dispatch and never falls ba
  assert.match(source,/if\(!selected\|\|!sourceReady\)/);assert.match(source,/el.oninput=el.onchange=/);
  assert.doesNotMatch(source,/setBox\(box\)/);
 });
+
+test('PDF text geometry gives source-bound paragraphs without guessed semantic labels or provider calls',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context={window:{}};vm.createContext(context);vm.runInContext(source,context);
+ const zones=context.window.CRMMilitaryZoneReview.textLayerZones;
+ const viewport={width:600,height:800,transform:[1,0,0,-1,0,800]};
+ const item=(str,x,y,width=100)=>({str,width,transform:[12,0,0,12,x,y]});
+ const result=zones([item('Батько:',50,740),item('Приклад',160,740),item('Другий рядок із додатковим текстом прикладу',50,726),item('Інший абзац із додатковим текстом прикладу',50,680),item('жовтня 2026',50,540)],viewport);
+ assert.equal(result.length,3);assert.match(result[0].preview,/Батько: Приклад\nДругий рядок/);assert.equal(result[0].box.y,.06);
+ assert(result.every(z=>/^Текстовий блок \d+$/.test(z.label)&&z.box.x>=0&&z.box.y>=0&&z.box.x+z.box.w<=1&&z.box.y+z.box.h<=1));
+ assert(result[2].box.y<.4);assert.doesNotMatch(JSON.stringify(result),/судимість|дата і підпис/);
+ assert.equal(zones([],viewport).length,0);assert.equal(zones([item(' ',0,0)],viewport).length,0);
+ assert.equal(zones([item('Заголовок скану',50,740)],viewport).length,0);
+ assert.equal(zones([{str:'bad',width:10,transform:[0,12,-12,0,50,700]}],viewport).length,0);
+ assert.equal(zones([item('x',0,0)],{width:0,height:0}).length,0);
+ assert.match(source,/await p.getTextContent\(\)/);assert.match(source,/nativeZones.length\?showNativeZones\(\):read\('overview'\)/);
+ assert.match(source,/рукописні дописи й зображення можуть бути відсутні/);
+});
