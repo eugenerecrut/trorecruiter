@@ -160,4 +160,5 @@ test('saved zonal crosscheck is read-only, source filtered and rendered without 
  assert.match(body,/section.dataset.crosscheck/);assert(body.includes("querySelector('[data-crosscheck]')?.remove()"));
  assert.match(body,/if\(closed\|\|version!==crosscheckVersion\)return/);assert.doesNotMatch(body,/functions.invoke|\.update\(|\.insert\(|\.upsert\(/);
  assert.match(source,/crosscheck\(\).catch/);assert.match(body,/зональне читання, сторінка/);
+ assert.match(source,/if\(job.zone_summary\?\.source_changed\)\{crosscheckVersion\+\+/);
 });

@@ -185,6 +185,7 @@ async function open(doc,{autostart=false}={}){
  $('[data-stop]').onclick=()=>{stopRequested=true;autopilot?.stop();};
  function showBackground(job){
   if(job._detailed)reportBinding=!job.zone_summary?.source_changed?job.zone_binding:null;
+  if(job.zone_summary?.source_changed){crosscheckVersion++;$('[data-result]').querySelector('[data-crosscheck]')?.remove();}
   const explanation=backgroundSummary(job),host=$('[data-auto-progress]');host.replaceChildren();const title=document.createElement('strong');title.textContent=explanation.title;host.append(title);for(const note of explanation.notes){const line=document.createElement('span');line.style.display='block';line.textContent=note;host.append(line);}
   $('[data-auto]').hidden=true;$('[data-stop]').hidden=true;$('[data-export]').hidden=!reports.length;status('');
   dialog.querySelector('h2').textContent='Документ · результат СПЛАВ';dialog.querySelectorAll('p')[1].textContent='Показано збережений стан опрацювання. Перегляд не запускає нове розпізнавання.';
