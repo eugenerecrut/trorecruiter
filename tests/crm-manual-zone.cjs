@@ -129,3 +129,15 @@ test('empty and unresolved zone readings explain gaps instead of claiming a succ
  assert.match(JSON.stringify(describe({state:'needs_review',zone_summary:{code:'ZONE_NO_READABLE_FIELDS'}})),/не вважається успішним читанням/);
  assert.match(JSON.stringify(describe({state:'needs_review',zone_summary:{code:'ZONE_FIELDS_UNCERTAIN'}})),/додатковий автоматичний повтор не запускається/);
 });
+test('partial completion and saved response counts never imply complete or verified fields',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const {backgroundSummary:describe,readingSummary:reading}=context.window.CRMMilitaryZoneReview;
+ const job={state:'completed',result:{status:'complete_with_gaps'},zone_reports:[{mode:'overview'},{mode:'zone',rows:[]}]};
+ const summary=describe(job);assert.equal(summary.title,'Звіт збережено з прогалинами');assert.match(JSON.stringify(summary),/не кількість підтверджених полів/);assert.doesNotMatch(JSON.stringify(summary),/успішних читань/);
+ assert.equal(describe({state:'completed',zone_summary:{error_count:1}}).title,'Звіт збережено з прогалинами');
+ assert.equal(describe({state:'completed',result:{status:'complete'}}).title,'Опрацювання завершено');
+ for(const rows of [undefined,[],[{fields:[]}],[null]]){const r=reading({rows});assert.equal(r.count,0);assert.match(r.label,/Структурованих полів немає/);}
+ const r=reading({rows:[{fields:[{value:' ',legibility:'clear'},{value:'x',legibility:'clear',alternatives:['y']},{value:0,legibility:'clear'},{value:false,legibility:'clear'}]}]});
+ assert.equal(r.count,4);assert.equal(r.uncertain,2);assert.match(r.label,/2 потребують перевірки/);
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(source,/esc\(summary.label\)/);assert.match(source,/esc\(summary.notice\)/);assert.match(source,/Збережено відповідь через/);
+});
