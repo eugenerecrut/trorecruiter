@@ -80,6 +80,11 @@ test('owner diagnostic reports bounded native geometry without returning source 
  const native={module,pageIdx:1,getObjectCount:()=>3,getObject:i=>({type:'text',objectIdx:i,getText:()=> 'PRIVATE synthetic text long enough for testing only.'})};
  const {handler}=fixture(owner,{native}),response=await handler(request()),metrics=JSON.parse(response.headers.get('x-splav-render-metrics'));
  assert.equal(response.status,200);assert.equal(metrics.native_zone_status,'native_text');assert(metrics.native_zones.length>0&&metrics.native_zones.length<=6);assert.equal(metrics.ai_requests,0);assert(!JSON.stringify(metrics).includes('PRIVATE'));
+ assert(metrics.native_zones.every(z=>z.kind==='text'));
+ const mixed={...native,getObjectCount:()=>4,getObject:i=>i===3?{type:'path',objectIdx:i}:native.getObject(i)};
+ const mixedResponse=await fixture(owner,{native:mixed}).handler(request()),mixedMetrics=JSON.parse(mixedResponse.headers.get('x-splav-render-metrics'));
+ assert.equal(mixedResponse.status,200);assert.equal(mixedMetrics.native_zone_status,'native_mixed');assert.equal(mixedMetrics.native_zones.filter(z=>z.kind==='graphic').length,1);
+ assert.equal(mixedMetrics.ai_requests,0);assert(!JSON.stringify(mixedMetrics).includes('PRIVATE'));
  const settings=await import('node:fs');const code=settings.readFileSync(new URL('../crm-settings.js',import.meta.url),'utf8');assert.match(code,/Сервер визначив зон без AI/);assert.match(code,/Ця діагностика його не запускає/);
 });
 test('invalid crop and digest do not load; mismatched digest fails closed and permits next request', async () => {

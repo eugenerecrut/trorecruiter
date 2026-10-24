@@ -68,8 +68,9 @@
         imageURL=URL.createObjectURL(blob);preview.src=imageURL;preview.hidden=false;
         result.textContent='Готово: сторінка '+metrics.page+' із '+metrics.pages+' · '+(box?'зона':'вся сторінка')+' · '+metrics.width+' × '+metrics.height+' · '+metrics.total_ms+' мс · AI-запитів: 0. Контрольні суми оригіналу та PNG збігаються. Файл не збережено.';
         const zones=Array.isArray(metrics.native_zones)?metrics.native_zones:[];
-        if(metrics.native_zone_status==='native_text'&&zones.length>0&&zones.length<=6&&zones.every(z=>z.box&&['x','y','w','h'].every(k=>Number.isFinite(z.box[k]))&&z.box.x>=0&&z.box.y>=0&&z.box.w>0&&z.box.h>0&&z.box.x+z.box.w<=1.000001&&z.box.y+z.box.h<=1.000001)){
-          result.textContent+=' Сервер визначив зон без AI: '+zones.length+'. '+zones.map((z,i)=>'Блок '+(i+1)+' [ліворуч '+(z.box.x*100).toFixed(2)+'%, згори '+(z.box.y*100).toFixed(2)+'%, ширина '+(z.box.w*100).toFixed(2)+'%, висота '+(z.box.h*100).toFixed(2)+'%]').join('; ')+'. Межі тексту не є підтвердженням змісту.';
+        if(['native_text','native_mixed'].includes(metrics.native_zone_status)&&zones.length>0&&zones.length<=6&&zones.every(z=>[undefined,'text','graphic'].includes(z.kind)&&z.box&&['x','y','w','h'].every(k=>Number.isFinite(z.box[k]))&&z.box.x>=0&&z.box.y>=0&&z.box.w>0&&z.box.h>0&&z.box.x+z.box.w<=1.000001&&z.box.y+z.box.h<=1.000001)){
+          result.textContent+=' Сервер визначив зон без AI: '+zones.length+'. '+zones.map((z,i)=>(z.kind==='graphic'?'Графічний фрагмент ':'Текстовий блок ')+(i+1)+' [ліворуч '+(z.box.x*100).toFixed(2)+'%, згори '+(z.box.y*100).toFixed(2)+'%, ширина '+(z.box.w*100).toFixed(2)+'%, висота '+(z.box.h*100).toFixed(2)+'%]').join('; ')+'. Межі зон не є підтвердженням змісту.';
+          if(zones.some(z=>z.kind==='graphic'))result.textContent+=' Графічні фрагменти можуть містити підпис або рукописний запис; потрібна візуальна перевірка.';
         }else if(metrics.native_zone_status==='visual_review_required')result.textContent+=' Надійних текстових зон немає: для опрацювання потрібен візуальний огляд. Ця діагностика його не запускає.';
       }catch(error){result.textContent=error.message||'Не вдалося підготувати сторінку.';}
       finally{run.disabled=false;}
