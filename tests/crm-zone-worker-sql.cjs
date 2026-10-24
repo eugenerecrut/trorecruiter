@@ -161,10 +161,24 @@ try{
  await actor(1);const failure=await call('crm_splav_job_status',[cj.id]);
  assert.equal(failure.zone_summary.providers[0].http_status,429);assert.equal(failure.zone_summary.providers[1].diagnosis,'MAX_TOKENS');checks+=2;
  assert(!JSON.stringify(failure).includes('SECRET'));checks++;
+ await owner();await db.exec(file('supabase/migrations/20261024061103_splav_saved_zone_results.sql'));
+ // A manual successful receipt is not linked to coordinator_steps but must survive reopening.
+ await db.query(`insert into crm_private.zone_requests(document_id,source,source_key,request_key,initiated_by,mode,page,box,render_sha256,state,result)
+ select document_id,source,'manual-source','manual-request',$2,'zone',1,$3,$4,'completed',$5 from crm_private.zone_coordinators where id=$1`,[ca.id,id(1),full,hash,{review_only:true,mode:'zone',source:{document_id:id(50),page:1,render_sha256:hash},rows:[{fields:[{key:'vlk_conclusion',raw_text:'сержант поліції',value:'сержант поліції',legibility:'clear'}]}]}]);
+ await actor(1);const restored=await call('crm_splav_job_status',[cj.id]);assert.equal(restored.zone_reports.length,1);checks++;
+ assert.equal(restored.zone_reports[0].source.document_id,id(50));checks++;
+ assert(!JSON.stringify(restored.zone_reports).includes('manual-source'));assert(!JSON.stringify(restored.zone_reports).includes('receipt'));checks+=2;
+ await actor(2);await assert.rejects(call('crm_splav_job_status',[cj.id]),/Human staff/);checks++;
+ await owner();await db.query(`insert into crm_private.zone_requests(document_id,source,source_key,request_key,initiated_by,mode,page,box,render_sha256,state,result)
+ select document_id,source||'{"ai_document_type":"wrong-source"}'::jsonb,'stale-source','stale-request',$2,'zone',1,$3,$4,'completed',$5 from crm_private.zone_coordinators where id=$1`,[ca.id,id(1),full,hash,{review_only:true,source:{document_id:id(50)},raw_text:'MUST_NOT_RETURN'}]);
+ await actor(1);assert(!JSON.stringify(await call('crm_splav_job_status',[cj.id])).includes('MUST_NOT_RETURN'));checks++;
+ await owner();await db.query(`update crm_private.zone_requests set result=result||jsonb_build_object('padding',repeat('x',1800001)) where request_key='manual-request'`);
+ await actor(1);const huge=await call('crm_splav_job_status',[cj.id]);assert.equal(huge.zone_reports_truncated,true);assert.equal(huge.zone_reports.length,0);checks+=2;
+ await owner();await db.query(`update crm_private.zone_requests set result=result-'padding' where request_key='manual-request'`);
+ await actor(1);
  await owner();await db.query(`update public.documents set ai_extracted=ai_extracted||'{"new_revision":true}'::jsonb where id=$1`,[id(50)]);await actor(1);
- assert.equal((await call('crm_splav_job_status',[cj.id])).zone_summary.source_changed,true);checks++;
+ const changed=await call('crm_splav_job_status',[cj.id]);assert.equal(changed.zone_summary.source_changed,true);assert.equal(changed.zone_reports.length,0);checks+=2;
  await owner();await db.exec("set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_job_status',[cj.id]),/permission denied|Human staff/);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
-

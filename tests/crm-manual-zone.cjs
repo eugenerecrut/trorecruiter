@@ -77,3 +77,10 @@ test('only the saved report matching this completed job can be displayed without
  for(const changed of [{state:'running'},{_detailed:false},{zone_summary:{source_changed:true}},{result:{status:'complete',saved_at:'older'}},{document_id:'other-doc'}])assert.equal(read({...job,...changed},saved).length,0);
  assert.equal(read(job,{...saved,status:'complete_with_gaps'}).length,0);
 });
+
+
+test('saved manual receipts reopen in the reader without a new AI call and pass the current semantic guard',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert.match(source,/Array.isArray\(job.zone_reports\)/);assert.match(source,/CRMMilitaryZoneContract.projectField\(f\)/);
+ assert.match(source,/Відновлено збережені читання/);assert.match(source,/f.partial_value/);
+});

@@ -15,7 +15,7 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,geminiThoughts=false,router=false,ledger='accepted',finish='completed'}={}){
+function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,geminiThoughts=false,router=false,cachedResult=null,ledger='accepted',finish='completed'}={}){
  let handler;const calls=[];let savedReceipt=null;
  const context={globalThis:null,TextDecoder,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini'}:{}),...(router?{OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
@@ -39,7 +39,7 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,doc=true,e
     return Response.json({state:'accepted',id:'receipt-id',receipt:'secret-receipt'});
    }
    if(ledger==='error')return Response.json({error:'unavailable'},{status:503});
-   if(ledger==='completed')return Response.json({state:'completed',result:{review_only:true,mode:'zone',rows:[],source:{page:1}}});
+   if(ledger==='completed')return Response.json({state:'completed',result:cachedResult||{review_only:true,mode:'zone',rows:[],source:{page:1}}});
    if(ledger==='failed')return Response.json({state:'failed',result:{error:'Unknown result',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false}});
    return Response.json({state:ledger,...(ledger==='accepted'?{id:'receipt-id',receipt:'secret-receipt'}:{})});
   }
@@ -180,4 +180,34 @@ test('Gemini MAX_TOKENS is rejected even when its partial output happens to be v
  const s=server({provider:false,fallback:true,geminiFailure:'valid-json'});const response=await s.invoke(),result=await response.json();
  assert.equal(response.status,502);assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[1].diagnosis,'MAX_TOKENS');
  assert(!s.calls.some(c=>c.url.includes('openrouter.ai')));
+});
+
+
+test('rank is never accepted as a VLK conclusion while real medical conclusions remain readable',()=>{
+ for(const rank of ['сержант поліції','спеціальне звання сержант поліції','капітан','старший лейтенант']){
+  assert.equal(contract.fieldValid('vlk_conclusion',rank),false);
+  const old={key:'vlk_conclusion',raw_text:rank,value:rank,legibility:'clear'};const original=JSON.stringify(old),field=contract.projectField(old);
+  assert.equal(field.value,null);assert.match(field.reason,/Звання не є/);assert.equal(JSON.stringify(old),original);
+ }
+ assert.equal(contract.fieldValid('vlk_conclusion','Придатний до військової служби'),true);
+ assert.equal(contract.fieldValid('vlk_conclusion','сержант поліції, придатний до служби'),true);
+ assert.match(contract.prompt('zone','Автобіографія друкована'),/special_rank/);
+ assert.match(contract.prompt('zone','Автобіографія друкована'),/service_statement/);
+});
+test('partial source dates retain month/year without inventing a day, including old cached rows',()=>{
+ for(const [raw,value,precision] of [['вересня 2019','2019-09','month'],['травень 2019','2019-05','month'],['2019','2019','year'],['2019-09','2019-09','month']]){
+  const result=contract.projectField({key:'start_date',raw_text:raw,value:'2019-09-01',legibility:'clear'});
+  assert.equal(result.value,null);assert.equal(result.partial_value,value);assert.equal(result.date_precision,precision);assert.equal(result.requires_review,true);
+ }
+ for(const raw of ['01 вересня 2019','2019-2023','травень','2019-13','2019-09-01'])assert.equal(contract.partialDate(raw),null,raw);
+ const full=contract.projectField({key:'start_date',raw_text:'01.09.2019',value:'2019-09-01',legibility:'clear'});assert.equal(full.value,'2019-09-01');assert.equal(full.partial_value,undefined);
+ const unclear=contract.projectField({key:'start_date',raw_text:'вересня 2019',value:'2019-09',legibility:'uncertain'});assert.equal(unclear.partial_value,undefined);
+});
+
+
+test('replayed legacy receipts get semantic review without changing stored facts or calling a provider',async()=>{
+ const cached={contract:'military-zones-1',review_only:true,mode:'zone',source:{page:1},rows:[{fields:[{key:'vlk_conclusion',raw_text:'сержант поліції',value:'сержант поліції',legibility:'clear'},{key:'start_date',raw_text:'вересня 2019',value:null,legibility:'clear'}]}]};
+ const original=JSON.stringify(cached),s=server({ledger:'completed',cachedResult:cached}),result=await (await s.invoke()).json();
+ assert.equal(result.request_replayed,true);assert.equal(result.rows[0].fields[0].value,null);assert.equal(result.rows[0].fields[1].partial_value,'2019-09');
+ assert.equal(JSON.stringify(cached),original);assert(!s.calls.some(c=>c.url.includes('api.openai.com')||c.url.includes('openrouter.ai')));
 });
