@@ -30,9 +30,15 @@ function transition(task,result,remaining){
   // Never silently truncate supplied content or discard a zone based on its label.
   if(zones.length>6){const error=Error('Огляд містить понад 6 різних зон; потрібне уточнення поділу.');error.code='ZONE_OVERVIEW_TOO_MANY_ZONES';throw error;}
   tasks.unshift(...zones.map(z=>({mode:'zone',page:task.page,box:copy(z.box)})));
- }else if(!task.retry&&(Array.isArray(result.rows)?result.rows:[]).some(r=>(Array.isArray(r?.fields)?r.fields:[]).some(f=>f?.value===null||f?.legibility!=='clear'))){
-  const b=task.box,x=Math.max(0,b.x-b.w*.15),y=Math.max(0,b.y-b.h*.15);
-  tasks.unshift({...task,retry:true,box:{x,y,w:Math.min(1-x,b.w*1.3),h:Math.min(1-y,b.h*1.3)}});
+ }else{
+  const rows=Array.isArray(result.rows)?result.rows:[],fields=rows.flatMap(r=>Array.isArray(r?.fields)?r.fields:[]);
+  const uncertain=!fields.length||rows.some(r=>!Array.isArray(r?.fields)||!r.fields.length)||fields.some(f=>f?.value==null||typeof f.value==='string'&&!f.value.trim()||f?.legibility!=='clear'||Array.isArray(f.alternatives)&&f.alternatives.length>0);
+  if(uncertain){
+   const b=task.box,x=Math.max(0,b.x-b.w*.15),y=Math.max(0,b.y-b.h*.15),expanded={x,y,w:Math.min(1-x,b.w*1.3),h:Math.min(1-y,b.h*1.3)};
+   // A second reading must offer genuinely larger context; never reread the same full page.
+   if(!task.retry&&['x','y','w','h'].some(k=>Math.abs(expanded[k]-b[k])>1e-9))tasks.unshift({...task,retry:true,box:expanded});
+   else{const error=Error(fields.length?'Поля залишилися непевними; потрібна перевірка.':'У фрагменті немає прочитаних полів; потрібна перевірка.');error.code=fields.length?'ZONE_FIELDS_UNCERTAIN':'ZONE_NO_READABLE_FIELDS';throw error;}
+  }
  }
  return tasks;
 }

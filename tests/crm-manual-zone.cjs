@@ -123,3 +123,9 @@ test('native-only background control never claims content recognition or suggest
  const visual=describe({...job,zone_summary:{code:'NATIVE_VISUAL_REVIEW_REQUIRED'}});assert.match(JSON.stringify(visual),/Сторінку підготовлено/);assert.match(JSON.stringify(visual),/AI не запускався/);
  const legacy=describe({...job,zone_summary:{code:'ZONE_PREP_FAILED'}});assert.match(JSON.stringify(legacy),/причина не деталізована/);assert.doesNotMatch(JSON.stringify(legacy),/Сторінку підготовлено/);
 });
+test('empty and unresolved zone readings explain gaps instead of claiming a successful read',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ assert.match(JSON.stringify(describe({state:'needs_review',zone_summary:{code:'ZONE_NO_READABLE_FIELDS'}})),/не вважається успішним читанням/);
+ assert.match(JSON.stringify(describe({state:'needs_review',zone_summary:{code:'ZONE_FIELDS_UNCERTAIN'}})),/додатковий автоматичний повтор не запускається/);
+});
