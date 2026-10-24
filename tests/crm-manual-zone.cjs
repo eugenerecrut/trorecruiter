@@ -120,4 +120,6 @@ test('native-only background control never claims content recognition or suggest
  const job={state:'needs_review',result:{native_only:true},zone_reports:[]};
  assert.equal(describe(job).title,'Контроль зупинено без AI');
  const saved=describe({...job,zone_reports:[{mode:'overview',ai_requests:0,source:{origin:'server_text_layer'}}]});assert.equal(saved.title,'Локальний огляд збережено');assert.match(JSON.stringify(saved),/зміст документа цим контролем не підтверджується/);
+ const visual=describe({...job,zone_summary:{code:'NATIVE_VISUAL_REVIEW_REQUIRED'}});assert.match(JSON.stringify(visual),/Сторінку підготовлено/);assert.match(JSON.stringify(visual),/AI не запускався/);
+ const legacy=describe({...job,zone_summary:{code:'ZONE_PREP_FAILED'}});assert.match(JSON.stringify(legacy),/причина не деталізована/);assert.doesNotMatch(JSON.stringify(legacy),/Сторінку підготовлено/);
 });

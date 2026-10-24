@@ -60,7 +60,7 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
          file_sha256:rendered.metrics.file_sha256,provider:'PDFium · без AI',model:'pdfium-3.0.0',origin:'server_text_layer'},created_at:new Date().toISOString()};
        const finished=await rpc('finish',{request_id:receipt.id,receipt:receipt.receipt,result:native});if(finished?.state!=='completed')throw Error('Native overview not persisted');return native;
       }
-      if(context.native_only===true){structuralFailure=true;throw Error('Native canary requires visual review; AI is disabled');}
+      if(context.native_only===true){structuralFailure=true;const error=Error('Native canary requires visual review; AI is disabled');error.code='NATIVE_VISUAL_REVIEW_REQUIRED';throw error;}
       dispatched=true;
       const result=await fetchImpl(url+'/functions/v1/ai-military-zone',{method:'POST',headers:{Authorization:authorization,apikey:key,'Content-Type':'application/json'},
        signal:AbortSignal.timeout(120000),body:JSON.stringify({document_id:context.document.id,coordinator_id:context.id,coordinator_version:context.version,

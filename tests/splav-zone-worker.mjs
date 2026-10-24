@@ -84,7 +84,7 @@ test('native overview never replaces an existing cached or uncertain receipt',as
 });
 
 test('persisted native-only control blocks scans and zone tasks without AI or final document writes',async()=>{
- for(const native of [false,true]){const f=await fixture({nativeOnly:true,native,budget:1});assert.equal((await f.invoke({native_only:false})).status,200);assert.deepEqual(f.ai,[]);assert.equal(f.rpc.at(-1),'hold');assert(!f.rpc.includes('final'));assert(!f.rpc.includes('yield'));}
+ for(const native of [false,true]){const f=await fixture({nativeOnly:true,native,budget:1});assert.equal((await f.invoke({native_only:false})).status,200);assert.deepEqual(f.ai,[]);assert.equal(f.rpc.at(-1),'hold');assert(!f.rpc.includes('final'));assert(!f.rpc.includes('yield'));if(!native)assert.equal(f.context.snapshot.errors[0].code,'NATIVE_VISUAL_REVIEW_REQUIRED');}
  const f=await fixture({nativeOnly:true});f.context.snapshot.tasks=[{mode:'zone',page:1,box:{x:.1,y:.1,w:.2,h:.2}}];await f.invoke();assert.deepEqual(f.ai,[]);assert.deepEqual(f.calls,[]);assert.equal(f.rpc.at(-1),'hold');
 });
 test('native-only restriction survives checkpoint loss and recovery without a paid zone',async()=>{
