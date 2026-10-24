@@ -207,6 +207,18 @@ try{
  assert.deepEqual((await db.query('select ai_extracted,verification_status from public.documents where id=$1',[id(60)])).rows[0],{ai_extracted:{manual:'preserve'},verification_status:'Підтверджено'});checks++;
  const nativeSettings=(await db.query('select zones_enabled,zone_canary_coordinator from crm_private.splav_settings')).rows[0];assert.equal(nativeSettings.zones_enabled,false);assert.equal(nativeSettings.zone_canary_coordinator,null);checks+=2;
  await actor(1);await assert.rejects(call('crm_splav_zone_native_canary_enqueue',[nc.id,1]),/already consumed/);checks++;
+ // Invalid/oversized saved overviews are retained and completed with gaps, never silently truncated.
+ await owner();await db.exec('update crm_private.splav_settings set zones_enabled=true');
+ for(const n of [61,62]){
+  await fresh(n);const ctx=await step('load'),p=pilot.restore(ctx.snapshot,{source:ctx.source});
+  await p.run({checkpoint:async snapshot=>{ctx.version=await step('save',{version:ctx.version,snapshot});},read:async()=>{
+   const receipt=await step('begin',{version:ctx.version,mode:'overview',page:1,box:full,render_sha256:hash});
+   const result={review_only:true,mode:'overview',zones:n===61?Array.from({length:7},(_,i)=>({box:{x:0,y:i/10,w:.1,h:.05}})):[{box:{x:0,y:0,w:2,h:1}}],source:{document_id:id(n),page:1,box:full,render_sha256:hash}};
+   await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result});return result;
+  }});
+  assert.equal(p.snapshot().errors[0].code,n===61?'ZONE_OVERVIEW_TOO_MANY_ZONES':'ZONE_OVERVIEW_INVALID');checks++;
+  const finished=await step('final');assert.equal(finished.status,'complete_with_gaps');checks++;
+ }
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
