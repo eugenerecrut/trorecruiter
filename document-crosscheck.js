@@ -23,6 +23,17 @@ function birthplaceReview(sources,current){
  return lists.every(tokens=>{const remaining=[...fullest];return tokens.length>=2&&tokens.every(t=>{const k=remaining.indexOf(t);if(k<0)return false;remaining.splice(k,1);return true;});});
 }
 function facts(d){const e=obj(d.ai_extracted),p=obj(e.personal);return Object.fromEntries(keys.map(k=>[k,e[k]??p[k]]));}
+function parentNameReview(sources,current){
+ const values=[...sources.map(s=>s.value),current].filter(v=>typeof v==='string'&&v.trim());
+ if(new Set(values.map(norm)).size<2)return false;
+ const parsed=values.map(value=>{
+  const match=norm(value).match(/^([а-яіїєґ][а-яіїєґ'-]+)(?:\s+\(([а-яіїєґ][а-яіїєґ'-]+)\))?\s+([а-яіїєґ][а-яіїєґ'-]+)(?:\s+([а-яіїєґ][а-яіїєґ'-]+))?$/u);
+  return match&&{surname:match[1],alias:match[2],given:match[3],patronymic:match[4]};
+ });
+ if(parsed.some(v=>!v))return false;
+ // Same role and spelling only suggest review; never infer a surname change or add a relative.
+ return ['surname','given','patronymic','alias'].every(key=>new Set(parsed.map(v=>v[key]).filter(Boolean)).size<=1);
+}
 function eligibleDocuments(documents,candidate){
  const latest=new Map();
  for(const d of documents){if(d.deleted_at||d.candidate_id!==candidate.id||!d.storage_path)continue;
@@ -61,7 +72,7 @@ function compare(documents,candidate){
 function structured(documents,candidate){
  const groups=new Map(),current=candidate.profile_data||{};
  const role=v=>({mother:'мати',father:'батько',wife:'дружина',husband:'чоловік',son:'син',daughter:'донька'})[norm(v)]||norm(v);
- function add(key,subject,value,d,row){const id=key+'|'+subject;const entry=groups.get(id)||{key,subject,current:null,sources:[],learning_eligible:false};entry.sources.push({document_id:d.id,document_type:d.document_type,file_name:d.file_name,value,verified:d.verification_status==='Підтверджено',fingerprint:d.file_hash||d.storage_path,page:row.page||row.source_pages||null,raw_text:row.raw_text||null});groups.set(id,entry);}
+ function add(key,subject,value,d,row){const id=key+'|'+subject;const entry=groups.get(id)||{key,subject,current:null,sources:[],learning_eligible:false};entry.sources.push({document_id:d.id,document_type:d.document_type,file_name:d.file_name,value,...(key==='relatives'?{birth_date:row.birth_date??null}:{}),verified:d.verification_status==='Підтверджено',fingerprint:d.file_hash||d.storage_path,page:row.page||row.source_pages||null,raw_text:row.raw_text||null});groups.set(id,entry);}
  for(const d of documents){
   const e=obj(d.ai_extracted);
   for(const r of (Array.isArray(e.relatives)?e.relatives:Array.isArray(e.family?.relatives)?e.family.relatives:[])){const rel=role(r.relationship||r.relation),name=r.full_name||r.name;if(!['мати','батько'].includes(rel)||!name||r.requires_review)continue;add('relatives',rel,String(name),d,r);}
@@ -73,7 +84,20 @@ function structured(documents,candidate){
    const value=source==='education_records'?JSON.stringify([norm(r.institution),norm(r.degree),norm(r.specialty),String(r.graduation_year||'')]):JSON.stringify([r.start_date,r.end_date,norm(r.position),norm(r.unit||r.employer),norm(r.order_number)]);add(key,anchor,value,d,r);
   }
  }
- return [...groups.values()].map(entry=>{const unique=new Map();for(const s of entry.sources)unique.set((s.fingerprint||s.document_id)+'|'+norm(s.value),s);entry.sources=[...unique.values()];if(entry.key==='relatives'){const stored=(current.relatives||[]).find(r=>role(r.relationship||r.relation)===entry.subject);entry.current=stored?.full_name||null;}const values=new Set(entry.sources.map(s=>norm(s.value)));entry.status=values.size>1||entry.current&&entry.sources.some(s=>norm(s.value)!==norm(entry.current))?'conflict':new Set(entry.sources.map(s=>s.fingerprint||s.document_id)).size>1?'corroborated':'single_source';return entry;});
+ return [...groups.values()].map(entry=>{
+  const unique=new Map();for(const s of entry.sources)unique.set((s.fingerprint||s.document_id)+'|'+norm(s.value)+(entry.key==='relatives'?'|'+norm(s.birth_date):''),s);entry.sources=[...unique.values()];
+  const stored=entry.key==='relatives'&&Array.isArray(current.relatives)?current.relatives.filter(r=>role(r.relationship||r.relation)===entry.subject):[];
+  if(entry.key==='relatives'){entry.current=stored[0]?.full_name||stored[0]?.name||null;entry.current_birth_date=stored[0]?.birth_date??null;}
+  const values=new Set(entry.sources.map(s=>norm(s.value)));
+  entry.status=values.size>1||entry.current&&entry.sources.some(s=>norm(s.value)!==norm(entry.current))?'conflict':new Set(entry.sources.map(s=>s.fingerprint||s.document_id)).size>1?'corroborated':'single_source';
+  if(entry.key==='relatives'){
+   const dates=[...entry.sources.map(s=>s.birth_date),...stored.map(r=>r.birth_date)].filter(v=>v!=null&&String(v).trim());
+   if(stored.length>1){entry.status='conflict';entry.reason='У картці кілька записів цієї спорідненості. Потрібно перевірити, якому родичу належать джерела.';}
+   else if(new Set(dates.map(norm)).size>1){entry.status='conflict';entry.reason='Дати народження цього родича відрізняються. ПІБ не доповнюється автоматично.';}
+   else if(parentNameReview(entry.sources,entry.current)){entry.status='needs_review';entry.reason='ПІБ батька або матері відрізняється повнотою чи прізвищем у дужках. Це ймовірний зв’язок, а не підтверджена тотожність; ручне ПІБ не змінено.';}
+  }
+  return entry;
+ });
 }
 // A partial date is an interval, never a guessed first day.
 function dateRange(value){

@@ -173,3 +173,11 @@ test('crosscheck displays the stored card value safely without fabricating unloa
  assert.equal(render({key:'education_records',current:null}),'');
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/cardValueHTML\(e\)/);
 });
+
+test('parent dates are shown beside the card name with HTML escaping',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const render=context.window.CRMMilitaryZoneReview.cardValueHTML;
+ assert.match(render({key:'relatives',current:'Тестенко Олена Іванівна',current_birth_date:'1979-06-28'}),/дата народження: 1979-06-28/);
+ assert.match(render({key:'relatives',current:'Тестенко Олена',current_birth_date:'<script>'}),/&lt;script&gt;/);
+ assert.doesNotMatch(render({key:'birth_place',current:'Київ',current_birth_date:'1979-06-28'}),/дата народження/);
+});
