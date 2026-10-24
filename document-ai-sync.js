@@ -47,6 +47,15 @@
       delete r.relation;delete r.name;
       if(raw.requires_review||!r.relationship||!valid('full_name',String(r.full_name||'').replace(/[()]/g,' '))){add('profile','relatives',raw,'conflict','Некоректні ПІБ або спорідненість');continue;}
       let i=merged.findIndex(x=>relativeKey(x)===relativeKey(r));
+      if(i<0&&['мати','дружина'].includes(r.relationship)){
+        const names=root.CRMParentNames||(typeof module!=='undefined'&&module.exports?require('./parent-names.js'):null);
+        const matches=merged.map((x,index)=>({x,index})).filter(({x})=>relation(x.relationship||x.relation)===r.relationship&&names?.maidenNameMatch?.([x.full_name||x.name,r.full_name]));
+        if(matches.length>1){add('profile','relatives',r,'conflict','Кілька записів родича відповідають ПІБ; дівоче прізвище не усуває неоднозначність');continue;}
+        if(matches.length===1){const match=matches[0];
+          if(!empty(match.x.birth_date)&&!empty(r.birth_date)&&!equal(match.x.birth_date,r.birth_date)){add('profile','relatives',r,'conflict','Дати народження родича відрізняються');continue;}
+          i=match.index;add('profile','relatives.'+i+'.full_name',r.full_name,'leave','Дівоче прізвище в дужках; повне ПІБ збігається, збережене ПІБ залишено',match.x.full_name||match.x.name);
+        }
+      }
       if(i<0){const matches=merged.map((x,index)=>({x,index})).filter(({x})=>relation(x.relationship||x.relation)===r.relationship&&norm(r.full_name).startsWith(norm(x.full_name||x.name)+' '));
         if(matches.length===1){const {x,index}=matches[0],manual=x.confirmed_by_user||x.manually_confirmed||x.field_confirmations?.full_name||x.field_sources?.full_name===null;
           const dates=x.birth_date&&r.birth_date&&String(x.birth_date)!==String(r.birth_date),sameSource=x.source_document_id===documentId||x.field_sources?.full_name===documentId;
@@ -59,7 +68,8 @@
       if(i<0&&['мати','батько','дружина','чоловік'].includes(r.relationship)&&merged.some(x=>relation(x.relationship||x.relation)===r.relationship)){
         add('profile','relatives',raw,'conflict','Інші ПІБ уже записаного родича');continue;
       }
-      if(i<0){i=merged.length;merged.push({relationship:r.relationship,full_name:r.full_name,source_document_id:documentId,field_sources:{relationship:documentId,full_name:documentId}});}
+      const added=i<0;
+      if(added){i=merged.length;merged.push({relationship:r.relationship,full_name:r.full_name,source_document_id:documentId,field_sources:{relationship:documentId,full_name:documentId}});}
       const dest=merged[i];
       for(const [key,v] of Object.entries(r)){
         if(['source_document_id','relationship','full_name','requires_review'].includes(key)||empty(v))continue;
@@ -69,7 +79,7 @@
         if(empty(dest[key])){add('profile',field,v,'fill','',dest[key]);dest[key]=v;dest.field_sources={...object(dest.field_sources),[key]:documentId};}
         else {const same=key==='phone'&&root.CRMPhone?equal(root.CRMPhone.normalize(dest[key]),root.CRMPhone.normalize(v)):equal(dest[key],v);add('profile',field,v,same?'leave':'conflict',same?'':'Збережене значення родича має пріоритет',dest[key]);}
       }
-      if(!Array.isArray(current)||!current.some(x=>relativeKey(x)===relativeKey(r)))add('profile','relatives.'+i,r,'fill','Новий родич',null);
+      if(added)add('profile','relatives.'+i,r,'fill','Новий родич',null);
     }
     return merged;
   }

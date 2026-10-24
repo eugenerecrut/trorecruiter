@@ -108,3 +108,18 @@ test('incomplete parent names suggest review without overwriting manual values o
  const sameFile=[parent('a','Тестенко Світлана Олексіївна'),parent('b','Тестенко Світлана Олексіївна')].map(v=>({...v,file_hash:'same'}));
  assert.equal(x.compare(sameFile,c).find(e=>e.key==='relatives').status,'single_source');
 });
+
+test('maiden surname presence is contextual information when the full maternal name agrees',()=>{
+ const name='Тестенко (Коваленко) Світлана Олексіївна',plain='Тестенко Світлана Олексіївна';
+ const doc=(id,full_name,date='1979-06-28')=>d(id,null,{ai_extracted:{full_name:c.full_name,relatives:[{relationship:'mother',full_name,birth_date:date}]}});
+ const candidate={...c,profile_data:{relatives:[{relationship:'мати',full_name:name,birth_date:'1979-06-28',confirmed_by_user:true}]}};
+ const docs=[doc('a',name),doc('b',plain)],before=JSON.stringify([docs,candidate]);
+ const entry=x.compare(docs,candidate).find(e=>e.key==='relatives');
+ assert.equal(entry.status,'corroborated');assert.match(entry.reason,/дівоче/);assert.equal(entry.learning_eligible,false);assert.equal(JSON.stringify([docs,candidate]),before);
+ assert.equal(x.compare([doc('a',plain)],candidate).find(e=>e.key==='relatives').status,'single_source');
+ assert.equal(x.compare(docs.map(v=>({...v,file_hash:'same'})),candidate).find(e=>e.key==='relatives').status,'single_source');
+ assert.equal(x.compare([doc('a',plain,'1980-01-01')],candidate).find(e=>e.key==='relatives').status,'conflict');
+ for(const other of ['Коваленко Світлана Олексіївна','Тестенко (Іваненко) Світлана Олексіївна','Тестенко Олена Олексіївна','Тестенко Світлана Іванівна'])assert.equal(x.maidenNameMatch([name,other]),false);
+ assert.equal(x.maidenNameMatch([name,'Тестенко(Коваленко) Світлана Олексіївна']),true);
+ assert.equal(x.maidenNameMatch([name,'Тестенко Світлана']),false);
+});

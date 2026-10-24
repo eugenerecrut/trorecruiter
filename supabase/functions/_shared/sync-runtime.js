@@ -8,6 +8,7 @@ import '../../../residence-document.js';
 import '../../../vlk-document.js';
 import './document-data-policy.js';
 import './military-facts.js';
+import '../../../parent-names.js';
 import '../../../document-crosscheck.js';
 import '../../../document-ai-sync.js';
 import { reviewID } from './id-validation.js';

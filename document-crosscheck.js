@@ -23,13 +23,18 @@ function birthplaceReview(sources,current){
  return lists.every(tokens=>{const remaining=[...fullest];return tokens.length>=2&&tokens.every(t=>{const k=remaining.indexOf(t);if(k<0)return false;remaining.splice(k,1);return true;});});
 }
 function facts(d){const e=obj(d.ai_extracted),p=obj(e.personal);return Object.fromEntries(keys.map(k=>[k,e[k]??p[k]]));}
+function parentNameParts(value){
+ const names=root.CRMParentNames||(typeof module!=='undefined'&&module.exports?require('./parent-names.js'):null);
+ return names?.parts(value)||null;
+}
+function maidenNameMatch(values){
+ const names=root.CRMParentNames||(typeof module!=='undefined'&&module.exports?require('./parent-names.js'):null);
+ return names?.maidenNameMatch(values)||false;
+}
 function parentNameReview(sources,current){
  const values=[...sources.map(s=>s.value),current].filter(v=>typeof v==='string'&&v.trim());
  if(new Set(values.map(norm)).size<2)return false;
- const parsed=values.map(value=>{
-  const match=norm(value).match(/^([а-яіїєґ][а-яіїєґ'-]+)(?:\s+\(([а-яіїєґ][а-яіїєґ'-]+)\))?\s+([а-яіїєґ][а-яіїєґ'-]+)(?:\s+([а-яіїєґ][а-яіїєґ'-]+))?$/u);
-  return match&&{surname:match[1],alias:match[2],given:match[3],patronymic:match[4]};
- });
+ const parsed=values.map(parentNameParts);
  if(parsed.some(v=>!v))return false;
  // Same role and spelling only suggest review; never infer a surname change or add a relative.
  return ['surname','given','patronymic','alias'].every(key=>new Set(parsed.map(v=>v[key]).filter(Boolean)).size<=1);
@@ -94,6 +99,7 @@ function structured(documents,candidate){
    const dates=[...entry.sources.map(s=>s.birth_date),...stored.map(r=>r.birth_date)].filter(v=>v!=null&&String(v).trim());
    if(stored.length>1){entry.status='conflict';entry.reason='У картці кілька записів цієї спорідненості. Потрібно перевірити, якому родичу належать джерела.';}
    else if(new Set(dates.map(norm)).size>1){entry.status='conflict';entry.reason='Дати народження цього родича відрізняються. ПІБ не доповнюється автоматично.';}
+   else if(entry.subject==='мати'&&maidenNameMatch([...entry.sources.map(s=>s.value),entry.current])){entry.status=new Set(entry.sources.map(s=>s.fingerprint||s.document_id)).size>1?'corroborated':'single_source';entry.reason='Прізвище в дужках — дівоче. Повне ПІБ збігається; наявність або відсутність дівочого прізвища не є розбіжністю. Картка не змінена.';}
    else if(parentNameReview(entry.sources,entry.current)){entry.status='needs_review';entry.reason='ПІБ батька або матері відрізняється повнотою чи прізвищем у дужках. Це ймовірний зв’язок, а не підтверджена тотожність; ручне ПІБ не змінено.';}
    else if(entry.status==='conflict')entry.reason='ПІБ цього родича відрізняються або записані неоднозначно. Звірте основне прізвище, ім’я та по батькові в оригіналах; зміна прізвища не вгадується.';
   }
@@ -172,5 +178,5 @@ function guard(report,evidence){report.crosscheck=evidence;const conflicts=evide
  for(const row of report.rows){if(row.action!=='fill'||!conflicts.some(e=>e.key===row.key)||!['candidate','profile'].includes(row.target))continue;row.action='conflict';row.reason='Розбіжність між документами кандидата';}
  report.selections=report.selections.filter(s=>!(['candidate','profile'].includes(s.target)&&conflicts.some(e=>e.key===s.key)));return report;
 }
-const api={compare,load,guard,dateRange,periodLinks,compareZones};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={compare,load,guard,dateRange,periodLinks,compareZones,maidenNameMatch};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
