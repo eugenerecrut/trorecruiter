@@ -12,9 +12,20 @@ export function nativePageZones(page, {originalWidth: width, originalHeight: hei
    const values=Array.from(module.HEAPF32.subarray(pointer/4,pointer/4+4));
    if(values.some((v,i)=>!Number.isFinite(v)||Math.abs(v-[0,0,width,height][i])>.05))return null;
   }
-  const lines=[];let characters=0;
+  const lines=[],graphics=[];let characters=0;
   for(let i=0;i<count;i++){
-   const object=page.getObject(i);if(object.type!=='text')return null;
+   const object=page.getObject(i);
+   // Keep every vector object visible for review instead of silently discarding
+   // underlines, signatures or handwritten vector strokes as decoration.
+   if(object.type==='path'){
+    if(!module._FPDFPageObj_GetBounds(object.objectIdx,pointer,pointer+4,pointer+8,pointer+12))return null;
+    const [left,bottom,right,top]=Array.from(module.HEAPF32.subarray(pointer/4,pointer/4+4));
+    if(![left,bottom,right,top].every(Number.isFinite)||right<left||top<bottom||left<0||bottom<0||right>width||top>height)return null;
+    const padding=2;
+    graphics.push({left:Math.max(0,left-padding),right:Math.min(width,right+padding),top:Math.max(0,height-top-padding),bottom:Math.min(height,height-bottom+padding)});
+    continue;
+   }
+   if(object.type!=='text')return null;
    const text=object.getText().trim();if(!text)continue;characters+=text.length;
    if(characters>120000||text.includes('\uFFFD')||!module._FPDFPageObj_GetBounds(object.objectIdx,pointer,pointer+4,pointer+8,pointer+12))return null;
    const [left,bottom,right,top]=Array.from(module.HEAPF32.subarray(pointer/4,pointer/4+4));
@@ -28,7 +39,9 @@ export function nativePageZones(page, {originalWidth: width, originalHeight: hei
   lines.sort((a,b)=>a.top-b.top||a.left-b.left);const blocks=[];
   for(const line of lines){const last=blocks.at(-1);if(last&&line.top-last.bottom<Math.max(last.h,line.h)*1.2){last.left=Math.min(last.left,line.left);last.right=Math.max(last.right,line.right);last.bottom=Math.max(last.bottom,line.bottom);last.h=Math.max(last.h,line.h);}else blocks.push({...line});}
   // The existing coordinator accepts at most six zones. Never silently drop content.
-  if(blocks.length>6)return null;
-  return blocks.map((r,i)=>({label:'Текстовий блок '+(i+1),kind:'text',reason:'Межі з текстового шару PDF; зміст не підтверджений.',box:{x:r.left/width,y:r.top/height,w:(r.right-r.left)/width,h:(r.bottom-r.top)/height}}));
+  if(blocks.length+graphics.length>6)return null;
+  const zone=(r,label,reason,kind='text')=>({label,kind,reason,box:{x:r.left/width,y:r.top/height,w:(r.right-r.left)/width,h:(r.bottom-r.top)/height}});
+  return [...blocks.map((r,i)=>zone(r,'Текстовий блок '+(i+1),'Межі з текстового шару PDF; зміст не підтверджений.')),
+   ...graphics.map((r,i)=>zone(r,'Графічний фрагмент '+(i+1),'Контур PDF: може містити лінію, підпис або рукописний запис. Потрібна візуальна перевірка.','other'))];
  }catch{return null;}finally{if(pointer)module.wasmExports.free(pointer);}
 }

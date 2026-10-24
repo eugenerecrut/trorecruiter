@@ -53,8 +53,9 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
        if(receipt.state==='completed'&&receipt.result?.review_only)return receipt.result;
        if(receipt.state!=='accepted'||!receipt.id||!receipt.receipt){dispatched=true;throw Error('Native overview receipt unavailable');}
        dispatched=true;
-       const native={contract:'pdf-native-overview-1',review_only:true,requires_review:true,mode:'overview',page_type:'native_text',
-        zones:rendered.native_zones,quality_issues:[],scope_notice:'Локальні межі тексту; зміст не підтверджений.',ai_requests:0,
+       const hasGraphics=rendered.native_zones.some(zone=>zone.kind==='other');
+       const native={contract:'pdf-native-overview-1',review_only:true,requires_review:true,mode:'overview',page_type:hasGraphics?'native_text_with_graphics':'native_text',
+        zones:rendered.native_zones,quality_issues:hasGraphics?['Графічні фрагменти збережено окремо; потрібна візуальна перевірка.']:[],scope_notice:'Локальні межі тексту та контурів; зміст не підтверджений.',ai_requests:0,
         source:{document_id:context.document.id,page:task.page,box:rendered.metrics.box,render_sha256:rendered.metrics.render_sha256,
          file_sha256:rendered.metrics.file_sha256,provider:'PDFium · без AI',model:'pdfium-3.0.0',origin:'server_text_layer'},created_at:new Date().toISOString()};
        const finished=await rpc('finish',{request_id:receipt.id,receipt:receipt.receipt,result:native});if(finished?.state!=='completed')throw Error('Native overview not persisted');return native;
