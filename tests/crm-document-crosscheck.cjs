@@ -123,3 +123,14 @@ test('maiden surname presence is contextual information when the full maternal n
  assert.equal(x.maidenNameMatch([name,'Тестенко(Коваленко) Світлана Олексіївна']),true);
  assert.equal(x.maidenNameMatch([name,'Тестенко Світлана']),false);
 });
+
+test('education and service presentation preserves source spelling without changing comparison values',()=>{
+ const education={institution:'Дніпровський Державний Університет',degree:'Бакалавр',specialty:'Право',graduation_year:2023,diploma_series:'КВ',diploma_number:'123',display_fields:{institution:'Підміна'}};
+ const service={start_date:'2020',end_date:'2021-05',position:'Командир екіпажу',unit:'ВЧ А0998',order_number:'29-РС'};
+ const docs=[d('a',null,{ai_extracted:{full_name:c.full_name,education_records:[education],military_service_records:[service]}})],before=JSON.stringify(docs);
+ const evidence=x.compare(docs,c),edu=evidence.find(e=>e.key==='education_records'),work=evidence.find(e=>e.key==='work_records');
+ assert.equal(edu.sources[0].display_fields.institution,education.institution);assert.equal(edu.sources[0].display_fields.diploma_number,'123');
+ assert.equal(edu.sources[0].value,JSON.stringify(['дніпровський державний університет','бакалавр','право','2023']));
+ assert.equal(edu.status,'single_source');assert.equal(work.status,'single_source');assert.equal(work.sources[0].display_fields.start_date,'2020');assert.equal(work.sources[0].display_fields.unit,'ВЧ А0998');
+ assert.equal(JSON.stringify(docs),before);assert.equal(edu.learning_eligible,false);
+});
