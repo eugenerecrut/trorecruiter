@@ -24,7 +24,11 @@ function errorValue(error,task){return {page:task.page,mode:task.mode,error:Stri
 function transition(task,result,remaining){
  const tasks=copy(remaining);
  if(task.mode==='overview'){
-  const zones=(Array.isArray(result.zones)?result.zones:[]).filter(z=>validBox(z?.box)&&!/empty|blank|порожн/iu.test([z.label,z.reason].join(' '))).slice(0,6);
+  const invalid=()=>{const error=Error('Некоректні межі зон огляду; потрібна перевірка.');error.code='ZONE_OVERVIEW_INVALID';return error;};
+  if(!Array.isArray(result.zones)||result.zones.some(z=>!validBox(z?.box)))throw invalid();
+  const seen=new Set(),zones=result.zones.filter(z=>{const key=JSON.stringify(['x','y','w','h'].map(k=>z.box[k]));if(seen.has(key))return false;seen.add(key);return true;});
+  // Never silently truncate supplied content or discard a zone based on its label.
+  if(zones.length>6){const error=Error('Огляд містить понад 6 різних зон; потрібне уточнення поділу.');error.code='ZONE_OVERVIEW_TOO_MANY_ZONES';throw error;}
   tasks.unshift(...zones.map(z=>({mode:'zone',page:task.page,box:copy(z.box)})));
  }else if(!task.retry&&(Array.isArray(result.rows)?result.rows:[]).some(r=>(Array.isArray(r?.fields)?r.fields:[]).some(f=>f?.value===null||f?.legibility!=='clear'))){
   const b=task.box,x=Math.max(0,b.x-b.w*.15),y=Math.max(0,b.y-b.h*.15);
@@ -92,7 +96,10 @@ function coordinator(initial){
      if(failure){
       if(!fromRecovery&&failure?.safe_to_retry===true&&!task.transport_retry)next.tasks.unshift({...task,transport_retry:true});
       else next.errors.push(errorValue(failure,task));
-     }else next.tasks=transition(task,result,next.tasks);
+     }else{
+      try{next.tasks=transition(task,result,next.tasks);}
+      catch(error){next.errors.push(errorValue(error,task));}
+     }
      await commit(next,'after_step',task);
      if(failure)show?.({error:failure?.message||'Крок не завершено',page:task.page,pending:state.tasks.length,calls,limit,recovered});
     }

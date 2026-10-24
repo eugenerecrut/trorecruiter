@@ -1,6 +1,19 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),pilot=require('../military-autopilot.js');
 const source={document_id:'synthetic-document',file_sha256:'a'.repeat(64),revision:'synthetic-revision'};
 const read=async task=>task.mode==='overview'?{zones:[{label:'Запис',box:{x:.1,y:.1,w:.5,h:.2}}]}:{rows:[{fields:[{value:'synthetic',legibility:'clear'}]}]};
+test('all distinct valid text and graphic zones survive labels; duplicate geometry is read once',async()=>{
+ const state=pilot.create(1,{source}),calls=[],b={x:.1,y:.1,w:.2,h:.2};
+ await state.run({read:async task=>{calls.push(task);return task.mode==='overview'?{zones:[{label:'Не порожній запис',box:b},{label:'Same bounds graphic',kind:'other',box:{h:.2,w:.2,y:.1,x:.1}},{kind:'other',box:{x:.5,y:.5,w:.2,h:.2}}]}:{rows:[{fields:[{value:'ok',legibility:'clear'}]}]};}});
+ assert.equal(calls.length,3);assert.equal(state.errors.length,0);assert.equal(state.tasks.length,0);
+});
+test('oversized or invalid overview is explicit and checkpointed without silently losing zones or retrying AI',async()=>{
+ for(const [result,code] of [[{zones:Array.from({length:7},(_,i)=>({box:{x:0,y:i/10,w:.1,h:.05}}))},'ZONE_OVERVIEW_TOO_MANY_ZONES'],[{zones:[{box:{x:0,y:0,w:2,h:1}}]},'ZONE_OVERVIEW_INVALID'],[{},'ZONE_OVERVIEW_INVALID']]){
+  const state=pilot.create(1,{source});let calls=0;
+  await state.run({read:async()=>{calls++;return result;}});
+  assert.equal(calls,1);assert.equal(state.snapshot().errors[0].code,code);assert.equal(state.tasks.length,0);
+  const resumed=pilot.restore(state.snapshot(),{source});await resumed.run({read:async()=>{calls++;return result;}});assert.equal(calls,1);assert.equal(resumed.errors[0].code,code);
+ }
+});
 test('cold restoration continues exactly the same planner and preserves total budget',async()=>{
  const whole=pilot.create(3,{source}),full=[];await whole.run({read:async t=>{full.push(t);return read(t);}});
  const first=pilot.create(3,{source}),split=[],saved=[];
