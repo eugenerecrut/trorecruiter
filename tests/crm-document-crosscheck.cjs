@@ -56,3 +56,33 @@ test('uncertain birthplace reading keeps the quality warning ahead of formatting
  const before=JSON.stringify([doc,report]),result=x.compareZones([doc],c,{context,binding,reports:[report]})[0];
  assert.equal(result.status,'needs_review');assert.match(result.reason,/непевне/);assert.equal(JSON.stringify([doc,report]),before);
 });
+
+test('explicit birthplace labels and administrative case endings allow review without inventing identity',()=>{
+ const inputs=[
+  'УКРАЇНА, ДНІПРОПЕТРОВСЬКА область, МИКОЛАЇВКА',
+  'УКРАЇНА ДНІПРОПЕТРОВСЬКА ОБЛАСТЬ ПЕТРОПАВЛІВСЬКИЙ РАЙОН С. МИКОЛАЇВКА',
+  'с. Миколаївка, Петропавлівського району, Дніпропетровської області',
+  'Миколаївка, Петропавлівський район, Дніпропетровська область'
+ ];
+ const place=(id,value)=>d(id,null,{ai_extracted:{full_name:c.full_name,birth_place:value}});
+ const candidate={...c,birth_place:'Україна, Дніпропетровська область, Петропавлівський район, село Миколаївка'};
+ const docs=inputs.map((v,i)=>place(String(i),v)),before=JSON.stringify([docs,candidate]);
+ const evidence=x.compare(docs,candidate),entry=evidence.find(e=>e.key==='birth_place');
+ assert.equal(entry.status,'needs_review');assert.equal(entry.sources.length,4);assert.equal(entry.current,candidate.birth_place);
+ assert.deepEqual(entry.sources.map(s=>s.value),inputs);assert.equal(JSON.stringify([docs,candidate]),before);
+ const run=(a,b)=>x.compare([place('a',a),place('b',b)],c).find(e=>e.key==='birth_place').status;
+ assert.equal(run('м. Київ, Україна','місто Київ, Україна'),'needs_review');
+ for(const other of [
+  'село Миколаївка, Київська область, Петропавлівський район',
+  'село Миколаївка, Дніпропетровська область, Синельниківський район',
+  'місто Миколаївка, Дніпропетровська область, Петропавлівський район',
+  'село Михайлівка, Дніпропетровська область, Петропавлівський район'
+ ])assert.equal(run(candidate.birth_place,other),'conflict');
+ assert.equal(run('Україна, с. Миколаївська','Україна, с. Миколаївської'),'conflict');
+ assert.equal(run('Україна, Дніпропетровська область, Миколаївка','Дніпропетровська область, Петропавлівський район, Миколаївка'),'conflict'); // No single complete source: do not construct a combined address.
+ const guarded=x.guard({rows:[{target:'candidate',key:'birth_place',action:'fill'}],selections:[{target:'candidate',key:'birth_place'}]},evidence);
+ assert.equal(guarded.selections.length,0);assert.equal(entry.learning_eligible,false);
+ const context={document_id:'0',file_sha256:'a'.repeat(64),revision:'r1',pages:1},binding={...context};docs[0].ai_processed_at='r1';
+ const report={review_only:true,mode:'zone',source:{document_id:'0',page:1,box:{x:0,y:0,w:1,h:1}},rows:[{fields:[{key:'birth_place',value:inputs[2],legibility:'clear'}]}]};
+ const zonal=x.compareZones(docs,candidate,{context,binding,reports:[report]})[0];assert.equal(zonal.status,'needs_review');assert.equal(zonal.sources[0].page,1);
+});
