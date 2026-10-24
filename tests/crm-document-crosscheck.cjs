@@ -2,6 +2,20 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const x=require('../document-crosscheck.js');
 const c={id:'c',full_name:'Тестенко Іван',birth_date:null};
 const d=(id,value,extra={})=>({id,candidate_id:'c',document_type:id,storage_path:id,ai_confidence:.95,ai_extracted:{full_name:c.full_name,birth_date:value},...extra});
+test('birthplace formatting is reviewable without changing sources or inferring geography',()=>{
+ const place=(id,value)=>d(id,null,{ai_extracted:{full_name:c.full_name,birth_place:value}});
+ const run=(a,b)=>x.compare([place('a',a),place('b',b)],c).find(e=>e.key==='birth_place');
+ const a='Україна, Дніпропетровська обл., Миколаївка',b='Миколаївка; Дніпропетровська область; Україна';
+ assert.equal(run(a,b).status,'needs_review');
+ assert.equal(run(a,'Україна Дніпропетровська область Петропавлівський район с. Миколаївка').status,'needs_review');
+ assert.equal(run(a,'Україна Київська область Миколаївка').status,'conflict');
+ assert.equal(run('Україна, Київ','Польща, Київ').status,'conflict');
+ assert.equal(run('Петропавлівський район Миколаївка','Синельниківський район Миколаївка').status,'conflict');
+ assert.equal(run(a,a).status,'corroborated');
+ const docs=[place('a',a)],candidate={...c,birth_place:b},before=JSON.stringify([docs,candidate]),evidence=x.compare(docs,candidate);
+ const guarded=x.guard({rows:[{target:'candidate',key:'birth_place',action:'fill'}],selections:[{target:'candidate',key:'birth_place'}]},evidence);
+ assert.equal(guarded.selections.length,0);assert.equal(JSON.stringify([docs,candidate]),before);
+});
 test('saved zone identity facts retain page and provenance without becoming independent self-corroboration',()=>{
  const context={document_id:'a',file_sha256:'a'.repeat(64),revision:'r1',pages:2},binding={...context};
  const doc=d('a','2000-01-01',{ai_processed_at:'r1'}),report={review_only:true,mode:'zone',source:{document_id:'a',page:2,box:{x:.1,y:.2,w:.3,h:.2}},rows:[{fields:[{key:'birth_date',value:'2000-01-01',legibility:'clear',raw_text:'1.1.2000'}]}]};
