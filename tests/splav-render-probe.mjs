@@ -9,7 +9,7 @@ function fixture(actor = owner, options = {}) {
   const handler = createRenderProbe({authorize: async () => {calls.auth++; return actor;}, getLibrary: async () => ({
     loadDocument: async () => {calls.load++; if (options.wait) await options.wait;
       return {getPageCount: () => options.pages ?? 1, destroy: () => {calls.destroy++;},
-        getPage: () => ({getOriginalSize: () => ({originalWidth: 595, originalHeight: 842}),
+        getPage: () => ({...(options.native||{}),getOriginalSize: () => ({originalWidth: 595, originalHeight: 842}),
           close: () => {calls.close++;}, render: async ({width, height}) => {
             if (options.fail) throw Error('synthetic failure');
             return {width, height, data: new Uint8Array(width * height)};
@@ -35,6 +35,7 @@ test('owner gets a bounded PNG and non-sensitive metrics, with cleanup', async (
   assert.equal(metrics.width, 1800);
   assert.equal(calls.close, 1); assert.equal(calls.destroy, 1);
   assert.equal(JSON.stringify(metrics).includes('synthetic'), false);
+  assert.equal(metrics.native_zone_status,'visual_review_required');assert.deepEqual(metrics.native_zones,[]);
 });
 test('invalid inputs and unsupported page counts release the lock', async () => {
   const {handler, calls} = fixture(owner, {pages: 201});
@@ -69,6 +70,17 @@ test('owner can prepare a selected page and bounded zone through the existing en
   assert.equal(metrics.page,3);assert.equal(metrics.mode,'zone');assert.ok(metrics.width<1800);
   assert.match(metrics.file_sha256,/^[a-f0-9]{64}$/);assert.match(metrics.render_sha256,/^[a-f0-9]{64}$/);
   assert.equal(calls.close,1);assert.equal(calls.destroy,1);assert.equal(metrics.ai_requests,0);
+  assert.equal(metrics.native_zone_status,'not_requested');
+});
+
+test('owner diagnostic reports bounded native geometry without returning source text or starting AI',async()=>{
+ const heap=new Float32Array(32),put=v=>heap.set(v,4);
+ const module={HEAPF32:heap,wasmExports:{malloc:()=>16,free(){}},_FPDFPage_GetRotation:()=>0,_FPDFPage_GetAnnotCount:()=>0,
+  _FPDFPage_GetMediaBox:()=>{put([0,0,595,842]);return 1;},_FPDFPage_GetCropBox:()=>0,_FPDFPageObj_GetBounds:i=>{put([50,780-i*20,500,790-i*20]);return 1;}};
+ const native={module,pageIdx:1,getObjectCount:()=>3,getObject:i=>({type:'text',objectIdx:i,getText:()=> 'PRIVATE synthetic text long enough for testing only.'})};
+ const {handler}=fixture(owner,{native}),response=await handler(request()),metrics=JSON.parse(response.headers.get('x-splav-render-metrics'));
+ assert.equal(response.status,200);assert.equal(metrics.native_zone_status,'native_text');assert(metrics.native_zones.length>0&&metrics.native_zones.length<=6);assert.equal(metrics.ai_requests,0);assert(!JSON.stringify(metrics).includes('PRIVATE'));
+ const settings=await import('node:fs');const code=settings.readFileSync(new URL('../crm-settings.js',import.meta.url),'utf8');assert.match(code,/Сервер визначив зон без AI/);assert.match(code,/Ця діагностика його не запускає/);
 });
 test('invalid crop and digest do not load; mismatched digest fails closed and permits next request', async () => {
   const {handler,calls}=fixture();

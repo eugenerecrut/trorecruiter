@@ -36,7 +36,10 @@ export function createRenderProbe({authorize, getLibrary}) {
     try {
       const bytes = await readBoundedPDF(req.body, req.headers.get('content-length'));
       const readAt = performance.now();
-      const {png, metrics} = await renderPDFZone({bytes, page: Number(rawPage) + 1, mode, box, expected_sha256: expected ?? undefined, getLibrary});
+      const {png, metrics, native_zones} = await renderPDFZone({bytes, page: Number(rawPage) + 1, mode, box, expected_sha256: expected ?? undefined, getLibrary});
+      // Geometry only: no extracted text or Unicode labels in HTTP headers.
+      metrics.native_zones=(native_zones||[]).map(zone=>({box:zone.box}));
+      metrics.native_zone_status=mode==='zone'?'not_requested':native_zones?.length?'native_text':'visual_review_required';
       metrics.read_ms = Math.round(readAt - start); metrics.total_ms = Math.round(performance.now() - start);
       return new Response(png, {headers: {...headers, 'Content-Type': 'image/png',
         'x-splav-render-metrics': JSON.stringify(metrics)}});
