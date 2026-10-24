@@ -141,3 +141,15 @@ test('partial completion and saved response counts never imply complete or verif
  assert.equal(r.count,4);assert.equal(r.uncertain,2);assert.match(r.label,/2 потребують перевірки/);
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(source,/esc\(summary.label\)/);assert.match(source,/esc\(summary.notice\)/);assert.match(source,/Збережено відповідь через/);
 });
+test('source navigation requires the current document, page, bounds and verified original hash',()=>{
+ const contract=require('../supabase/functions/_shared/military-zone.js'),context={window:{},CRMMilitaryZoneContract:contract};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const target=context.window.CRMMilitaryZoneReview.sourceTarget,current={document_id:'doc',file_sha256:'a'.repeat(64),pages:2,revision:'r1'},binding={...current};
+ const report={mode:'zone',source:{document_id:'doc',page:2,box:{x:.1,y:.2,w:.3,h:.4}}};
+ assert.equal(target(report,current,binding).page,2);
+ assert.equal(target({...report,source:{...report.source,file_sha256:current.file_sha256}},current,null).page,2);
+ for(const changed of [{document_id:'foreign'},{file_sha256:'b'.repeat(64)},{revision:'old'},null])assert.equal(target(report,current,changed?{...binding,...changed}:null),null);
+ for(const changed of [{document_id:'foreign'},{page:0},{page:3},{page:1.5},{box:{x:0,y:0,w:2,h:1}},{file_sha256:'b'.repeat(64)}])assert.equal(target({...report,source:{...report.source,...changed}},current,binding),null);
+ assert.equal(target({...report,mode:'overview'},current,binding),null);
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');const handler=code.slice(code.indexOf('original.onclick=async'),code.indexOf('report.append(original)'));
+ assert.match(handler,/sourceTarget\(data,currentSource\(\),binding\(\)\)/);assert.match(handler,/await render\(\)/);assert.match(handler,/setBox\(target.box\)/);assert.doesNotMatch(handler,/functions.invoke|read\('zone'\)|rpc\(/);
+});
