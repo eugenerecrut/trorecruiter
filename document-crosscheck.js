@@ -95,6 +95,7 @@ function structured(documents,candidate){
    if(stored.length>1){entry.status='conflict';entry.reason='У картці кілька записів цієї спорідненості. Потрібно перевірити, якому родичу належать джерела.';}
    else if(new Set(dates.map(norm)).size>1){entry.status='conflict';entry.reason='Дати народження цього родича відрізняються. ПІБ не доповнюється автоматично.';}
    else if(parentNameReview(entry.sources,entry.current)){entry.status='needs_review';entry.reason='ПІБ батька або матері відрізняється повнотою чи прізвищем у дужках. Це ймовірний зв’язок, а не підтверджена тотожність; ручне ПІБ не змінено.';}
+   else if(entry.status==='conflict')entry.reason='ПІБ цього родича відрізняються або записані неоднозначно. Звірте основне прізвище, ім’я та по батькові в оригіналах; зміна прізвища не вгадується.';
   }
   return entry;
  });
