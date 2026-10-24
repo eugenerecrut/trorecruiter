@@ -101,7 +101,7 @@ Deno.serve(async req=>{
    ?await rpc('crm_zone_coordinator_begin',{p_id:body.coordinator_id,p_version:body.coordinator_version,p_document_id:doc.id,p_mode:body.mode,p_page:body.page,p_box:contract.box(body.box),p_render_sha256:digest})
    :await rpc('crm_zone_begin',{p_document_id:doc.id,p_source:doc,p_mode:body.mode,p_page:body.page,p_box:contract.box(body.box),p_render_sha256:digest});}
   catch(e){return json({error:(e as any).code==='40001'?'Чергу або джерело вже змінено. Оновіть документ; AI не запускався.':'Не вдалося перевірити журнал або версію документа. AI не запускався.',code:(e as any).code==='40001'?'ZONE_COORDINATOR_CHANGED':'ZONE_RECEIPT_UNAVAILABLE',automatic_retry:false},409);}
-  if(dispatch?.state==='completed'&&dispatch.result?.review_only)return json({...dispatch.result,request_replayed:true});
+  if(dispatch?.state==='completed'&&dispatch.result?.review_only)return json({...dispatch.result,...(Array.isArray(dispatch.result.rows)?{rows:dispatch.result.rows.map((row:any)=>({...row,fields:(Array.isArray(row.fields)?row.fields:[]).map((field:any)=>contract.projectField(field))})),field_guard:contract.VERSION}:{}),request_replayed:true});
   if(dispatch?.state==='failed'&&dispatch.result?.error)return json({...dispatch.result,request_replayed:true},502);
   if(dispatch?.state!=='accepted'||!dispatch.id||!dispatch.receipt)return json({error:'Цей фрагмент уже відправлений. Результат ще не підтверджено; повторний AI-запит заблоковано.',code:'ZONE_ALREADY_DISPATCHED',automatic_retry:false},409);
   const finish=async(result:any)=>{
