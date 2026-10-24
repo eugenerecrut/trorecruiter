@@ -4,17 +4,23 @@
 const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ`]/g,"'").trim().replace(/\s+/g,' ').toLocaleLowerCase('uk');
 const obj=v=>{try{return typeof v==='string'?JSON.parse(v):v||{}}catch(_){return {}}};
 const keys=['rnokpp','birth_date','birth_place'];
+function birthplaceTokens(value){
+ // Only explicit labels and adjective forms immediately preceding an administrative label.
+ // No locality aliases, district renames, transliteration or inferred country.
+ const labels={'обл':'область','області':'область','р-н':'район','району':'район','село':'с','місто':'м'};
+ const tokens=norm(value).replace(/[,.;:]/gu,' ').split(/\s+/u).filter(Boolean).map(t=>labels[t]||t);
+ for(let i=1;i<tokens.length;i++)if(['область','район'].includes(tokens[i])){
+  tokens[i-1]=tokens[i-1].replace(/ської$/u,'ська').replace(/ського$/u,'ський');
+ }
+ return tokens.sort();
+}
 // Similar wording warrants review, never an automatic assertion of geographic identity.
 function birthplaceReview(sources,current){
  const values=[...sources.map(s=>s.value),current].filter(v=>typeof v==='string'&&v.trim());
- const tokens=v=>norm(v).replace(/обл\./gu,'область').replace(/р-н/gu,'район').replace(/[,.;:]/gu,' ').split(/\s+/u).filter(Boolean).sort();
- let different=false;
- for(let i=0;i<values.length;i++)for(let j=i+1;j<values.length;j++){
-  if(norm(values[i])===norm(values[j]))continue;different=true;
-  const a=tokens(values[i]),b=tokens(values[j]),small=a.length<=b.length?a:b,remaining=[...(a.length<=b.length?b:a)];
-  if(small.length<2||!small.every(t=>{const k=remaining.indexOf(t);if(k<0)return false;remaining.splice(k,1);return true;}))return false;
- }
- return different;
+ if(new Set(values.map(norm)).size<2)return false;
+ const lists=values.map(birthplaceTokens),fullest=lists.reduce((a,b)=>a.length>=b.length?a:b,[]);
+ // A real source/card value must contain every explicit token; do not synthesize a merged address.
+ return lists.every(tokens=>{const remaining=[...fullest];return tokens.length>=2&&tokens.every(t=>{const k=remaining.indexOf(t);if(k<0)return false;remaining.splice(k,1);return true;});});
 }
 function facts(d){const e=obj(d.ai_extracted),p=obj(e.personal);return Object.fromEntries(keys.map(k=>[k,e[k]??p[k]]));}
 function eligibleDocuments(documents,candidate){
