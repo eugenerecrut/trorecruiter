@@ -77,7 +77,11 @@ function compare(documents,candidate){
 function structured(documents,candidate){
  const groups=new Map(),current=candidate.profile_data||{};
  const role=v=>({mother:'мати',father:'батько',wife:'дружина',husband:'чоловік',son:'син',daughter:'донька'})[norm(v)]||norm(v);
- function add(key,subject,value,d,row){const id=key+'|'+subject;const entry=groups.get(id)||{key,subject,current:null,sources:[],learning_eligible:false};entry.sources.push({document_id:d.id,document_type:d.document_type,file_name:d.file_name,value,...(key==='relatives'?{birth_date:row.birth_date??null}:{}),verified:d.verification_status==='Підтверджено',fingerprint:d.file_hash||d.storage_path,page:row.page||row.source_pages||null,raw_text:row.raw_text||null});groups.set(id,entry);}
+ function displayFields(key,row){
+  const fields=key==='education_records'?['institution','degree','specialty','graduation_year','diploma_series','diploma_number']:key==='work_records'?['start_date','end_date','position','unit','order_number']:[];
+  return Object.fromEntries(fields.map(field=>{const raw=field==='unit'?row.unit||row.employer:row[field],value=raw&&typeof raw==='object'?raw.value:raw;return [field,value];}).filter(([,v])=>typeof v==='string'&&v.trim()||typeof v==='number'&&Number.isFinite(v)));
+ }
+ function add(key,subject,value,d,row){const id=key+'|'+subject;const entry=groups.get(id)||{key,subject,current:null,sources:[],learning_eligible:false};entry.sources.push({document_id:d.id,document_type:d.document_type,file_name:d.file_name,value,...(['education_records','work_records'].includes(key)?{display_fields:displayFields(key,row)}:{}),...(key==='relatives'?{birth_date:row.birth_date??null}:{}),verified:d.verification_status==='Підтверджено',fingerprint:d.file_hash||d.storage_path,page:row.page||row.source_pages||null,raw_text:row.raw_text||null});groups.set(id,entry);}
  for(const d of documents){
   const e=obj(d.ai_extracted);
   for(const r of (Array.isArray(e.relatives)?e.relatives:Array.isArray(e.family?.relatives)?e.family.relatives:[])){const rel=role(r.relationship||r.relation),name=r.full_name||r.name;if(!['мати','батько'].includes(rel)||!name||r.requires_review)continue;add('relatives',rel,String(name),d,r);}

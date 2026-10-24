@@ -181,3 +181,16 @@ test('parent dates are shown beside the card name with HTML escaping',()=>{
  assert.match(render({key:'relatives',current:'Тестенко Олена',current_birth_date:'<script>'}),/&lt;script&gt;/);
  assert.doesNotMatch(render({key:'birth_place',current:'Київ',current_birth_date:'1979-06-28'}),/дата народження/);
 });
+
+test('education and service evidence uses labelled escaped fields rather than technical arrays',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const render=context.window.CRMMilitaryZoneReview.evidenceValueHTML;
+ const result=render({key:'education_records'},{value:'[technical]',display_fields:{institution:'Університет',degree:'Бакалавр',specialty:'<script>',graduation_year:2023,diploma_number:'001',unknown:'hidden'}});
+ assert.match(result,/Заклад:.*Університет/);assert.match(result,/Рік закінчення:.*2023/);assert.match(result,/Номер диплома:.*001/);assert.match(result,/&lt;script&gt;/);assert.doesNotMatch(result,/<script>|technical|hidden/);
+ const service=render({key:'work_records'},{value:'[technical]',display_fields:{start_date:'2020',end_date:'2021-05',position:'Водій',unit:'ВЧ А0998'}});
+ assert.match(service,/Початок:.*2020<br>/);assert.match(service,/Завершення:.*2021-05/);assert.doesNotMatch(service,/2020-01-01/);
+ assert.equal(render({key:'birth_place'},{value:'<Київ>',display_fields:{institution:'ignored'}}),'&lt;Київ&gt;');
+ assert.equal(render({key:'education_records'},{value:'original <value>'}),'original &lt;value&gt;');
+ assert.equal(render({key:'education_records'},{value:'original',display_fields:{institution:{value:'not scalar'}}}),'original');
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/evidenceValueHTML\(e,v\)/);
+});
