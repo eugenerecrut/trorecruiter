@@ -162,3 +162,14 @@ test('saved zonal crosscheck is read-only, source filtered and rendered without 
  assert.match(source,/crosscheck\(\).catch/);assert.match(body,/зональне читання, сторінка/);
  assert.match(source,/if\(job.zone_summary\?\.source_changed\)\{crosscheckVersion\+\+/);
 });
+
+test('crosscheck displays the stored card value safely without fabricating unloaded structures',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const render=context.window.CRMMilitaryZoneReview.cardValueHTML;
+ assert.match(render({key:'birth_place',current:'Україна, Київ'}),/У картці зараз:.*Україна, Київ/);
+ assert.match(render({key:'birth_date',current:null}),/Не заповнено/);
+ assert.match(render({key:'relatives',current:'<img src=x onerror=alert(1)>'}),/&lt;img/);
+ assert.doesNotMatch(render({key:'relatives',current:'<script>'}),/<script>/);
+ assert.equal(render({key:'education_records',current:null}),'');
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/cardValueHTML\(e\)/);
+});
