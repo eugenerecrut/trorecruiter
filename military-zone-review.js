@@ -47,7 +47,7 @@ function backgroundSummary(job){
   if(!['OpenAI','Gemini','OpenRouter'].includes(p.provider))continue;
   notes.push(p.provider+': '+(labels[p.diagnosis]||(p.http_status===429?labels.QUOTA_OR_RATE_LIMIT:p.http_status?'сервіс відхилив запит (HTTP '+Number(p.http_status)+')':'придатної відповіді немає; причина не збережена.')));
  }
- if(Number.isInteger(s.attempts)&&Number.isInteger(s.budget))notes.push('AI-кроків виконано: '+s.attempts+' з '+s.budget+' дозволених. Це кількість спроб, а не підтверджених списань.');
+ if(Number.isInteger(s.attempts)&&Number.isInteger(s.budget))notes.push('Кроків опрацювання виконано: '+s.attempts+' з '+s.budget+' дозволених. Це кількість спроб, а не підтверджених списань.');
  if(Number.isInteger(s.pages))notes.push('Сторінок у файлі: '+s.pages+'.');
  notes.push('Дані картки та основне розпізнавання не перезаписуються.');
  return {title:states[job.state]||'Перевіряємо стан документа',notes};

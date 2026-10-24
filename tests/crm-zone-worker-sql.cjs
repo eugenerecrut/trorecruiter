@@ -142,10 +142,12 @@ try{
  const cx=await step('load'),canary=pilot.restore(cx.snapshot,{source:cx.source});assert.equal(canary.snapshot().budget,1);checks++;
  const cr=await canary.run({limit:1,checkpoint:async s=>{cx.version=await step('save',{version:cx.version,snapshot:s});},read:async()=>{
   const receipt=await step('begin',{version:cx.version,mode:'overview',page:1,box:full,render_sha256:hash});
-  const result={review_only:true,mode:'overview',zones:[{box:{x:.1,y:.1,w:.5,h:.2},label:'synthetic'}],source:{document_id:id(50),page:1,box:full,render_sha256:hash}};
+  const result={contract:'pdf-native-overview-1',review_only:true,requires_review:true,ai_requests:0,mode:'overview',zones:[{box:{x:.1,y:.1,w:.5,h:.2},label:'Текстовий блок 1'}],source:{document_id:id(50),page:1,box:full,render_sha256:hash,origin:'server_text_layer',provider:'PDFium · без AI'}};
   await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result});return result;
  }});assert.equal(cr.calls,1);assert.equal(cr.budget_exhausted,true);checks+=2;
  await step('hold');await owner();settings=(await db.query('select zones_enabled,zone_canary_coordinator from crm_private.splav_settings')).rows[0];
+ const nativeReceipt=(await db.query('select result from crm_private.zone_requests where document_id=$1',[id(50)])).rows[0].result;
+ assert.equal(nativeReceipt.ai_requests,0);assert.equal(nativeReceipt.source.origin,'server_text_layer');checks+=2;
  assert.equal(settings.zones_enabled,false);assert.equal(settings.zone_canary_coordinator,null);checks+=2;
  assert.deepEqual((await db.query('select ai_extracted,verification_status from public.documents where id=$1',[id(50)])).rows[0],{ai_extracted:{preserve:true},verification_status:'Підтверджено'});checks++;
  await actor(2);assert.equal(await call('crm_splav_zone_claim'),null);checks++;
