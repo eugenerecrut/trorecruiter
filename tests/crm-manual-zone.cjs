@@ -294,3 +294,12 @@ test('content hints use stored field roles, not guessed relationships or raw ins
  for(const data of [null,{}, {rows:[null]}, {rows:'invalid'}, {raw_text:'АВТОБІОГРАФІЯ'}])assert.equal(describe(data).label,'');
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/esc\(context.label\)/);assert.match(code,/esc\(context.notice\)/);
 });
+
+test('empty relative-name placeholders are explained without inventing a maiden surname or hiding alternatives',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const {readingContext:describe,readingSummary:summary}=context.window.CRMMilitaryZoneReview;
+ const data={rows:[{fields:[{key:'relative_name',raw_text:'Тестенко ( ) Олена Іванівна',value:'Тестенко Олена Іванівна',legibility:'clear',alternatives:['Тестенко ( ) Олена Іванівна']}]}]};const before=JSON.stringify(data);
+ assert.match(describe(data).notice,/порожні дужки/);assert.match(describe(data).notice,/не прочитане дівоче/);assert.equal(summary(data).uncertain,1);assert.equal(JSON.stringify(data),before);
+ for(const key of ['other','institution'])assert.doesNotMatch(describe({rows:[{fields:[{...data.rows[0].fields[0],key}]}]}).notice,/порожні дужки/);
+ for(const raw_text of ['Тестенко (Коваленко) Олена Іванівна','Тестенко (?) Олена Іванівна'])assert.doesNotMatch(describe({rows:[{fields:[{...data.rows[0].fields[0],raw_text}]}]}).notice,/порожні дужки/);
+});

@@ -98,7 +98,10 @@ function readingContext(data){
  if(['institution','specialty','qualification','graduation_year'].some(k=>keys.has(k)))labels.push('Освіта');
  if(keys.has('employer'))labels.push('Робота');
  if(keys.has('relative_name')||keys.has('relationship'))labels.push('Родичі');
- return {label:labels.join(' · '),notice:labels.length?'Розділи визначено за полями збереженої відповіді. Це навігаційна підказка, а не перевірка достовірності.':''};
+ const emptyAlias=fields.some(f=>f?.key==='relative_name'&&typeof f.raw_text==='string'&&/\(\s*\)/u.test(f.raw_text));
+ const notices=[labels.length?'Розділи визначено за полями збереженої відповіді. Це навігаційна підказка, а не перевірка достовірності.':''];
+ if(emptyAlias)notices.push('У записі ПІБ родича є порожні дужки. Це не прочитане дівоче прізвище. ПІБ, дослівний текст і альтернативи збережено; їх потрібно звірити з оригіналом.');
+ return {label:labels.join(' · '),notice:notices.filter(Boolean).join(' ')};
 }
 function readingSummary(data){
  const rows=Array.isArray(data?.rows)?data.rows:[],fields=rows.flatMap(row=>Array.isArray(row?.fields)?row.fields:[]),empty_rows=rows.filter(row=>!Array.isArray(row?.fields)||!row.fields.length).length;
