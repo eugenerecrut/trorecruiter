@@ -41,6 +41,10 @@ function textLayerZones(items,viewport){
 function backgroundSummary(job){
  const s=job.zone_summary||{},notes=[];
  const gaps=job.result?.status==='complete_with_gaps'||s.error_count>0;
+ const finishedWithGaps=job.result?.status==='complete_with_gaps'&&['completed','needs_review'].includes(job.state)&&
+  !(s.pending_steps>0)&&!['ZONE_RESULT_UNCERTAIN','ZONE_PROVIDERS_REJECTED','ZONE_PREP_FAILED','ZONE_OVERVIEW_INVALID','ZONE_OVERVIEW_TOO_MANY_ZONES'].includes(s.code);
+ const readings=(Array.isArray(job.zone_reports)?job.zone_reports:[]).filter(r=>r?.mode==='zone').map(readingSummary);
+ const emptyReadings=readings.filter(r=>r.count===0).length,uncertainReadings=readings.filter(r=>r.count>0&&(r.uncertain>0||r.empty_rows>0)).length;
  const states={queued:'Документ у черзі',running:'Документ опрацьовується на сервері',completed:'Опрацювання завершено',needs_review:'Опрацювання зупинено',uncertain:'Відповідь AI не підтверджено',superseded:'Джерело документа змінилося'};
  if(s.source_changed||job.state==='superseded')return {title:'Джерело документа змінилося',notes:['Відкрийте чинну версію документа. Попередній результат не застосовується.']};
  if(job.result?.native_only===true){
@@ -50,7 +54,8 @@ function backgroundSummary(job){
    saved?'Рамки тексту та наявної графіки визначено; зміст документа цим контролем не підтверджується.':s.code==='NATIVE_VISUAL_REVIEW_REQUIRED'?'Сторінку підготовлено, але безпечні локальні зони не визначено. Потрібна візуальна перевірка; AI не запускався.':s.code==='ZONE_PREP_FAILED'?'Підготовку сторінки або локальних зон зупинено. У цій квитанції причина не деталізована; AI не запускався.':'Якщо текстових зон немає або підготовку не завершено, зовнішнє розпізнавання не запускається.',
    'Картка, основне розпізнавання та підтвердження документа не змінюються. Наступні зони не запускаються.']};
  }
- if(['queued','running'].includes(job.state))notes.push('Можна закрити це вікно. СПЛАВ продовжить роботу на сервері.');
+ if(finishedWithGaps)notes.push('Прохід завершено, звіт збережено. Частину значень потрібно звірити з оригіналом; новий AI-запуск автоматично не виконується.');
+ else if(['queued','running'].includes(job.state))notes.push('Можна закрити це вікно. СПЛАВ продовжить роботу на сервері.');
  else if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Сервіс міг прийняти запит, але придатний результат не отримано. Автоматичний повтор заблоковано, щоб уникнути повторних витрат.');
  else if(s.code==='ZONE_PROVIDERS_REJECTED')notes.push('AI-сервіси відхилили запит. Адміністратору потрібно перевірити їх доступність і ліміти.');
  else if(s.code==='ZONE_OVERVIEW_TOO_MANY_ZONES')notes.push('Огляд містить понад 6 різних зон. Їх не обрізали мовчки: читання цих зон не запускали, потрібне уточнення поділу сторінки.');
@@ -61,6 +66,11 @@ function backgroundSummary(job){
  else if(job.state==='needs_review'&&s.attempts>=s.budget&&s.pending_steps>0)notes.push('Досягнуто погодженого ліміту кроків. Решту документа не запускали. Наступна дія: переглянути збережені результати й окремо погодити продовження.');
  else if(job.state==='needs_review')notes.push('Потрібна перевірка збереженого звіту. Нове розпізнавання автоматично не запускається.');
  else if(job.state==='completed')notes.push(gaps?'Звіт збережено з прогалинами. Перевірте непрочитані або непевні фрагменти нижче; повноту даних не підтверджено.':'Звіт збережено. Результати читання відображаються нижче; повторний AI-запит не потрібен.');
+ if(finishedWithGaps){
+  if(emptyReadings)notes.push('Читань без структурованих полів: '+emptyReadings+'. Відкрийте ці фрагменти нижче й звірте дослівний текст з оригіналом.');
+  if(uncertainReadings)notes.push('Читань із непевними значеннями або непрочитаними рядками: '+uncertainReadings+'. Перевірте позначені поля та їхні варіанти.');
+  notes.push('Ці кількості стосуються читань, включно з контекстними повторами, а не унікальних полів чи документів.');
+ }
  if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Наступна дія: адміністратору перевірити ліміти та доступ AI-сервісів. Цей фрагмент не запускати повторно без окремого рішення.');
  if(Array.isArray(job.zone_reports)&&job.zone_reports.length)notes.push('Збережених результатів: '+job.zone_reports.length+'. Це відповіді огляду та читання, а не кількість підтверджених полів.');
  if(job.zone_reports_truncated)notes.push('Збережений звіт перевищує ліміт перегляду. Новий AI-запит не потрібен; зверніться до адміністратора.');
@@ -72,7 +82,7 @@ function backgroundSummary(job){
  if(Number.isInteger(s.attempts)&&Number.isInteger(s.budget))notes.push('Кроків опрацювання виконано: '+s.attempts+' з '+s.budget+' дозволених. Це кількість спроб, а не підтверджених списань.');
  if(Number.isInteger(s.pages))notes.push('Сторінок у файлі: '+s.pages+'.');
  notes.push('Дані картки та основне розпізнавання не перезаписуються.');
- return {title:job.state==='completed'&&gaps?'Звіт збережено з прогалинами':states[job.state]||'Перевіряємо стан документа',notes};
+ return {title:(finishedWithGaps||job.state==='completed'&&gaps)?'Звіт збережено з прогалинами':states[job.state]||'Перевіряємо стан документа',notes};
 }
 function readingSummary(data){
  const rows=Array.isArray(data?.rows)?data.rows:[],fields=rows.flatMap(row=>Array.isArray(row?.fields)?row.fields:[]),empty_rows=rows.filter(row=>!Array.isArray(row?.fields)||!row.fields.length).length;
