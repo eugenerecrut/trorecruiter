@@ -194,3 +194,38 @@ test('education and service evidence uses labelled escaped fields rather than te
  assert.equal(render({key:'education_records'},{value:'original',display_fields:{institution:{value:'not scalar'}}}),'original');
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/evidenceValueHTML\(e,v\)/);
 });
+
+
+test('saved reports distinguish gaps and discard foreign or malformed reading sources without mutating evidence',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const view=context.window.CRMMilitaryZoneReview.savedReportView;
+ const own={review_only:true,mode:'zone',source:{document_id:'own',page:1},rows:[{fields:[{value:'Example',legibility:'clear'}]}]};
+ const foreign={...own,source:{document_id:'other',page:1}},invalid={...own,source:{document_id:'own',page:0}};
+ const saved={status:'complete',reports:[own,foreign,invalid,null],errors:[]},before=JSON.stringify(saved);
+ const result=view(saved,'own');assert.equal(result.reports.length,1);assert.equal(result.omitted,3);assert.equal(result.errors,0);
+ assert.match(result.title,/потрібна перевірка/);assert.match(result.notes.join(' '),/не беруть участі у зіставленні/);assert.equal(JSON.stringify(saved),before);
+ assert.equal(view({status:'complete',reports:[own],errors:[]},'own').title,'Звіт збережено');
+ for(const changed of [
+  {status:'complete_with_gaps'}, {errors:[{code:'ZONE_STEP_FAILED'}]}, {reports:[]},
+  {reports:[{...own,rows:[]}]}, {reports:[{...own,quality_issues:['blur']}]},
+  {reports:[{...own,rows:[{fields:[{value:'Example',legibility:'clear',alternatives:['Other']}]}]}]}
+ ])assert.match(view({...saved,reports:[own],...changed},'own').title,/потрібна перевірка/);
+ for(const documentId of [null,undefined,''])assert.equal(view(saved,documentId).reports.length,0);
+ for(const page of [-1,0,201,1.5,'1'])assert.equal(view({status:'complete',reports:[{...own,source:{document_id:'own',page}}]},'own').reports.length,0);
+ assert.match(result.notes.join(' '),/Перегляд не запускає AI/);
+});
+
+test('saved fallback displays only filtered evidence and never automatically reprocesses an incomplete report',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert(source.includes('const view=savedReportView(saved,doc.id);reports.push(...view.reports)'));
+ assert(source.includes('for(const report of view.reports)'));
+ assert(source.includes('if(view.reports.length)try{await crosscheck()}'));
+ assert(!source.includes('reports.push(...saved.reports)'));
+ assert(source.includes('else if(saved){'));
+ assert(!source.includes("else if(saved&&Array.isArray(saved.reports)"));
+});
+
+test('unknown or malformed saved reports remain review-only instead of triggering automatic AI',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ for(const saved of [{status:'unknown',reports:[]},{status:'complete',reports:null},{status:'complete'},'legacy']){const view=context.window.CRMMilitaryZoneReview.savedReportView(saved,'own');assert.match(view.title,/потрібна перевірка/);assert.equal(view.reports.length,0);}
+});
