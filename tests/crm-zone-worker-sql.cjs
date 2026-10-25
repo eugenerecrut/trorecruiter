@@ -120,6 +120,42 @@ try{
   await step(completed?'final':'block');
   await owner();assert.equal((await db.query('select state from crm_private.splav_jobs where id=$1',[j.id])).rows[0].state,completed?'completed':'uncertain');checks++;
  }
+
+ // Full one-page cycles with six zones, cold planner restoration and a new lease per step.
+ // No HTTP/AI: synthetic receipts travel through the actual production SQL functions.
+ const {zoneRasterBox:fullCycleRasterBox}=await import('../supabase/functions/_shared/pdf-zone-raster.mjs');
+ for(const withAlternatives of [false,true]){
+  const number=withAlternatives?81:80,{j,co}=await fresh(number),expectedSteps=withAlternatives?13:7;
+  const zones=Array.from({length:6},(_,i)=>({label:'Synthetic zone '+i,box:{x:.1,y:.05+i*.12,w:.3,h:.08}}));
+  const beforeCycle=(await db.query("select ai_extracted,verification_status,ai_processed_at from public.documents where id=$1",[id(number)])).rows[0];
+  const seenSteps=new Set();let calls=0,answer;
+  for(;;){
+   let ctx=await step('load');const planner=pilot.restore(ctx.snapshot,{source:ctx.source});
+   const summary=await planner.run({limit:1,checkpoint:async snapshot=>{ctx.version=await step('save',{version:ctx.version,snapshot});},read:async task=>{
+    const signature=JSON.stringify([task.mode,task.page,task.box||full]);assert(!seenSteps.has(signature),'No duplicate dispatch after cold restoration');seenSteps.add(signature);checks++;
+    const crop=fullCycleRasterBox(task.mode,task.box||full);
+    const receipt=await step('begin',{version:ctx.version,mode:task.mode,page:task.page,box:crop,render_sha256:hash});assert.equal(receipt.state,'accepted');checks++;
+    const field={key:'birth_place',value:'Synthetic place',legibility:'clear',...(withAlternatives&&!task.retry?{alternatives:['Another place']}:{})};
+    const result={review_only:true,mode:task.mode,...(task.mode==='overview'?{zones,quality_issues:[]}:{rows:[{fields:[field]}]}),source:{document_id:id(number),page:task.page,box:crop,render_sha256:hash,file_sha256:hash}};
+    assert.equal((await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result})).state,'completed');checks++;calls++;return result;
+   }});
+   assert.equal(summary.calls,1);assert.equal(summary.blocked,false);assert.equal(planner.errors.length,0,JSON.stringify(planner.errors));checks+=3;
+   if(summary.done){answer=await step('final');break;}
+   assert(calls<expectedSteps,'Bounded full cycle');checks++;
+   const oldLease=lease.lease_token;await step('yield');await assert.rejects(step('load'),/Invalid zonal lease/);checks++;
+   lease=await call('crm_splav_zone_claim');assert.equal(lease.id,j.id);assert.notEqual(lease.lease_token,oldLease);checks+=2;
+  }
+  assert.equal(calls,expectedSteps);assert.equal(answer.status,withAlternatives?'complete_with_gaps':'complete');checks+=2;
+  await owner();
+  const stored=(await db.query('select state from crm_private.splav_jobs where id=$1',[j.id])).rows[0];assert.equal(stored.state,withAlternatives?'needs_review':'completed');checks++;
+  const snapshot=(await db.query('select snapshot from crm_private.zone_coordinators where id=$1',[co.id])).rows[0].snapshot;
+  assert.equal(snapshot.attempts,expectedSteps);assert.equal(snapshot.completed,expectedSteps);assert.deepEqual(snapshot.tasks,[]);assert.deepEqual(snapshot.errors,[]);checks+=4;
+  assert.equal((await db.query('select count(*)::int n from crm_private.zone_coordinator_steps where coordinator_id=$1',[co.id])).rows[0].n,expectedSteps);checks++;
+  const afterCycle=(await db.query("select ai_extracted,verification_status,ai_processed_at from public.documents where id=$1",[id(number)])).rows[0],finalReport=afterCycle.ai_extracted._military_zone_report;
+  assert.equal(finalReport.reports.length,expectedSteps);assert.equal(finalReport.status,answer.status);delete afterCycle.ai_extracted._military_zone_report;assert.deepEqual(afterCycle,beforeCycle);checks+=3;
+  assert.deepEqual((await db.query('select profile_data from public.candidates where id=$1',[id(10)])).rows[0].profile_data,{manual:'preserve',service_type:'За мобілізацією'});checks++;
+ }
+
  await owner();await db.query("update public.documents set ai_processed_at=now(),verification_status='Не перевірено' where id=$1",[id(20)]);await actor(1);
  const root=await call('crm_splav_enqueue',[id(20)]);await actor(2);const rootLease=await call('crm_splav_claim');assert.equal(rootLease.id,root.id);checks++;
  await assert.rejects(call('crm_splav_zone_step',[rootLease.id,rootLease.lease_token,'load',{}]),/Invalid zonal lease/);checks++;
