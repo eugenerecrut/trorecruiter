@@ -150,6 +150,12 @@ function backgroundReports(job,saved){
  if(!job._detailed||!job.zone_summary||job.zone_summary.source_changed||!['completed','needs_review'].includes(job.state)||!saved||!['complete','complete_with_gaps'].includes(saved.status)||saved.status!==job.result?.status||!saved.saved_at||saved.saved_at!==job.result?.saved_at||!Array.isArray(saved.reports))return [];
  return saved.reports.filter(r=>r?.review_only===true&&r.source?.document_id===job.document_id);
 }
+function pageRerunEligible(job,doc,pages){
+ return pages===1&&doc?.document_type==='Автобіографія друкована'&&job?._detailed===true&&job.kind==='zone'
+  &&job.document_id===doc.id&&['completed','needs_review'].includes(job.state)&&job.stage==='finished'
+  &&job.zone_summary?.pages===1&&job.zone_summary?.budget===13&&!job.zone_summary?.source_changed
+  &&job.zone_binding?.document_id===doc.id&&!!job.zone_run;
+}
 async function open(doc,{autostart=false}={}){
  if(!doc?.storage_path)throw Error('Документ не має файла');
  const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';dialog.style.width='min(1100px,96vw)';
@@ -158,6 +164,7 @@ async function open(doc,{autostart=false}={}){
  const $=s=>dialog.querySelector(s),canvas=$('[data-source]'),ctx=canvas.getContext('2d'),source=document.createElement('canvas'),reports=[];
  const canary=new URLSearchParams(location.search).get('zoneBudget')==='1'||new URLSearchParams(location.search).get('zoneBudget')==='13',pageCanary=new URLSearchParams(location.search).get('zoneBudget')==='13',nativeCanary=canary&&!pageCanary&&new URLSearchParams(location.search).get('zoneNativeOnly')==='1';
  let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false,backgroundViewVersion=0,backgroundReportsKey=null,nativeZones=[],reportBinding=null,crosscheckVersion=0;
+ const rerunButton=document.createElement('button'),rerunIntents=new Map();rerunButton.textContent='Новий контроль цього файла';rerunButton.hidden=true;$('[data-auto]').parentElement.append(rerunButton);
  if(!autostart){$('[data-manual]').open=true;dialog.querySelector('h2').textContent='Документ · оригінал і ручне читання';dialog.querySelectorAll('p')[1].textContent='Оригінал відкривається без AI. Огляд сторінки або читання зони починається лише після вашого натискання. Дані картки не перезаписуються.';if(!doc.ai_extracted||doc.processing_status==='AI помилка')$('[data-auto]').hidden=true;}
  if(canary){$('[data-auto]').textContent=pageCanary?'Контроль СПЛАВ · одна сторінка, до 13 кроків':nativeCanary?'Контроль сервера · без AI':'Контроль СПЛАВ · один крок';dialog.querySelectorAll('p')[1].textContent=pageCanary?'Контроль власника: один односторінковий PDF, до 13 логічних кроків із чинним fallback AI. Це не грошовий ліміт. Загальні зони вимкнені; картка й основний OCR не змінюються.':nativeCanary?'Контроль власника: один локальний серверний огляд PDF. AI та запис у картку й документ заборонені в дорученні. Сканкопія зупиниться без AI.':'Контроль власника: лише один новий серверний AI-крок. Наступні зони не запускаються; основний OCR і картка не змінюються.';}
  const status=value=>$('[data-status]').textContent=value;
@@ -259,6 +266,21 @@ async function open(doc,{autostart=false}={}){
   if(job.zone_summary?.source_changed||job.state==='superseded'){crosscheckVersion++;reportBinding=null;reports.splice(0,reports.length);backgroundReportLoaded=false;backgroundReportsKey=null;$('[data-result]').replaceChildren();$('[data-export]').disabled=true;}
   const explanation=backgroundSummary(job),host=$('[data-auto-progress]');host.replaceChildren();const title=document.createElement('strong');title.textContent=explanation.title;host.append(title);for(const note of explanation.notes){const line=document.createElement('span');line.style.display='block';line.textContent=note;host.append(line);}
   $('[data-auto]').hidden=true;$('[data-stop]').hidden=true;$('[data-export]').hidden=!reports.length;status('');
+  rerunButton.hidden=true;
+  if(pageCanary&&pageRerunEligible(job,doc,total)&&originalDigest===job.zone_binding?.file_sha256){
+   supabaseClient.auth.getUser().then(actor=>{if(!closed&&viewVersion===backgroundViewVersion&&!actor.error&&actor.data?.user?.id==='7c74b122-3940-40a8-a32f-fe2b6776c173')rerunButton.hidden=false;}).catch(()=>{});
+   rerunButton.onclick=async()=>{
+    if(closed||busy||autoActive||viewVersion!==backgroundViewVersion)return;
+    if(!window.confirm('Створити окремий контроль цього самого файла — до 13 кроків із fallback AI? Це може витратити API-кредити. Старі квитанції збережуться; картка та основний OCR не зміняться.'))return;
+    let intent=rerunIntents.get(job.id);if(!intent){intent=crypto.randomUUID();rerunIntents.set(job.id,intent);}
+    lock(true);try{
+     const queued=await supabaseClient.rpc('crm_splav_zone_page_rerun_enqueue',{p_previous_job:job.id,p_run_id:intent,p_reason:'Порівняння окремого односторінкового контролю зі збереженим попереднім запуском'});
+     if(closed||viewVersion!==backgroundViewVersion)return;
+     if(queued.error||!queued.data?.id)throw Error('Новий контроль не підтверджено. Стан запиту може бути невідомим; повторне натискання в цьому вікні перевірить те саме доручення.');
+     crosscheckVersion++;backgroundReportLoaded=false;backgroundReportsKey=null;reportBinding=null;reports.splice(0,reports.length);$('[data-result]').replaceChildren();showBackground(queued.data);
+    }catch(e){if(!closed&&viewVersion===backgroundViewVersion)status(e.message);}finally{if(!closed)lock(false);}
+   };
+  }
   dialog.querySelector('h2').textContent='Документ · результат СПЛАВ';dialog.querySelectorAll('p')[1].textContent='Показано збережений стан опрацювання. Перегляд не запускає нове розпізнавання.';
   if(!backgroundSeen){$('[data-manual]').open=false;backgroundSeen=true;}
   const reportsKey=Array.isArray(job.zone_reports)?JSON.stringify(job.zone_reports):null;
@@ -382,5 +404,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML};
 })();

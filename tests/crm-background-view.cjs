@@ -6,10 +6,12 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve));
 function setup(){
  const node=()=>({children:[],hidden:false,disabled:false,textContent:'',append(...items){this.children.push(...items)},replaceChildren(...items){this.children=items},querySelector(){return {remove(){}}}});
  const nodes=new Map(),get=key=>{if(!nodes.has(key))nodes.set(key,node());return nodes.get(key)},requests=[],timers=[],statuses=[];let checks=0;
- const client={from:()=>{const chain={select(){return chain},eq(){return chain},single(){const d=deferred();requests.push({kind:'document',...d});return d.promise}};return chain},rpc:()=>{const d=deferred();requests.push({kind:'status',...d});return d.promise}};
+ const client={auth:{getUser:()=>{const d=deferred();requests.push({kind:'auth',...d});return d.promise}},from:()=>{const chain={select(){return chain},eq(){return chain},single(){const d=deferred();requests.push({kind:'document',...d});return d.promise}};return chain},rpc:(name,args)=>{const d=deferred();requests.push({kind:'status',name,args,...d});return d.promise}};
  const context={reports:[],doc:{id:'d'},closed:false,backgroundViewVersion:0,backgroundReportsKey:null,backgroundReportLoaded:false,backgroundSeen:false,backgroundPoll:null,reportBinding:null,crosscheckVersion:0,
   $:get,document:{createElement:node,createTextNode:text=>({textContent:text})},dialog:{querySelector:get,querySelectorAll:()=>[node(),node()]},
   backgroundSummary:job=>({title:job.state,notes:[]}),showReport:report=>get('[data-result]').append(report),crosscheck:()=>{checks++;return Promise.resolve()},backgroundReports:(_job,saved)=>saved?.reports||[],status:text=>statuses.push(text),supabaseClient:client,
+  rerunButton:node(),rerunIntents:new Map(),pageCanary:false,pageRerunEligible:()=>true,total:1,originalDigest:'hash',busy:false,autoActive:false,confirmed:true,
+  window:{confirm:()=>context.confirmed},crypto:{randomUUID:()=>{context.uuidCalls++;return 'intent-'+context.uuidCalls}},uuidCalls:0,lock:value=>{context.busy=value},
   clearInterval(){},setInterval:fn=>{timers.push(fn);return timers.length}};
  vm.createContext(context);vm.runInContext(body,context);return {context,get,requests,timers,statuses,checks:()=>checks};
 }
@@ -37,4 +39,27 @@ test('polling transport failures are contained and do not dispatch AI',async()=>
 test('an old polling response cannot replace a newer terminal view and closed dialogs ignore pending loads',async()=>{
  const f=setup();f.context.showBackground(job());const pending=f.timers[0]();f.context.showBackground(job({state:'superseded'}));f.requests[0].resolve({data:job({zone_reports:[overview,zone]})});await pending;assert.equal(f.context.reports.length,0);assert.equal(f.get('[data-auto-progress]').children[0].textContent,'superseded');
  const g=setup();g.context.showBackground(job({state:'completed',result:{saved_at:'now'}}));g.context.closed=true;g.requests[0].resolve({data:{ai_extracted:{_military_zone_report:{reports:[zone]}}}});await flush();assert.equal(g.context.reports.length,0);
+});
+
+test('opening an eligible old run only checks owner visibility; cancellation never enqueues',async()=>{
+ const f=setup();f.context.pageCanary=true;f.context.showBackground(job({state:'completed',zone_binding:{file_sha256:'hash'},zone_reports:[overview,zone]}));
+ assert.equal(f.requests.length,1);assert.equal(f.requests[0].kind,'auth');
+ f.requests[0].resolve({data:{user:{id:'7c74b122-3940-40a8-a32f-fe2b6776c173'}}});await flush();assert.equal(f.context.rerunButton.hidden,false);
+ f.context.confirmed=false;await f.context.rerunButton.onclick();assert.equal(f.requests.length,1);assert.equal(f.context.uuidCalls,0);
+});
+
+test('uncertain enqueue response reuses the same run intent and success clears the old display',async()=>{
+ const f=setup();f.context.pageCanary=true;f.context.showBackground(job({state:'completed',zone_binding:{file_sha256:'hash'},zone_reports:[overview,zone]}));
+ f.requests[0].resolve({data:{user:{id:'7c74b122-3940-40a8-a32f-fe2b6776c173'}}});await flush();
+ const first=f.context.rerunButton.onclick(),request=f.requests[1];assert.equal(request.name,'crm_splav_zone_page_rerun_enqueue');
+ request.reject(Error('network response lost'));await first;assert.equal(f.context.busy,false);assert.equal(f.context.reports.length,2);
+ const second=f.context.rerunButton.onclick(),retry=f.requests[2];assert.equal(retry.args.p_run_id,request.args.p_run_id);assert.equal(retry.args.p_previous_job,'j');assert.equal(f.context.uuidCalls,1);
+ retry.resolve({data:{id:'new-job',state:'queued',kind:'zone'}});await second;assert.equal(f.context.reports.length,0);assert.equal(f.context.rerunButton.hidden,true);assert.equal(f.context.reportBinding,null);
+ assert.equal(f.requests[3].args.job_id,'new-job');
+});
+
+test('late owner check cannot reveal the rerun action after the source changes',async()=>{
+ const f=setup();f.context.pageCanary=true;f.context.showBackground(job({state:'completed',zone_binding:{file_sha256:'hash'},zone_reports:[overview,zone]}));
+ f.context.showBackground(job({state:'superseded',zone_binding:null}));
+ f.requests[0].resolve({data:{user:{id:'7c74b122-3940-40a8-a32f-fe2b6776c173'}}});await flush();assert.equal(f.context.rerunButton.hidden,true);
 });

@@ -1,4 +1,14 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+test('explicit rerun is limited to a finished one-page biography and never starts from a saved view',()=>{
+ const context={window:{}};vm.createContext(context);const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');vm.runInContext(code,context);
+ const eligible=context.window.CRMMilitaryZoneReview.pageRerunEligible,doc={id:'d',document_type:'Автобіографія друкована'};
+ const job={_detailed:true,kind:'zone',document_id:'d',state:'completed',stage:'finished',zone_summary:{pages:1,budget:13},zone_binding:{document_id:'d'},zone_run:{id:'legacy'}};
+ assert.equal(eligible(job,doc,1),true);assert.equal(eligible({...job,state:'needs_review'},doc,1),true);
+ for(const patch of [{_detailed:false},{kind:'root'},{document_id:'other'},{state:'running'},{stage:'waiting'},{zone_run:null},{zone_binding:null},{zone_summary:{pages:2,budget:13}},{zone_summary:{pages:1,budget:1}},{zone_summary:{pages:1,budget:13,source_changed:true}}])assert.equal(eligible({...job,...patch},doc,1),false);
+ assert.equal(eligible(job,doc,2),false);assert.equal(eligible(job,{...doc,document_type:'Автобіографія рукописна'},1),false);
+ const click=code.indexOf('rerunButton.onclick=async()=>'),confirm=code.indexOf('window.confirm(',click),rpc=code.indexOf("rpc('crm_splav_zone_page_rerun_enqueue'",click);
+ assert(click>0&&confirm>click&&rpc>confirm);assert(code.includes('rerunIntents.get(job.id)'));assert(code.includes('p_run_id:intent'));
+});
 function setup(){
  const calls=[],review={open:async(doc,options)=>calls.push({doc,options})};
  const context={document:{readyState:'loading',addEventListener(){}},window:{CRMMilitaryZoneReview:review,CRMMilitaryZoneContract:{family:type=>type==='Автобіографія'}},
