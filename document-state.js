@@ -48,8 +48,8 @@
     }
     return output;
   }
-  function summary(c,requirements,documents) {
-    const list=rows(c,requirements,documents), docs=latest(documents), seen=new Set();
+  function scope(c,requirements,documents) {
+    const docs=latest(documents);
     const current=[],excluded=[];
     for(const d of docs){
       const original=(requirements||[]).find(r=>match(r,d));
@@ -57,6 +57,10 @@
       const applies=r?(r.active===false?false:conditions().requirement(r,c)):d.document_type?conditions().documentCondition(d.document_type,c):null;
       (applies===false?excluded:current).push(d); // Unknown conditions remain visible for review.
     }
+    return {all:docs,current,excluded};
+  }
+  function summary(c,requirements,documents) {
+    const list=rows(c,requirements,documents), {all:docs,current,excluded}=scope(c,requirements,documents), seen=new Set();
     const required=list.filter(row=>{
       if(!row.r.is_required||row.condition!==true)return false;
       if(row.group==='military-alternative'){if(seen.has(row.group))return false;seen.add(row.group);}
@@ -89,5 +93,5 @@
     return {rows:output,ready:output.every(r=>!r.blocked),files:output.flatMap(r=>r.files),missing:output.filter(r=>r.blocked)};
   }
   function requirementFor(d,requirements) {return (requirements||[]).find(r=>match(r,d));}
-  window.CRMDocumentState={match,files,rows,summary,fileState,packageState,requirementFor};
+  window.CRMDocumentState={match,files,rows,scope,summary,fileState,packageState,requirementFor};
 })();

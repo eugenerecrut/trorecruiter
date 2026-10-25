@@ -42,4 +42,6 @@ test('inactive and explicitly unmet requirements cannot create invisible dashboa
  const docs=requirements.map(r=>({id:r.id,requirement_id:r.id,document_type:r.document_type,storage_path:r.id+'.pdf',processing_status:'AI обробка'}));
  const summary=ctx.window.CRMDocumentState.summary(person,requirements,docs);assert.equal(summary.review,0);assert.equal(summary.processing,0);assert.equal(summary.excludedReview,2);assert.equal(summary.excludedProcessing,2);assert.equal(summary.total,0);
  assert.match(source,/Поза поточним комплектом/);assert.match(source,/документів на перевірку/);
+ const scope=ctx.window.CRMDocumentState.scope(person,requirements,docs);assert.equal(scope.excluded.length,2);assert.equal(scope.current.length,0);
+ const manager=fs.readFileSync(require('node:path').join(__dirname,'../documents.js'),'utf8');assert.match(manager,/CRMDocumentState.scope\(c,reqs,docs\)/);assert.match(manager,/documentScope.current.filter/);
 });
