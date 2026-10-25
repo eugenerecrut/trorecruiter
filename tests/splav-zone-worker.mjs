@@ -11,6 +11,7 @@ async function fixture(options={}){
  const client={rpc:async(name,payload)=>{assert.equal(name,'crm_splav_zone_step');assert.equal(payload.p_job,id);assert.equal(payload.p_token,token);rpc.push(payload.p_operation);
   const op=payload.p_operation;
   if(options.denied)return {error:{message:'denied'}};
+  if(op==='final')return {data:options.finalResult===undefined?{status:'complete'}:options.finalResult};
   if(op==='load')return {data:structuredClone(context)};
   if(op==='begin'){
    if(options.nativeUncertain){context.in_flight_response={state:'dispatched'};return {data:{state:'dispatched'}};}
@@ -89,4 +90,12 @@ test('persisted native-only control blocks scans and zone tasks without AI or fi
 });
 test('native-only restriction survives checkpoint loss and recovery without a paid zone',async()=>{
  const f=await fixture({native:true,nativeOnly:true,checkpointLoss:true,budget:1});assert.equal((await f.invoke()).status,503);assert.equal((await f.invoke()).status,200);assert.deepEqual(f.ai,[]);assert.equal(f.rpc.at(-1),'hold');assert(!f.rpc.includes('final'));
+});
+
+test('final response follows persisted report verdict instead of queue exhaustion',async()=>{
+ for(const [saved,state,status] of [[{status:'complete'},'finished','complete'],[{status:'complete_with_gaps'},'needs_review','complete_with_gaps'],[{},'needs_review','unconfirmed'],[null,'needs_review','unconfirmed'],[{status:'unknown'},'needs_review','unconfirmed']]){
+  const f=await fixture({finalResult:saved});await f.invoke();f.context.in_flight_response=null;
+  const response=await f.invoke();assert.equal(response.status,200);assert.deepEqual(await response.json(),{state,report_status:status});
+  assert.equal(f.rpc.filter(op=>op==='final').length,1);assert.equal(f.rpc.at(-1),'final');assert(!f.rpc.includes('retry'));assert.deepEqual(f.ai,['overview','zone']);
+ }
 });

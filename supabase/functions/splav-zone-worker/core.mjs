@@ -75,7 +75,13 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
    if(summary.blocked){await rpc('block');return json(200,{state:'uncertain'});}
    if(context.native_only===true){await rpc('hold');return json(200,{state:'native_control_finished',ai_requests:0});}
    if(summary.budget_exhausted){await rpc('hold');return json(200,{state:'budget_exhausted'});}
-   if(summary.done){await rpc('final');return json(200,{state:'finished'});}
+   if(summary.done){
+    const saved=await rpc('final');
+    // Queue exhaustion is not proof of a complete report. Use the persisted verdict.
+    const confirmed=saved?.status==='complete'||saved?.status==='complete_with_gaps';
+    return json(200,{state:saved?.status==='complete'?'finished':'needs_review',
+     report_status:confirmed?saved.status:'unconfirmed'});
+   }
    await rpc('yield');return json(200,{state:'queued'});
   }catch{
    // Retry only the leased orchestration. In-flight receipt recovery decides
