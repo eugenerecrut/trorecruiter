@@ -221,4 +221,11 @@ test('saved fallback displays only filtered evidence and never automatically rep
  assert(source.includes('for(const report of view.reports)'));
  assert(source.includes('if(view.reports.length)try{await crosscheck()}'));
  assert(!source.includes('reports.push(...saved.reports)'));
+ assert(source.includes('else if(saved){'));
+ assert(!source.includes("else if(saved&&Array.isArray(saved.reports)"));
+});
+
+test('unknown or malformed saved reports remain review-only instead of triggering automatic AI',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ for(const saved of [{status:'unknown',reports:[]},{status:'complete',reports:null},{status:'complete'},'legacy']){const view=context.window.CRMMilitaryZoneReview.savedReportView(saved,'own');assert.match(view.title,/потрібна перевірка/);assert.equal(view.reports.length,0);}
 });
