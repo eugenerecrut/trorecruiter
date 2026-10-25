@@ -29,6 +29,7 @@ jobs:
           node tests/crm-education-summary.cjs
           node tests/crm-education-fields.cjs
           node tests/crm-archive-path.cjs
+          node --test tests/crm-safe-archive.cjs
       - name: Install isolated PostgreSQL test runtime
         run: npm ci --prefix tests/sql-runtime --ignore-scripts
       - name: Verify source-bound decisions in isolated PostgreSQL

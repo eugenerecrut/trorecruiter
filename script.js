@@ -24,12 +24,13 @@ function escapeHtml(value) {
 
 async function getCount(table) {
   if(table==='documents'){
-    const result=await supabaseClient.from(table).select('id,version_group_id,version_number,deleted_at');
+    const ids=new Set((await getCandidates()).map(c=>c.id));
+    const result=await supabaseClient.from(table).select('id,candidate_id,version_group_id,version_number,deleted_at');
     if(result.error)throw result.error;
-    return CRMResponsibility.latest(result.data||[]).length;
+    return CRMResponsibility.latest(result.data||[]).filter(d=>ids.has(d.candidate_id)).length;
   }
   let query=supabaseClient.from(table).select('*',{count:'exact',head:true});
-  if(table==='candidates')query=query.is('profile_data->>merged_into',null);
+  if(table==='candidates')query=query.is('profile_data->>merged_into',null).is('profile_data->workflow->>archived_at',null);
   if(table==='personal_files'){const ids=(await getCandidates()).map(c=>c.id);if(!ids.length)return 0;query=query.in('candidate_id',ids);}
   const {count,error}=await query;
   if(error)throw error;
@@ -45,14 +46,14 @@ async function updateDashboard() {
   }catch(error){cards.forEach(card=>{if(card.isConnected)card.textContent='—'});throw error;}
 }
 
-async function getCandidates() {
+async function getCandidates({includeArchived=false}={}) {
   const { data, error } = await supabaseClient
     .from('candidates')
     .select('*')
     .order('created_at', { ascending: false });
 
   if(error)throw error;
-  return (data || []).filter(c=>{try{const p=typeof c.profile_data==='string'?JSON.parse(c.profile_data):c.profile_data||{};return !p.merged_into}catch{return true}});
+  return (data || []).filter(c=>{try{const p=typeof c.profile_data==='string'?JSON.parse(c.profile_data):c.profile_data||{};return !p.merged_into&&(includeArchived||!p.workflow?.archived_at)}catch{return true}});
 }
 
 function showCandidates() {
@@ -815,12 +816,13 @@ async function saveCandidateFromRecommendation(event) {
     return;
   }
 
-  const existing=CRMCandidateDuplicates.matching(candidate,await getCandidates());
+  const existing=CRMCandidateDuplicates.matching(candidate,await getCandidates({includeArchived:true}));
   if(existing.length||form.dataset.savedCandidateId){
     const choice=form.dataset.savedCandidateId?{action:'attach',id:form.dataset.savedCandidateId}:await CRMCandidateDuplicates.choose(existing,!!pendingRecommendationFile);
     if(form.dataset.savedCandidateId){const repair=await supabaseClient.from('personal_files').upsert({candidate_id:choice.id,address:String(fd.get('address')||'').trim()||null},{onConflict:'candidate_id',ignoreDuplicates:true});if(repair.error)throw repair.error;}
     if(choice.action==='cancel')return;
     if(choice.action==='open'){await crmNavigate('card',choice.id);return choice.id;}
+    if(existing.some(c=>c.id===choice.id&&CRMWorkflow.isArchived(c))){status.textContent='Справа вже в архіві. Відкрийте її та поверніть у роботу перед додаванням РЛ.';return;}
     if(pendingRecommendationFile){
       status.textContent='Додаємо РЛ до наявної справи…';
       const result=await uploadRecommendation(choice.id,user);
