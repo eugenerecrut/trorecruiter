@@ -79,18 +79,32 @@ function readingSummary(data){
  const uncertain=fields.filter(f=>f?.value==null||typeof f.value==='string'&&!f.value.trim()||f?.legibility!=='clear'||Array.isArray(f.alternatives)&&f.alternatives.length>0).length;
  return {count:fields.length,uncertain,label:fields.length?fields.length+' полів · '+uncertain+' потребують перевірки':'Структурованих полів немає · потрібна перевірка',notice:!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':uncertain?'Є непевні значення. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.'};
 }
-function savedReportView(saved,documentId){
+function savedReportView(saved,documentId,{context=null,binding=null}={}){
  const supplied=Array.isArray(saved?.reports)?saved.reports:[];
- const reports=supplied.filter(r=>typeof documentId==='string'&&documentId.trim()&&r?.review_only===true&&r.source?.document_id===documentId&&
-  ['overview','zone'].includes(r.mode)&&Number.isSafeInteger(r.source.page)&&r.source.page>0&&r.source.page<=200);
+ const current=context&&context.document_id===documentId&&/^[a-f0-9]{64}$/.test(context.file_sha256||'')&&
+  Number.isSafeInteger(context.pages)&&context.pages>0&&context.pages<=200;
+ let unverified=0;
+ const reports=supplied.filter(r=>{
+  if(typeof documentId!=='string'||!documentId.trim()||r?.review_only!==true||r.source?.document_id!==documentId||
+   !['overview','zone'].includes(r.mode)||!Number.isSafeInteger(r.source.page)||r.source.page<1||r.source.page>200)return false;
+  if(context&&!current)return false;
+  if(current){
+   if(r.source.page>context.pages)return false;
+   if(r.source.file_sha256!==undefined){if(r.source.file_sha256!==context.file_sha256)return false;}
+   else if(!binding||binding.document_id!==documentId||binding.file_sha256!==context.file_sha256||
+    !context.revision||binding.revision!==context.revision)unverified++;
+  }else unverified++;
+  return true;
+ });
  const omitted=supplied.length-reports.length,errors=Array.isArray(saved?.errors)?saved.errors.length:0;
- const gaps=saved?.status!=='complete'||!reports.length||errors>0||omitted>0||reports.some(r=>
+ const gaps=saved?.status!=='complete'||!reports.length||errors>0||omitted>0||unverified>0||reports.some(r=>
   Array.isArray(r.quality_issues)&&r.quality_issues.length>0||r.mode==='zone'&&(!readingSummary(r).count||readingSummary(r).uncertain>0));
  const notes=[gaps?'Залишилися непрочитані або непевні відомості. Перевірте збережені фрагменти з оригіналом.':'Читання збережено. Зіставлення та підтвердження відомостей виконуються окремо.'];
  if(errors)notes.push('Кроків із помилками: '+errors+'.');
- if(omitted)notes.push('Не показано фрагментів без підтвердженої належності цьому документу: '+omitted+'. Вони не беруть участі у зіставленні.');
+ if(omitted)notes.push('Не показано фрагментів без підтвердженої належності цьому документу та його сторінкам: '+omitted+'. Вони не беруть участі у зіставленні.');
+ if(unverified)notes.push('Історичних читань без підтвердженої прив’язки до відкритого оригіналу: '+unverified+'. Вони показані для перегляду; до зіставлення не допускаються без перевірки джерела.');
  notes.push('Перегляд не запускає AI. Дані картки та основне розпізнавання не змінюються.');
- return {title:gaps?'Звіт збережено · потрібна перевірка':'Звіт збережено',notes,reports,omitted,errors};
+ return {title:gaps?'Звіт збережено · потрібна перевірка':'Звіт збережено',notes,reports,omitted,errors,unverified};
 }
 function sourceTarget(report,current,binding){
  const s=report?.source;if(report?.mode!=='zone'||s?.document_id!==current.document_id||!Number.isInteger(s.page)||s.page<1||s.page>current.pages||!/^[a-f0-9]{64}$/.test(current.file_sha256||''))return null;
@@ -321,7 +335,7 @@ async function open(doc,{autostart=false}={}){
   }else if(blob.type.startsWith('image/'))bitmap=await createImageBitmap(blob);else throw Error('Потрібен PDF або зображення');
   await render();let backgroundJob=null;try{const jobs=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:doc.candidate_id});if(!jobs.error&&Array.isArray(jobs.data))backgroundJob=jobs.data.find(j=>j.document_id===doc.id&&j.kind==='zone');}catch{}
   const saved=doc.ai_extracted?._military_zone_report;if(backgroundJob)showBackground(backgroundJob);else if(saved){
-   const view=savedReportView(saved,doc.id);reports.push(...view.reports);
+   const view=savedReportView(saved,doc.id,{context:{document_id:doc.id,file_sha256:originalDigest,pages:total,revision:doc.ai_processed_at||''},binding:reportBinding||coordinatorSession?.source});reports.push(...view.reports);
    for(const report of view.reports)if(report.mode==='zone')showReport(report,report.source.page);
    $('[data-auto-progress]').textContent=[view.title,...view.notes].join(' ');
    $('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));

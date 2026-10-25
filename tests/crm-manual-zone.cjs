@@ -198,7 +198,7 @@ test('education and service evidence uses labelled escaped fields rather than te
 
 test('saved reports distinguish gaps and discard foreign or malformed reading sources without mutating evidence',()=>{
  const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
- const view=context.window.CRMMilitaryZoneReview.savedReportView;
+ const view=(saved,id)=>context.window.CRMMilitaryZoneReview.savedReportView(saved,id,{context:{document_id:id,file_sha256:"a".repeat(64),pages:2,revision:"r1"},binding:{document_id:id,file_sha256:"a".repeat(64),revision:"r1"}});
  const own={review_only:true,mode:'zone',source:{document_id:'own',page:1},rows:[{fields:[{value:'Example',legibility:'clear'}]}]};
  const foreign={...own,source:{document_id:'other',page:1}},invalid={...own,source:{document_id:'own',page:0}};
  const saved={status:'complete',reports:[own,foreign,invalid,null],errors:[]},before=JSON.stringify(saved);
@@ -217,7 +217,9 @@ test('saved reports distinguish gaps and discard foreign or malformed reading so
 
 test('saved fallback displays only filtered evidence and never automatically reprocesses an incomplete report',()=>{
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
- assert(source.includes('const view=savedReportView(saved,doc.id);reports.push(...view.reports)'));
+ assert(source.includes('const view=savedReportView(saved,doc.id,{context:{document_id:doc.id,file_sha256:originalDigest,pages:total,revision:doc.ai_processed_at'));
+ assert(source.includes('binding:reportBinding||coordinatorSession?.source}'));
+ assert(source.includes('reports.push(...view.reports)'));
  assert(source.includes('for(const report of view.reports)'));
  assert(source.includes('if(view.reports.length)try{await crosscheck()}'));
  assert(!source.includes('reports.push(...saved.reports)'));
@@ -228,4 +230,20 @@ test('saved fallback displays only filtered evidence and never automatically rep
 test('unknown or malformed saved reports remain review-only instead of triggering automatic AI',()=>{
  const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
  for(const saved of [{status:'unknown',reports:[]},{status:'complete',reports:null},{status:'complete'},'legacy']){const view=context.window.CRMMilitaryZoneReview.savedReportView(saved,'own');assert.match(view.title,/потрібна перевірка/);assert.equal(view.reports.length,0);}
+});
+
+
+test('saved readings are checked against actual original pages and digest; unbound legacy readings remain history',()=>{
+ const sandbox={window:{}};vm.createContext(sandbox);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),sandbox);
+ const view=sandbox.window.CRMMilitaryZoneReview.savedReportView;
+ const context={document_id:'own',file_sha256:'a'.repeat(64),pages:1,revision:'r1'},binding={document_id:'own',file_sha256:'a'.repeat(64),revision:'r1'};
+ const own={review_only:true,mode:'zone',source:{document_id:'own',page:1,file_sha256:context.file_sha256},rows:[{fields:[{value:'Example',legibility:'clear'}]}]};
+ const saved=reports=>({status:'complete',reports,errors:[]});
+ const valid=view(saved([own]),'own',{context});assert.equal(valid.reports.length,1);assert.equal(valid.unverified,0);assert.equal(valid.title,'Звіт збережено');
+ for(const changed of [{page:2},{file_sha256:'b'.repeat(64)},{file_sha256:''},{file_sha256:null}]){const original=saved([{...own,source:{...own.source,...changed}}]),before=JSON.stringify(original),result=view(original,'own',{context,binding});assert.equal(result.reports.length,0);assert.equal(result.omitted,1);assert.equal(JSON.stringify(original),before);}
+ const legacy={...own,source:{document_id:'own',page:1}};
+ assert.equal(view(saved([legacy]),'own',{context,binding}).unverified,0);
+ for(const options of [{},{context},{context,binding:{...binding,revision:'old'}},{context,binding:{...binding,document_id:'other'}},{context,binding:{...binding,file_sha256:'b'.repeat(64)}}]){const result=view(saved([legacy]),'own',options);assert.equal(result.reports.length,1);assert.equal(result.unverified,1);assert.match(result.title,/потрібна перевірка/);assert.match(result.notes.join(' '),/Історичних читань/);}
+ for(const changed of [{pages:0},{pages:201},{pages:1.5},{file_sha256:'bad'},{document_id:'other'}])assert.equal(view(saved([own]),'own',{context:{...context,...changed}}).reports.length,0);
+ const overview={...own,mode:'overview',zones:[]};assert.equal(view(saved([overview]),'own',{context}).unverified,0);
 });
