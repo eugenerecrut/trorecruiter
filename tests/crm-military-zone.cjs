@@ -225,3 +225,22 @@ test('native-only delegated lease is rejected by AI validation before any provid
  const s=server({processor:true,zoneLease:true,nativeOnly:true}),r=await s.invoke({job_id:'11111111-1111-1111-1111-111111111111',lease_token:'22222222-2222-2222-2222-222222222222',coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',coordinator_version:7});
  assert.equal(r.status,403);assert(!s.calls.some(c=>/api.openai.com|generativelanguage|openrouter.ai|crm_zone_begin/.test(c.url)));
 });
+
+test('graduation years preserve exact clear source years without inventing dates or choosing alternatives',()=>{
+ for(const raw of ['2017','2017 року','у 2017 році','2017 р.'])for(const value of [null,'2017',2017]){const f={key:'graduation_year',raw_text:raw,value,legibility:'clear'},before=JSON.stringify(f),out=contract.projectField(f);assert.equal(out.value,'2017');assert.equal(out.requires_review,true);assert.equal(out.partial_value,undefined);assert.equal(out.raw_text,raw);assert.equal(JSON.stringify(f),before);assert.equal(contract.projectField(out).value,'2017');}
+ for(const raw of ['2017-2021','вересня 2017','2017 або 2018','закінчив у 2017 році','2017<script>','17','2200'])assert.equal(contract.projectField({key:'graduation_year',raw_text:raw,value:'2017',legibility:'clear'}).value,null,raw);
+ for(const legibility of ['uncertain','unreadable',undefined])assert.equal(contract.projectField({key:'graduation_year',raw_text:'2017',value:null,legibility}).value,null);
+ const conflict=contract.projectField({key:'graduation_year',raw_text:'2017',value:'2018',legibility:'clear'});assert.equal(conflict.value,null);assert.match(conflict.reason,/відрізняється/);assert.equal(contract.projectField(conflict).value,null);assert(contract.projectField(conflict).alternatives.includes('2018'));
+ const alternative=contract.projectField({key:'graduation_year',raw_text:'2017',value:null,legibility:'clear',alternatives:['2018']});assert.equal(alternative.value,null);assert.match(alternative.reason,/альтернативні/);
+ for(const value of [{toString:'not callable'},false,[]]){const out=contract.projectField({key:'graduation_year',raw_text:'2017',value,legibility:'clear'});assert.equal(out.value,null);assert.equal(contract.projectField(out).value,null);}
+ for(const alternatives of [[2018],[{}],[false]]){const out=contract.projectField({key:'graduation_year',raw_text:'2017',value:null,legibility:'clear',alternatives});assert.equal(out.value,null);assert.equal(contract.projectField(out).value,null);assert(out.alternatives.length);}
+ assert.equal(contract.fieldValid('graduation_year','2017-01-01'),false);assert.equal(contract.fieldValid('graduation_year','2017'),true);
+});
+test('source precision accepts Ukrainian year suffixes but never extracts years from prose or ranges',()=>{
+ for(const raw of ['2017 році','у 2017 році','в 2017 р.','2017 рік'])assert.equal(contract.partialDate(raw).partial_value,'2017');
+ for(const raw of ['2017-2021 роки','з 2017 по 2021','У 2017 році закінчив школу','2017 2018'])assert.equal(contract.partialDate(raw),null);
+ const out=contract.projectField({key:'start_date',raw_text:'у 2017 році',value:'2017-01-01',legibility:'clear'});assert.equal(out.value,null);assert.equal(out.partial_value,'2017');assert.equal(out.date_precision,'year');
+});
+test('legacy year projection is read only and does not call AI on cached receipt replay',async()=>{
+ const cached={contract:'military-zones-2',review_only:true,mode:'zone',source:{page:1},rows:[{fields:[{key:'graduation_year',raw_text:'2017',value:null,legibility:'clear'}]}]};const before=JSON.stringify(cached),s=server({ledger:'completed',cachedResult:cached});const result=await (await s.invoke()).json();assert.equal(result.request_replayed,true);assert.equal(result.rows[0].fields[0].value,'2017');assert.equal(result.rows[0].fields[0].requires_review,true);assert.equal(JSON.stringify(cached),before);assert(!s.calls.some(c=>/api.openai.com|openrouter.ai|generativelanguage/.test(c.url)));
+});

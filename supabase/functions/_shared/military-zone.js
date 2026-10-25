@@ -30,8 +30,8 @@ function semanticIssue(key,value){
 }
 function partialDate(raw){
  const value=String(raw||'').trim().toLocaleLowerCase('uk').replace(/\s+/g,' ');
- const year='((?:18|19|20|21)\\d{2})',ending='(?:\\s*(?:року|р\\.?))?';
- let match=value.match(new RegExp('^'+year+ending+'$','u'));if(match)return {partial_value:match[1],date_precision:'year'};
+ const year='((?:18|19|20|21)\\d{2})',ending='(?:\\s*(?:року|році|рік|р\\.?))?';
+ let match=value.match(new RegExp('^(?:у |в )?'+year+ending+'$','u'));if(match)return {partial_value:match[1],date_precision:'year'};
  match=value.match(new RegExp('^'+year+'-(0[1-9]|1[0-2])'+ending+'$','u'));if(match)return {partial_value:match[1]+'-'+match[2],date_precision:'month'};
  const months=['січ(?:ень|ня)','лют(?:ий|ого)','берез(?:ень|ня)','квіт(?:ень|ня)','трав(?:ень|ня)','черв(?:ень|ня)','лип(?:ень|ня)','серп(?:ень|ня)','верес(?:ень|ня)','жовт(?:ень|ня)','листопад(?:а)?','груд(?:ень|ня)'];
  for(let i=0;i<months.length;i++){match=value.match(new RegExp('^(?:з |по |до |у |в )?'+months[i]+' '+year+ending+'$','u'));if(match)return {partial_value:match[1]+'-'+String(i+1).padStart(2,'0'),date_precision:'month'};}
@@ -40,12 +40,19 @@ function partialDate(raw){
 function projectField(f={}){
  const raw=text(f.raw_text),legibility=['clear','uncertain','unreadable'].includes(f.legibility)?f.legibility:'uncertain';
  const partial=['start_date','end_date','order_date','birth_date','document_date'].includes(f.key)?partialDate(raw):null;
- const issue=semanticIssue(f.key,f.value)||semanticIssue(f.key,raw),valid=raw&&legibility==='clear'&&typeof f.value==='string'&&fieldValid(f.key,f.value)&&!partial;
- const reason=issue||(partial?(partial.date_precision==='month'?'У джерелі вказано місяць і рік; день не вказаний.':'У джерелі вказано лише рік; місяць і день не вказані.'):(typeof f.value==='string'&&!fieldValid(f.key,f.value)?'Формат значення потребує перевірки. '+text(f.reason):text(f.reason)));
- return {key:f.key,raw_text:raw,value:!issue&&valid?text(f.value):null,...(partial&&legibility==='clear'?partial:{}),alternatives:(Array.isArray(f.alternatives)?f.alternatives:[]).map(text).filter(Boolean).slice(0,5),legibility,reason,requires_review:true};
+ const year=f.key==='graduation_year'?partialDate(raw):null,rawYear=year?.date_precision==='year'?year.partial_value:null;
+ const suppliedYear=f.value==null?null:typeof f.value==='string'||typeof f.value==='number'?String(f.value).trim()||null:'[Некоректне прочитане значення року]';
+ const yearConflict=f.key==='graduation_year'&&rawYear&&suppliedYear!==null&&suppliedYear!==rawYear;
+ const yearAlternativeValues=f.key==='graduation_year'&&Array.isArray(f.alternatives)?f.alternatives.map(v=>typeof v==='string'?v:v==null?'':typeof v==='number'?String(v):'[Некоректне альтернативне читання року]'):[];
+ const yearAlternatives=yearAlternativeValues.some(v=>v.trim());
+ const yearValue=rawYear&&legibility==='clear'&&!yearConflict&&!yearAlternatives?rawYear:null;
+ const issue=semanticIssue(f.key,f.value)||semanticIssue(f.key,raw)||(yearConflict?'Рік у прочитаному значенні відрізняється від дослівного запису. Потрібна перевірка.':yearAlternatives?'Є альтернативні читання року. Потрібна перевірка.':''),valid=raw&&legibility==='clear'&&typeof f.value==='string'&&fieldValid(f.key,f.value)&&!partial&&(f.key!=='graduation_year'||!!yearValue);
+ const reason=issue||(yearValue?'Рік збережено з дослівного запису; місяць і день не додаються.':f.key==='graduation_year'&&!rawYear?'Дослівний запис не містить одного чітко визначеного року. Потрібна перевірка.':partial?(partial.date_precision==='month'?'У джерелі вказано місяць і рік; день не вказаний.':'У джерелі вказано лише рік; місяць і день не вказані.'):(typeof f.value==='string'&&!fieldValid(f.key,f.value)?'Формат значення потребує перевірки. '+text(f.reason):text(f.reason)));
+ return {key:f.key,raw_text:raw,value:!issue&&(yearValue||valid)?yearValue||text(f.value):null,...(partial&&legibility==='clear'?partial:{}),alternatives:f.key==='graduation_year'?[...(yearConflict?[suppliedYear]:[]),...yearAlternativeValues].map(text).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).slice(0,5):(Array.isArray(f.alternatives)?f.alternatives:[]).map(text).filter(Boolean).slice(0,5),legibility,reason,requires_review:true};
 }
 function fieldValid(key,value){
  if(semanticIssue(key,value))return false;
+ if(key==='graduation_year')return /^(?:18|19|20|21)\d{2}$/.test(value);
  if(key==='rnokpp')return /^\d{10}$/.test(value);
  if(key==='unit')return /^[АA]\d{4}$/u.test(value.trim());
  if(key==='military_specialty')return /^(?:\d{3}|\d{6})[А-ЯІЇЄҐA-Z]?$/u.test(value.replace(/\s/g,''));
