@@ -99,3 +99,16 @@ test('snapshots contain workflow metadata and codes, never OCR results or raw er
  assert.equal(state.snapshot().errors[0].code,'ZONE_STEP_FAILED');
  const snapshot=state.snapshot();snapshot.tasks.push({mode:'overview',page:1});assert.equal(state.tasks.length,0);
 });
+
+test('native typed biography page plan covers every original region without changing other scopes',()=>{
+ const zones=[{label:'Title',kind:'text',box:{x:.4,y:.05,w:.2,h:.03}},{label:'Body',kind:'text',box:{x:.1,y:.12,w:.8,h:.6}},{label:'Signature',kind:'text',box:{x:.2,y:.8,w:.4,h:.04}}],before=JSON.stringify(zones);
+ const options={documentType:'Автобіографія друкована',singlePageControl:true};const plan=pilot.nativeReadingPlan(zones,options);assert.equal(plan.zones.length,1);assert.deepEqual(plan.zones[0].box,{x:0,y:0,w:1,h:1});assert.deepEqual(plan.reading_plan.original_zones,zones);assert.equal(JSON.stringify(zones),before);
+ for(const original of zones){const b=original.box,p=plan.zones[0].box;assert(b.x>=p.x&&b.y>=p.y&&b.x+b.w<=p.x+p.w&&b.y+b.h<=p.y+p.h);}
+ for(const extra of [{nativeOnly:true},{singlePageControl:false},{documentType:'Автобіографія рукописна'},{documentType:'Копія військового квитка'},{documentType:''}])assert.deepEqual(pilot.nativeReadingPlan(zones,{...options,...extra}),{zones});
+ for(const altered of [[zones[0]],[...zones,{kind:'other',box:{x:.1,y:.1,w:.1,h:.1}}],Array(7).fill(zones[0]),[{...zones[0],box:{x:-1,y:0,w:1,h:1}},zones[1]]])assert.deepEqual(pilot.nativeReadingPlan(altered,options),{zones:altered});
+ plan.reading_plan.original_zones[0].box.x=0;assert.equal(zones[0].box.x,.4);
+});
+test('one native page plan reads the entire page once and keeps real gaps without same-page rereading',async()=>{
+ const zones=Array.from({length:3},(_,i)=>({kind:'text',box:{x:.1,y:.1+i*.2,w:.5,h:.1}}));
+ for(const unclear of [false,true]){const p=pilot.create(1,{source,budget:13}),calls=[];const end=await p.run({read:async task=>{calls.push(task);return task.mode==='overview'?pilot.nativeReadingPlan(zones,{documentType:'Автобіографія друкована',singlePageControl:true}):{rows:[{fields:[{value:unclear?null:'synthetic',legibility:unclear?'uncertain':'clear'}]}]};}});assert.equal(end.done,true);assert.equal(calls.length,2);assert.deepEqual(calls[1].box,{x:0,y:0,w:1,h:1});assert.equal(p.errors.length,unclear?1:0);}
+});

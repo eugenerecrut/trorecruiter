@@ -12,6 +12,14 @@ function sourceBinding(value){
 }
 function validBox(b){return b&&typeof b==='object'&&!Array.isArray(b)&&Object.keys(b).length===4&&
  ['x','y','w','h'].every(k=>typeof b[k]==='number'&&Number.isFinite(b[k])&&b[k]>=0&&b[k]<=1)&&b.w>0&&b.h>0&&b.x+b.w<=1.000001&&b.y+b.h<=1.000001;}
+function nativeReadingPlan(zones,{documentType='',nativeOnly=false,singlePageControl=false}={}){
+ const originals=copy(Array.isArray(zones)?zones:[]);
+ const eligible=singlePageControl&&!nativeOnly&&documentType==='Автобіографія друкована'&&originals.length>=2&&originals.length<=6&&
+  originals.every(z=>z?.kind==='text'&&validBox(z.box));
+ if(!eligible)return {zones:originals};
+ return {zones:[{label:'Автобіографія · уся сторінка',kind:'text',box:{x:0,y:0,w:1,h:1},reason:'Один прохід усієї сторінки зберігає заголовок, текст, дату й підпис у спільному контексті. Початкові рамки збережено окремо.'}],
+  reading_plan:{contract:'native-biography-page-1',strategy:'full_page',original_zones:originals,planned_readings:1,scope_notice:'Тільки контроль однієї друкованої автобіографії; зміст та повнота не підтверджені. Жодну ділянку сторінки не виключено.'}};
+}
 function taskValue(task,pages){
  if(!task||typeof task!=='object'||Array.isArray(task)||Object.keys(task).some(k=>!['mode','page','box','retry','transport_retry'].includes(k))||
   !['overview','zone'].includes(task.mode)||!integer(task.page,pages)||task.page<1||
@@ -124,5 +132,5 @@ function create(pages,{source=null,budget=MAX_STEPS}={}){
   tasks:Array.from({length:pages},(_,i)=>({mode:'overview',page:i+1})),in_flight:null,errors:[]});
 }
 function restore(snapshot,{source=null}={}){return coordinator(validateSnapshot(snapshot,source));}
-const api={VERSION,MAX_STEPS,create,restore};root.CRMMilitaryAutopilot=api;if(typeof module!=='undefined')module.exports=api;
+const api={VERSION,MAX_STEPS,create,restore,nativeReadingPlan};root.CRMMilitaryAutopilot=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

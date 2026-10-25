@@ -5,7 +5,7 @@ const id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',token='bbbbbbbb-bbbb-bbbb-bbbb-b
 const bytes=new TextEncoder().encode('%PDF-synthetic');
 async function fixture(options={}){
  const hash=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex');
- const context={id:doc,version:0,native_only:options.nativeOnly===true,source:{document_id:doc,file_sha256:options.hashMismatch?'0'.repeat(64):hash,revision:'r1'},document:{id:doc,storage_path:'source.pdf'},reports:[]};
+ const context={id:doc,version:0,native_only:options.nativeOnly===true,source:{document_id:doc,file_sha256:options.hashMismatch?'0'.repeat(64):hash,revision:'r1'},document:{id:doc,storage_path:'source.pdf',document_type:options.documentType},reports:[]};
  context.snapshot=planner.create(1,{source:context.source,budget:options.budget??2600}).snapshot();
  const calls=[],ai=[],rpc=[];let failed=false;
  const client={rpc:async(name,payload)=>{assert.equal(name,'crm_splav_zone_step');assert.equal(payload.p_job,id);assert.equal(payload.p_token,token);rpc.push(payload.p_operation);
@@ -27,7 +27,7 @@ async function fixture(options={}){
   return {data:{}};
  },storage:{from:bucket=>{assert.equal(bucket,'candidate-documents');return {createSignedUrl:async path=>{calls.push(path);return {data:{signedUrl:options.foreign?'https://foreign.invalid/secret':'https://test.supabase.co/storage/v1/object/sign/candidate-documents/source.pdf?token=synthetic'}};}};}}};
  const heap=new Float32Array(32),put=values=>heap.set(values,4),module={HEAPF32:heap,wasmExports:{malloc:()=>16,free(){}},_FPDFPage_GetRotation:()=>0,_FPDFPage_GetAnnotCount:()=>0,
-  _FPDFPage_GetMediaBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPage_GetCropBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPageObj_GetBounds:i=>{put([100,80-i*15,500,90-i*15]);return 1;}};
+  _FPDFPage_GetMediaBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPage_GetCropBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPageObj_GetBounds:i=>{put([100,80-i*(options.splitNative?30:15),500,90-i*(options.splitNative?30:15)]);return 1;}};
  const native=options.native?{module,pageIdx:1,getObjectCount:()=>options.graphics?4:3,getObject:i=>({type:options.graphics&&i===3?'path':'text',objectIdx:i,getText:()=> 'Synthetic native paragraph containing enough characters.'})}:{};
  const dependencies={planner,env:key=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public'})[key],createClient:(_url,key,opts)=>{assert.equal(key,'public');assert.equal(opts.global.headers.Authorization,'Bearer processor');return client;},
  getLibrary:async()=>({loadDocument:async()=>({getPageCount:()=>options.pages??1,destroy(){},getPage:()=>({...native,getOriginalSize:()=>({originalWidth:1800,originalHeight:100}),close(){},render:async({width,height})=>({width,height,data:new Uint8Array(width*height)})})})}),
@@ -98,4 +98,9 @@ test('final response follows persisted report verdict instead of queue exhaustio
   const response=await f.invoke();assert.equal(response.status,200);assert.deepEqual(await response.json(),{state,report_status:status});
   assert.equal(f.rpc.filter(op=>op==='final').length,1);assert.equal(f.rpc.at(-1),'final');assert(!f.rpc.includes('retry'));assert.deepEqual(f.ai,['overview','zone']);
  }
+});
+
+test('one-page typed biography control persists all original native regions and dispatches one full page',async()=>{
+ const f=await fixture({native:true,splitNative:true,budget:13,documentType:'Автобіографія друкована'});await f.invoke();assert.deepEqual(f.ai,[]);const overview=f.context.in_flight_response.result;assert.equal(overview.zones.length,1);assert.equal(overview.reading_plan.original_zones.length,3);assert.equal(overview.ai_requests,0);assert.deepEqual(f.context.snapshot.tasks[0].box,{x:0,y:0,w:1,h:1});f.context.in_flight_response=null;await f.invoke();assert.deepEqual(f.ai,['zone']);assert.equal(f.rpc.at(-1),'final');
+ const old={review_only:true,mode:'overview',zones:[{kind:'text',box:{x:.2,y:.2,w:.3,h:.2}}]};const cached=await fixture({native:true,splitNative:true,budget:13,documentType:'Автобіографія друкована',nativeCached:old});await cached.invoke();assert(!cached.rpc.includes('finish'));assert.deepEqual(cached.context.snapshot.tasks[0].box,old.zones[0].box);
 });

@@ -1,6 +1,25 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const facts=require('../biography-facts.js');
 const claim=(extra={})=>({employer:'Національна поліція України у м. Дніпрі',position:'поліцейський',start_date:{value:'2024-03-05',precision:'day'},end_date:{value:'2025-11-04',precision:'day'},source_document_id:'bio',requires_review:false,...extra});
+
+test('complex biography preserves parallel education and work and never invents foreign employers or exact days',()=>{
+ const p={bio_education_claims:[
+  {institution:'Тестова школа',start_date:'1993-09',end_date:'2003-05',source_document_id:'bio'},
+  {institution:'Тестовий технікум',start_date:'2003-09',end_date:'2006-05',source_document_id:'bio'},
+  {institution:'Тестовий університет',degree:'бакалавр',start_date:'2010-09',end_date:'2015-05',source_document_id:'bio'},
+ ],bio_work_claims:[
+  claim({employer:'Тестовий ресторан',start_date:'2003-09-15',end_date:'2006-01-15'}),
+  claim({employer:'Тестовий завод',start_date:'2010',end_date:'2012'}),
+  claim({employer:null,position:null,start_date:'2008',end_date:'2010',notes:'Працював за кордоном'}),
+  claim({employer:null,position:null,start_date:'2006',end_date:'2008',notes:'Безробітний'}),
+ ]},before=JSON.stringify(p),out=facts.profile(p);
+ assert.equal(JSON.stringify(p),before);assert.equal(out.education_records.length,3);
+ assert.equal(out.work_records.length,2);assert.equal(out.work_records[1].start_date,'2010');
+ assert.equal(out.work_records[1].date_precision.start,'year');
+ assert.equal(out.education_records[2].study_start_date,'2010-09');
+ assert.equal(out.education_records[1].degree,undefined);
+ assert.deepEqual(facts.profile(out),out);
+});
 test('explicit police period prints in service only with exact institution, no military unit prefix',()=>{
  const c={URL,structuredClone};c.window=c;vm.createContext(c);for(const f of ['biography-facts.js','candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),c);
  const r={...claim(),kind:'police_service',start_date:'2024-03-05',end_date:'2025-11-04',order_number:null};

@@ -40,8 +40,9 @@ function textLayerZones(items,viewport){
 }
 function backgroundSummary(job){
  const s=job.zone_summary||{},notes=[];
+ const outputLimit=Array.isArray(s.providers)&&s.providers.some(p=>['OpenAI','Gemini','OpenRouter'].includes(p?.provider)&&p.diagnosis==='OUTPUT_LIMIT_EXCEEDED');
  const gaps=job.result?.status==='complete_with_gaps'||s.error_count>0;
- const finishedWithGaps=job.result?.status==='complete_with_gaps'&&['completed','needs_review'].includes(job.state)&&
+ const finishedWithGaps=!outputLimit&&job.result?.status==='complete_with_gaps'&&['completed','needs_review'].includes(job.state)&&
   !(s.pending_steps>0)&&!['ZONE_RESULT_UNCERTAIN','ZONE_PROVIDERS_REJECTED','ZONE_PREP_FAILED','ZONE_OVERVIEW_INVALID','ZONE_OVERVIEW_TOO_MANY_ZONES'].includes(s.code);
  const readings=(Array.isArray(job.zone_reports)?job.zone_reports:[]).filter(r=>r?.mode==='zone').map(readingSummary);
  const emptyReadings=readings.filter(r=>r.count===0).length,uncertainReadings=readings.filter(r=>r.count>0&&(r.uncertain>0||r.empty_rows>0)).length;
@@ -56,6 +57,7 @@ function backgroundSummary(job){
  }
  if(finishedWithGaps)notes.push('Прохід завершено, звіт збережено. Частину значень потрібно звірити з оригіналом; новий AI-запуск автоматично не виконується.');
  else if(['queued','running'].includes(job.state))notes.push('Можна закрити це вікно. СПЛАВ продовжить роботу на сервері.');
+ else if(outputLimit)notes.push('AI відповів, але відповідь перевищила безпечні межі структури. Скорочений результат не прийнято. Перед новим погодженим запуском потрібно перевірити поділ сторінки.');
  else if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Сервіс міг прийняти запит, але придатний результат не отримано. Автоматичний повтор заблоковано, щоб уникнути повторних витрат.');
  else if(s.code==='ZONE_PROVIDERS_REJECTED')notes.push('AI-сервіси відхилили запит. Адміністратору потрібно перевірити їх доступність і ліміти.');
  else if(s.code==='ZONE_OVERVIEW_TOO_MANY_ZONES')notes.push('Огляд містить понад 6 різних зон. Їх не обрізали мовчки: читання цих зон не запускали, потрібне уточнення поділу сторінки.');
@@ -71,10 +73,12 @@ function backgroundSummary(job){
   if(uncertainReadings)notes.push('Читань із непевними значеннями або непрочитаними рядками: '+uncertainReadings+'. Перевірте позначені поля та їхні варіанти.');
   notes.push('Ці кількості стосуються читань, включно з контекстними повторами, а не унікальних полів чи документів.');
  }
- if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Наступна дія: адміністратору перевірити ліміти та доступ AI-сервісів. Цей фрагмент не запускати повторно без окремого рішення.');
+ if(!outputLimit&&(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain'))notes.push('Наступна дія: адміністратору перевірити ліміти та доступ AI-сервісів. Цей фрагмент не запускати повторно без окремого рішення.');
+ const pagePlans=(Array.isArray(job.zone_reports)?job.zone_reports:[]).filter(r=>r?.review_only===true&&r.mode==='overview'&&r.source?.origin==='server_text_layer'&&r.reading_plan?.contract==='native-biography-page-1'&&r.reading_plan.strategy==='full_page'&&Array.isArray(r.reading_plan.original_zones)&&r.reading_plan.original_zones.length>=2&&r.reading_plan.original_zones.length<=6);
+ if(pagePlans.length)notes.push('План читання друкованої автобіографії: уся сторінка в одному контексті. Початкові рамки збережено у звіті; заголовок, дата й підпис не виключалися.');
  if(Array.isArray(job.zone_reports)&&job.zone_reports.length)notes.push('Збережених результатів: '+job.zone_reports.length+'. Це відповіді огляду та читання, а не кількість підтверджених полів.');
  if(job.zone_reports_truncated)notes.push('Збережений звіт перевищує ліміт перегляду. Новий AI-запит не потрібен; зверніться до адміністратора.');
- const labels={insufficient_quota:'вичерпано API-квоту або баланс; адміністратору перевірити білінг',rate_limit_exceeded:'перевищено частоту запитів; адміністратору перевірити ліміти',QUOTA_OR_RATE_LIMIT:'квота або частота запитів; точної причини сервіс не надав',MAX_TOKENS:'відповідь обрізана через обмеження довжини',max_output_tokens:'відповідь обрізана через обмеження довжини',length:'відповідь обрізана через обмеження довжини',SAFETY:'сервіс заблокував відповідь',content_filter:'сервіс заблокував відповідь',invalid_api_key:'адміністратору перевірити ключ доступу',AUTHENTICATION_FAILED:'адміністратору перевірити ключ доступу',UNAUTHENTICATED:'адміністратору перевірити ключ доступу',model_not_found:'адміністратору перевірити доступ до моделі',MODEL_OR_ENDPOINT_UNAVAILABLE:'адміністратору перевірити доступ до моделі',PERMISSION_DENIED:'адміністратору перевірити права сервісу',ACCESS_DENIED:'адміністратору перевірити права сервісу'};
+ const labels={OUTPUT_LIMIT_EXCEEDED:'відповідь перевищила межі структури; потрібна перевірка поділу сторінки, автоматичного повтору немає',insufficient_quota:'вичерпано API-квоту або баланс; адміністратору перевірити білінг',rate_limit_exceeded:'перевищено частоту запитів; адміністратору перевірити ліміти',QUOTA_OR_RATE_LIMIT:'квота або частота запитів; точної причини сервіс не надав',MAX_TOKENS:'відповідь обрізана через обмеження довжини',max_output_tokens:'відповідь обрізана через обмеження довжини',length:'відповідь обрізана через обмеження довжини',SAFETY:'сервіс заблокував відповідь',content_filter:'сервіс заблокував відповідь',invalid_api_key:'адміністратору перевірити ключ доступу',AUTHENTICATION_FAILED:'адміністратору перевірити ключ доступу',UNAUTHENTICATED:'адміністратору перевірити ключ доступу',model_not_found:'адміністратору перевірити доступ до моделі',MODEL_OR_ENDPOINT_UNAVAILABLE:'адміністратору перевірити доступ до моделі',PERMISSION_DENIED:'адміністратору перевірити права сервісу',ACCESS_DENIED:'адміністратору перевірити права сервісу'};
  for(const p of (Array.isArray(s.providers)?s.providers:[]).slice(0,8)){
   if(!['OpenAI','Gemini','OpenRouter'].includes(p.provider))continue;
   notes.push(p.provider+': '+(labels[p.diagnosis]||(p.http_status===429?labels.QUOTA_OR_RATE_LIMIT:p.http_status?'сервіс відхилив запит (HTTP '+Number(p.http_status)+')':'придатної відповіді немає; причина не збережена.')));
@@ -146,6 +150,12 @@ function backgroundReports(job,saved){
  if(!job._detailed||!job.zone_summary||job.zone_summary.source_changed||!['completed','needs_review'].includes(job.state)||!saved||!['complete','complete_with_gaps'].includes(saved.status)||saved.status!==job.result?.status||!saved.saved_at||saved.saved_at!==job.result?.saved_at||!Array.isArray(saved.reports))return [];
  return saved.reports.filter(r=>r?.review_only===true&&r.source?.document_id===job.document_id);
 }
+function pageRerunEligible(job,doc,pages){
+ return pages===1&&doc?.document_type==='Автобіографія друкована'&&job?._detailed===true&&job.kind==='zone'
+  &&job.document_id===doc.id&&['completed','needs_review'].includes(job.state)&&job.stage==='finished'
+  &&job.zone_summary?.pages===1&&job.zone_summary?.budget===13&&!job.zone_summary?.source_changed
+  &&job.zone_binding?.document_id===doc.id&&!!job.zone_run;
+}
 async function open(doc,{autostart=false}={}){
  if(!doc?.storage_path)throw Error('Документ не має файла');
  const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';dialog.style.width='min(1100px,96vw)';
@@ -154,6 +164,7 @@ async function open(doc,{autostart=false}={}){
  const $=s=>dialog.querySelector(s),canvas=$('[data-source]'),ctx=canvas.getContext('2d'),source=document.createElement('canvas'),reports=[];
  const canary=new URLSearchParams(location.search).get('zoneBudget')==='1'||new URLSearchParams(location.search).get('zoneBudget')==='13',pageCanary=new URLSearchParams(location.search).get('zoneBudget')==='13',nativeCanary=canary&&!pageCanary&&new URLSearchParams(location.search).get('zoneNativeOnly')==='1';
  let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false,backgroundViewVersion=0,backgroundReportsKey=null,nativeZones=[],reportBinding=null,crosscheckVersion=0;
+ const rerunButton=document.createElement('button'),rerunIntents=new Map();rerunButton.textContent='Новий контроль цього файла';rerunButton.hidden=true;$('[data-auto]').parentElement.append(rerunButton);
  if(!autostart){$('[data-manual]').open=true;dialog.querySelector('h2').textContent='Документ · оригінал і ручне читання';dialog.querySelectorAll('p')[1].textContent='Оригінал відкривається без AI. Огляд сторінки або читання зони починається лише після вашого натискання. Дані картки не перезаписуються.';if(!doc.ai_extracted||doc.processing_status==='AI помилка')$('[data-auto]').hidden=true;}
  if(canary){$('[data-auto]').textContent=pageCanary?'Контроль СПЛАВ · одна сторінка, до 13 кроків':nativeCanary?'Контроль сервера · без AI':'Контроль СПЛАВ · один крок';dialog.querySelectorAll('p')[1].textContent=pageCanary?'Контроль власника: один односторінковий PDF, до 13 логічних кроків із чинним fallback AI. Це не грошовий ліміт. Загальні зони вимкнені; картка й основний OCR не змінюються.':nativeCanary?'Контроль власника: один локальний серверний огляд PDF. AI та запис у картку й документ заборонені в дорученні. Сканкопія зупиниться без AI.':'Контроль власника: лише один новий серверний AI-крок. Наступні зони не запускаються; основний OCR і картка не змінюються.';}
  const status=value=>$('[data-status]').textContent=value;
@@ -255,6 +266,21 @@ async function open(doc,{autostart=false}={}){
   if(job.zone_summary?.source_changed||job.state==='superseded'){crosscheckVersion++;reportBinding=null;reports.splice(0,reports.length);backgroundReportLoaded=false;backgroundReportsKey=null;$('[data-result]').replaceChildren();$('[data-export]').disabled=true;}
   const explanation=backgroundSummary(job),host=$('[data-auto-progress]');host.replaceChildren();const title=document.createElement('strong');title.textContent=explanation.title;host.append(title);for(const note of explanation.notes){const line=document.createElement('span');line.style.display='block';line.textContent=note;host.append(line);}
   $('[data-auto]').hidden=true;$('[data-stop]').hidden=true;$('[data-export]').hidden=!reports.length;status('');
+  rerunButton.hidden=true;
+  if(pageCanary&&pageRerunEligible(job,doc,total)&&originalDigest===job.zone_binding?.file_sha256){
+   supabaseClient.auth.getUser().then(actor=>{if(!closed&&viewVersion===backgroundViewVersion&&!actor.error&&actor.data?.user?.id==='7c74b122-3940-40a8-a32f-fe2b6776c173')rerunButton.hidden=false;}).catch(()=>{});
+   rerunButton.onclick=async()=>{
+    if(closed||busy||autoActive||viewVersion!==backgroundViewVersion)return;
+    if(!window.confirm('Створити окремий контроль цього самого файла — до 13 кроків із fallback AI? Це може витратити API-кредити. Старі квитанції збережуться; картка та основний OCR не зміняться.'))return;
+    let intent=rerunIntents.get(job.id);if(!intent){intent=crypto.randomUUID();rerunIntents.set(job.id,intent);}
+    lock(true);try{
+     const queued=await supabaseClient.rpc('crm_splav_zone_page_rerun_enqueue',{p_previous_job:job.id,p_run_id:intent,p_reason:'Порівняння окремого односторінкового контролю зі збереженим попереднім запуском'});
+     if(closed||viewVersion!==backgroundViewVersion)return;
+     if(queued.error||!queued.data?.id)throw Error('Новий контроль не підтверджено. Стан запиту може бути невідомим; повторне натискання в цьому вікні перевірить те саме доручення.');
+     crosscheckVersion++;backgroundReportLoaded=false;backgroundReportsKey=null;reportBinding=null;reports.splice(0,reports.length);$('[data-result]').replaceChildren();showBackground(queued.data);
+    }catch(e){if(!closed&&viewVersion===backgroundViewVersion)status(e.message);}finally{if(!closed)lock(false);}
+   };
+  }
   dialog.querySelector('h2').textContent='Документ · результат СПЛАВ';dialog.querySelectorAll('p')[1].textContent='Показано збережений стан опрацювання. Перегляд не запускає нове розпізнавання.';
   if(!backgroundSeen){$('[data-manual]').open=false;backgroundSeen=true;}
   const reportsKey=Array.isArray(job.zone_reports)?JSON.stringify(job.zone_reports):null;
@@ -378,5 +404,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML};
 })();

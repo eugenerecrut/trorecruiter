@@ -294,6 +294,11 @@ try{
 
  // Draft one-page canary: exactly one owner-scoped document, budget 13, global zones OFF.
  await owner();const pageMigration=file('supabase/migrations/'+fs.readdirSync(path.join(__dirname,'../supabase/migrations')).find(name=>name.endsWith('_splav_single_page_control.sql')));await db.exec(pageMigration);await db.exec(pageMigration);
+ await db.exec(file('supabase/migrations/'+fs.readdirSync(path.join(__dirname,'../supabase/migrations')).find(name=>name.endsWith('_splav_explicit_page_rerun.sql'))));
+ const aclBeforePlan=(await db.query("select oid::regprocedure::text signature,proacl::text acl,prosecdef,proconfig from pg_proc where oid in ('public.crm_splav_zone_step(uuid,uuid,text,jsonb)'::regprocedure,'public.crm_splav_job_status(uuid)'::regprocedure) order by 1")).rows;
+ const nativePlanMigration=file('supabase/migrations/'+fs.readdirSync(path.join(__dirname,'../supabase/migrations')).find(name=>name.endsWith('_splav_biography_page_plan.sql')));await db.exec(nativePlanMigration);await db.exec(nativePlanMigration);
+ const aclAfterPlan=(await db.query("select oid::regprocedure::text signature,proacl::text acl,prosecdef,proconfig from pg_proc where oid in ('public.crm_splav_zone_step(uuid,uuid,text,jsonb)'::regprocedure,'public.crm_splav_job_status(uuid)'::regprocedure) order by 1")).rows;assert.deepEqual(aclAfterPlan,aclBeforePlan);checks++;
+
  await db.exec('update crm_private.splav_settings set zones_enabled=false');
  for(const n of [90,91,92])await db.query("insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status) values($1,$2,$3,$1,1,'Автобіографія друкована',$4,'{}','Не перевірено')",[id(n),id(10),'page-control-'+n+'.pdf',id(30)]);
  await actor(1);const pageCoordinator=await call('crm_zone_coordinator_open',[id(90),hash,false]),otherCoordinator=await call('crm_zone_coordinator_open',[id(91),hash,false]),holdCoordinator=await call('crm_zone_coordinator_open',[id(92),hash,false]);
@@ -337,6 +342,93 @@ try{
  await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[oldModeCoordinator.id,1]),/already consumed/);checks++;
  await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,oldModeJob.id);assert.equal((await step('load')).snapshot.budget,1);checks+=2;await step('hold');
 
+
+ await owner();await db.query("insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status) values($1,$2,'native-page-plan.pdf',$1,1,'Автобіографія друкована',$3,'{}','Не перевірено')",[id(94),id(10),id(30)]);
+ const candidatePlanBefore=(await db.query('select to_jsonb(c) value from public.candidates c where id=$1',[id(10)])).rows[0].value;
+ await actor(1);const nativePlanCoordinator=await call('crm_zone_coordinator_open',[id(94),hash,false]),nativePlanJob=await call('crm_splav_zone_page_canary_enqueue',[nativePlanCoordinator.id,1]);
+ await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,nativePlanJob.id);checks++;
+ let nativePlanCalls=0;
+ for(;;){let ctx=await step('load');assert.equal(ctx.document.document_type,'Автобіографія друкована');checks++;const p=pilot.restore(ctx.snapshot,{source:ctx.source});
+  const result=await p.run({limit:1,checkpoint:async snapshot=>{ctx.version=await step('save',{version:ctx.version,snapshot});},read:async task=>{
+   const crop=zoneRasterBox(task.mode,task.box||full),receipt=await step('begin',{version:ctx.version,mode:task.mode,page:1,box:crop,render_sha256:hash});assert.equal(receipt.state,'accepted');checks++;
+   const proposed=[.1,.4,.8].map(y=>({kind:'text',box:{x:.1,y,w:.5,h:.05}}));
+   const report={review_only:true,mode:task.mode,...(task.mode==='overview'?{...pilot.nativeReadingPlan(proposed,{documentType:ctx.document.document_type,singlePageControl:ctx.snapshot.budget===13&&ctx.snapshot.pages===1}),ai_requests:0}:{rows:[{fields:[{key:'other',value:'Synthetic',legibility:'clear'}]}]}),source:{document_id:id(94),page:1,box:crop,render_sha256:hash}};
+   if(task.mode==='zone'){assert.deepEqual(task.box,full);checks++;}
+   await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result:report});nativePlanCalls++;return report;
+  }});
+  if(result.done){assert.equal((await step('final')).status,'complete');checks++;break;}
+  await step('yield');lease=await call('crm_splav_zone_claim');assert.equal(lease.id,nativePlanJob.id);checks++;
+ }
+ assert.equal(nativePlanCalls,2);checks++;await owner();const nativeSaved=(await db.query('select ai_extracted from public.documents where id=$1',[id(94)])).rows[0].ai_extracted._military_zone_report;
+ assert.equal(nativeSaved.reports[0].reading_plan.original_zones.length,3);assert.equal(nativeSaved.reports[0].zones.length,1);assert.equal((await db.query('select zone_canary_coordinator from crm_private.splav_settings')).rows[0].zone_canary_coordinator,null);assert.deepEqual((await db.query('select to_jsonb(c) value from public.candidates c where id=$1',[id(10)])).rows[0].value,candidatePlanBefore);checks+=4;
+
+ await owner();await db.query("insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status) values($1,$2,'native-limit.pdf',$1,1,'Автобіографія друкована',$3,'{}','Не перевірено')",[id(95),id(10),id(30)]);
+ await actor(1);const limitCoordinator=await call('crm_zone_coordinator_open',[id(95),hash,false]),limitJob=await call('crm_splav_zone_page_canary_enqueue',[limitCoordinator.id,1]);await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,limitJob.id);checks++;
+ let limitContext=await step('load');const limitedPilot=pilot.restore(limitContext.snapshot,{source:limitContext.source});await limitedPilot.run({limit:1,checkpoint:async snapshot=>{limitContext.version=await step('save',{version:limitContext.version,snapshot});},read:async task=>{
+  const crop=zoneRasterBox(task.mode,task.box||full),receipt=await step('begin',{version:limitContext.version,mode:task.mode,page:1,box:crop,render_sha256:hash});
+  await step('finish',{request_id:receipt.id,receipt:receipt.receipt,result:{error:'Bounded result not accepted',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false,provider_errors:[{provider:'OpenRouter',diagnosis:'OUTPUT_LIMIT_EXCEEDED'}]}});const error=Error('Bounded output rejected');error.code='ZONE_RESULT_UNCERTAIN';throw error;
+ }});await step('hold');await actor(1);const limitStatus=await call('crm_splav_job_status',[limitJob.id]);assert.equal(limitStatus.zone_summary.providers[0].diagnosis,'OUTPUT_LIMIT_EXCEEDED');assert.equal(limitStatus.zone_summary.code,'ZONE_RESULT_UNCERTAIN');checks+=2;
+ // An explicit second run uses the same unchanged source, independent budget and
+ // receipt namespace. Nothing from the old run is reset or charged a second time.
+ await owner();
+ const retainedRun=(await db.query(`select to_jsonb(j) job,to_jsonb(c) coordinator,
+ (select jsonb_agg(to_jsonb(r) order by r.id) from crm_private.zone_coordinator_steps x join crm_private.zone_requests r on r.id=x.request_id where x.coordinator_id=c.id) receipts
+ from crm_private.splav_jobs j join crm_private.zone_coordinators c on c.id=j.coordinator_id where j.id=$1`,[nativePlanJob.id])).rows[0];
+ const candidateRerunBefore=(await db.query('select to_jsonb(c) value from public.candidates c where id=$1',[id(10)])).rows[0].value;
+ const documentRerunBefore=(await db.query("select to_jsonb(d)-'ai_extracted' value,ai_extracted-'_military_zone_report' ocr from public.documents d where id=$1",[id(94)])).rows[0];
+ for(const actorId of [1,2,3]){
+  await owner();if(actorId===1)await db.exec("update public.crm_staff set role='recruiter' where user_id='"+id(1)+"'");await actor(actorId);
+  await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1000),'Compare reading plan']),/Active owner/);checks++;
+ }
+ await owner();await db.exec("update public.crm_staff set role='owner' where user_id='"+id(1)+"';set role anon;set request.jwt.claim.sub=''");
+ await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1000),'Compare reading plan']),/permission denied/);checks++;
+ await actor(1);
+ for(const [run,reason] of [[null,'Reason'],[id(0),'Reason'],[id(1000),''],[id(1000),'x'.repeat(501)]]){await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,run,reason]),/identity and reason/);checks++;}
+ await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[limitJob.id,id(1000),'Compare reading plan']),/Finished prior/);checks++;
+ const rerun=await call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1000),'Compare reading plan']);assert.notEqual(rerun.id,nativePlanJob.id);checks++;
+ await owner();await db.exec("update public.crm_staff set role='owner',active=true where user_id='"+id(3)+"'");await actor(3);
+ await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1000),'Compare reading plan']),/already assigned/);checks++;
+ await owner();await db.exec("update public.crm_staff set role='recruiter',active=false where user_id='"+id(3)+"'");await actor(1);
+ assert.equal((await call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1000),'Compare reading plan'])).id,rerun.id);checks++;
+ await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1000),'Different reason']),/already assigned/);checks++;
+ await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1001),'Another run']),/active work/);checks++;
+ await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,rerun.id);checks++;
+ let rerunCalls=0;const newReceiptIds=[];
+ for(;;){let ctx=await step('load');assert.notEqual(ctx.id,nativePlanCoordinator.id);assert.equal(ctx.source.document_id,id(94));assert.equal(ctx.source.file_sha256,hash);checks+=3;
+  const p=pilot.restore(ctx.snapshot,{source:ctx.source});assert.equal(p.snapshot().budget,13);checks++;
+  await p.run({limit:1,checkpoint:async snapshot=>{ctx.version=await step('save',{version:ctx.version,snapshot});},read:async task=>{
+   const crop=zoneRasterBox(task.mode,task.box||full),r=await step('begin',{version:ctx.version,mode:task.mode,page:1,box:crop,render_sha256:hash});
+   assert.equal(r.state,'accepted');newReceiptIds.push(r.id);checks++;
+   await assert.rejects(step('finish',{request_id:retainedRun.receipts[0].id,receipt:retainedRun.receipts[0].receipt,result:retainedRun.receipts[0].result}),/outside delegated step/);checks++;
+   const repeated=await step('begin',{version:ctx.version,mode:task.mode,page:1,box:crop,render_sha256:hash});assert.equal(repeated.id,r.id);assert.equal(repeated.state,'dispatched');assert.equal(repeated.receipt,undefined);checks+=3;
+   const report={review_only:true,mode:task.mode,...(task.mode==='overview'?{zones:[{kind:'text',box:full}]}:{rows:[{fields:[{key:'other',value:'New run only',legibility:'clear'}]}]}),source:{document_id:id(94),page:1,box:crop,render_sha256:hash}};
+   await step('finish',{request_id:r.id,receipt:r.receipt,result:report});rerunCalls++;return report;
+  }});
+  if(!p.snapshot().tasks.length){await step('final');break;}
+  await step('yield');lease=await call('crm_splav_zone_claim');assert.equal(lease.id,rerun.id);checks++;
+ }
+ assert.equal(rerunCalls,2);assert(!retainedRun.receipts.some(r=>newReceiptIds.includes(r.id)));checks+=2;
+ await actor(1);const oldView=await call('crm_splav_job_status',[nativePlanJob.id]),newView=await call('crm_splav_job_status',[rerun.id]);
+ assert.equal(oldView.zone_reports.length,2);assert.equal(newView.zone_reports.length,2);assert.equal(newView.zone_run.id,id(1000));assert.equal(newView.zone_run.previous_job_id,nativePlanJob.id);checks+=4;
+ assert(!oldView.zone_reports.some(r=>r.rows?.some(row=>row.fields.some(f=>f.value==='New run only'))));checks++;
+ assert.equal((await call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1000),'Compare reading plan'])).id,rerun.id);checks++;
+ await owner();
+ const retainedAfter=(await db.query(`select to_jsonb(j) job,to_jsonb(c) coordinator,
+ (select jsonb_agg(to_jsonb(r) order by r.id) from crm_private.zone_coordinator_steps x join crm_private.zone_requests r on r.id=x.request_id where x.coordinator_id=c.id) receipts
+ from crm_private.splav_jobs j join crm_private.zone_coordinators c on c.id=j.coordinator_id where j.id=$1`,[nativePlanJob.id])).rows[0];
+ assert.deepEqual(retainedAfter,retainedRun);checks++;
+ assert.deepEqual((await db.query('select to_jsonb(c) value from public.candidates c where id=$1',[id(10)])).rows[0].value,candidateRerunBefore);checks++;
+ assert.deepEqual((await db.query("select to_jsonb(d)-'ai_extracted' value,ai_extracted-'_military_zone_report' ocr from public.documents d where id=$1",[id(94)])).rows[0],documentRerunBefore);checks++;
+ assert.equal((await db.query('select zone_canary_coordinator from crm_private.splav_settings')).rows[0].zone_canary_coordinator,null);checks++;
+ await db.exec('update crm_private.splav_settings set zones_enabled=true');await actor(1);
+ await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1003),'Global queue on']),/global zones off/);checks++;
+ await owner();await db.exec('update crm_private.splav_settings set zones_enabled=false');
+ for(const signature of ['crm_private.worker_crm_zone_coordinator_resume(uuid,text,boolean,uuid)','crm_private.worker_crm_zone_run_begin(uuid,jsonb,text,integer,jsonb,text,uuid)']){
+  assert.equal((await db.query("select has_function_privilege('authenticated',$1,'EXECUTE') allowed",[signature])).rows[0].allowed,false);checks++;
+ }
+ await db.query("update public.documents set ai_processed_at='2026-10-25T00:00:00Z' where id=$1",[id(94)]);await actor(1);
+ assert.equal((await call('crm_splav_job_status',[rerun.id])).zone_reports.length,0);checks++;
+ await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1002),'Changed source']),/source changed/);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

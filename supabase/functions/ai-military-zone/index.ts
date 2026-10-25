@@ -120,6 +120,7 @@ Deno.serve(async req=>{
     const result=contract.result(body.mode,value,{document_id:doc.id,document_type:doc.document_type,page:body.page,box:contract.box(body.box),render_sha256:digest,origin:worker?'server_render':'client_render',provider:provider.name,model:provider.model});
     return await finish({...result,mode:body.mode,learning_examples_used:examples.length,provider_errors:errors});
    }catch(e){errors.push({provider:provider.name,error:String((e as Error).message).startsWith(provider.name+': HTTP ')?(e as Error).message:'Немає коректної відповіді',diagnosis:(e as any).diagnosis||'TRANSPORT_RESULT_UNKNOWN',...((e as any).http_status?{http_status:(e as any).http_status}:{}),...((e as any).retry_after_seconds!==undefined?{retry_after_seconds:(e as any).retry_after_seconds}:{})});
+    if((e as any).diagnosis==='OUTPUT_LIMIT_EXCEEDED')return await finish({error:'Відповідь AI перевищила безпечні межі структури. Скорочений результат не прийнято; потрібна перевірка поділу сторінки перед новим погодженим запуском.',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false,provider_errors:errors});
     if((e as any).uncertain!==false)return await finish({error:'Результат виклику AI невідомий. Автоматичний повтор цього фрагмента та перехід до іншого сервісу заблоковані.',code:'ZONE_RESULT_UNCERTAIN',automatic_retry:false,provider_errors:errors});
    }
   }

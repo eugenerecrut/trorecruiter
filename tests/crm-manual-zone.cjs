@@ -1,4 +1,14 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+test('explicit rerun is limited to a finished one-page biography and never starts from a saved view',()=>{
+ const context={window:{}};vm.createContext(context);const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');vm.runInContext(code,context);
+ const eligible=context.window.CRMMilitaryZoneReview.pageRerunEligible,doc={id:'d',document_type:'Автобіографія друкована'};
+ const job={_detailed:true,kind:'zone',document_id:'d',state:'completed',stage:'finished',zone_summary:{pages:1,budget:13},zone_binding:{document_id:'d'},zone_run:{id:'legacy'}};
+ assert.equal(eligible(job,doc,1),true);assert.equal(eligible({...job,state:'needs_review'},doc,1),true);
+ for(const patch of [{_detailed:false},{kind:'root'},{document_id:'other'},{state:'running'},{stage:'waiting'},{zone_run:null},{zone_binding:null},{zone_summary:{pages:2,budget:13}},{zone_summary:{pages:1,budget:1}},{zone_summary:{pages:1,budget:13,source_changed:true}}])assert.equal(eligible({...job,...patch},doc,1),false);
+ assert.equal(eligible(job,doc,2),false);assert.equal(eligible(job,{...doc,document_type:'Автобіографія рукописна'},1),false);
+ const click=code.indexOf('rerunButton.onclick=async()=>'),confirm=code.indexOf('window.confirm(',click),rpc=code.indexOf("rpc('crm_splav_zone_page_rerun_enqueue'",click);
+ assert(click>0&&confirm>click&&rpc>confirm);assert(code.includes('rerunIntents.get(job.id)'));assert(code.includes('p_run_id:intent'));
+});
 function setup(){
  const calls=[],review={open:async(doc,options)=>calls.push({doc,options})};
  const context={document:{readyState:'loading',addEventListener(){}},window:{CRMMilitaryZoneReview:review,CRMMilitaryZoneContract:{family:type=>type==='Автобіографія'}},
@@ -302,4 +312,14 @@ test('empty relative-name placeholders are explained without inventing a maiden 
  assert.match(describe(data).notice,/порожні дужки/);assert.match(describe(data).notice,/не прочитане дівоче/);assert.equal(summary(data).uncertain,1);assert.equal(JSON.stringify(data),before);
  for(const key of ['other','institution'])assert.doesNotMatch(describe({rows:[{fields:[{...data.rows[0].fields[0],key}]}]}).notice,/порожні дужки/);
  for(const raw_text of ['Тестенко (Коваленко) Олена Іванівна','Тестенко (?) Олена Іванівна'])assert.doesNotMatch(describe({rows:[{fields:[{...data.rows[0].fields[0],raw_text}]}]}).notice,/порожні дужки/);
+});
+
+test('full-page biography plans are explained without claiming verified content or starting AI',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ const plan={review_only:true,mode:'overview',source:{origin:'server_text_layer'},reading_plan:{contract:'native-biography-page-1',strategy:'full_page',original_zones:[{},{}]}};const result=describe({state:'queued',zone_reports:[plan]});assert.match(JSON.stringify(result),/Початкові рамки збережено/);assert.match(JSON.stringify(result),/не виключалися/);
+ assert.doesNotMatch(JSON.stringify(describe({state:'queued',zone_reports:[{...plan,review_only:false}]})),/План читання друкованої/);
+});
+test('known output overflow requests page-splitting review instead of a billing or retry instruction',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ const result=describe({state:'needs_review',result:{status:'complete_with_gaps'},zone_summary:{code:'ZONE_RESULT_UNCERTAIN',providers:[{provider:'OpenRouter',diagnosis:'OUTPUT_LIMIT_EXCEEDED'}]}});assert.equal(result.title,'Опрацювання зупинено');assert.match(JSON.stringify(result),/Скорочений результат не прийнято/);assert.doesNotMatch(JSON.stringify(result),/перевірити ліміти та доступ AI-сервісів/);
 });
