@@ -75,9 +75,9 @@ function backgroundSummary(job){
  return {title:job.state==='completed'&&gaps?'Звіт збережено з прогалинами':states[job.state]||'Перевіряємо стан документа',notes};
 }
 function readingSummary(data){
- const fields=(Array.isArray(data?.rows)?data.rows:[]).flatMap(row=>Array.isArray(row?.fields)?row.fields:[]);
+ const rows=Array.isArray(data?.rows)?data.rows:[],fields=rows.flatMap(row=>Array.isArray(row?.fields)?row.fields:[]),empty_rows=rows.filter(row=>!Array.isArray(row?.fields)||!row.fields.length).length;
  const uncertain=fields.filter(f=>f?.value==null||typeof f.value==='string'&&!f.value.trim()||f?.legibility!=='clear'||Array.isArray(f.alternatives)&&f.alternatives.length>0).length;
- return {count:fields.length,uncertain,label:fields.length?fields.length+' полів · '+uncertain+' потребують перевірки':'Структурованих полів немає · потрібна перевірка',notice:!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':uncertain?'Є непевні значення. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.'};
+ return {count:fields.length,uncertain,empty_rows,label:fields.length?fields.length+' полів · '+uncertain+' потребують перевірки'+(empty_rows?' · непрочитаних рядків: '+empty_rows:''):'Структурованих полів немає · потрібна перевірка',notice:!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':uncertain||empty_rows?'Є непевні значення або непрочитані рядки. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.'};
 }
 function savedReportView(saved,documentId,{context=null,binding=null}={}){
  const supplied=Array.isArray(saved?.reports)?saved.reports:[];
@@ -98,7 +98,7 @@ function savedReportView(saved,documentId,{context=null,binding=null}={}){
  });
  const omitted=supplied.length-reports.length,errors=Array.isArray(saved?.errors)?saved.errors.length:0;
  const gaps=saved?.status!=='complete'||!reports.length||errors>0||omitted>0||unverified>0||reports.some(r=>
-  Array.isArray(r.quality_issues)&&r.quality_issues.length>0||r.mode==='zone'&&(!readingSummary(r).count||readingSummary(r).uncertain>0));
+  Array.isArray(r.quality_issues)&&r.quality_issues.length>0||r.mode==='zone'&&(!readingSummary(r).count||readingSummary(r).uncertain>0||readingSummary(r).empty_rows>0));
  const notes=[gaps?'Залишилися непрочитані або непевні відомості. Перевірте збережені фрагменти з оригіналом.':'Читання збережено. Зіставлення та підтвердження відомостей виконуються окремо.'];
  if(errors)notes.push('Кроків із помилками: '+errors+'.');
  if(omitted)notes.push('Не показано фрагментів без підтвердженої належності цьому документу та його сторінкам: '+omitted+'. Вони не беруть участі у зіставленні.');
@@ -300,8 +300,8 @@ async function open(doc,{autostart=false}={}){
   $('[data-result]').querySelector('[data-crosscheck]')?.remove();$('[data-result]').append(section);
  }
  async function saveFinal(){
-  const errors=autopilot?.errors||[],unclear=reports.filter(r=>r.mode==='zone').flatMap(r=>r.rows||[]).flatMap(r=>r.fields||[]).filter(f=>f.value===null||f.legibility!=='clear').length;
-  const qualityGaps=reports.filter(r=>r.mode==='overview'&&r.quality_issues?.length||r.mode==='zone'&&!(r.rows||[]).some(row=>row.fields?.length)).length;
+  const errors=autopilot?.errors||[],unclear=reports.filter(r=>r.mode==='zone').reduce((sum,r)=>sum+readingSummary(r).uncertain,0);
+  const qualityGaps=reports.filter(r=>r.mode==='overview'&&r.quality_issues?.length||r.mode==='zone'&&(!readingSummary(r).count||readingSummary(r).empty_rows>0)).length;
   const report={status:errors.length||unclear||qualityGaps?'complete_with_gaps':'complete',reports,errors};
   let failure;
   for(let attempt=0;attempt<3;attempt++){

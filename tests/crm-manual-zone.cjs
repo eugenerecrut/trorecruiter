@@ -247,3 +247,11 @@ test('saved readings are checked against actual original pages and digest; unbou
  for(const changed of [{pages:0},{pages:201},{pages:1.5},{file_sha256:'bad'},{document_id:'other'}])assert.equal(view(saved([own]),'own',{context:{...context,...changed}}).reports.length,0);
  const overview={...own,mode:'overview',zones:[]};assert.equal(view(saved([overview]),'own',{context}).unverified,0);
 });
+
+test('mixed empty rows and uncertain alternatives use the same summary in final browser saving',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const reading=context.window.CRMMilitaryZoneReview.readingSummary;
+ const result=reading({rows:[{fields:[{value:0,legibility:'clear'},{value:false,legibility:'clear'}]},{fields:[]}]});
+ assert.equal(result.count,2);assert.equal(result.uncertain,0);assert.equal(result.empty_rows,1);assert.match(result.label,/непрочитаних рядків: 1/);assert.match(result.notice,/непрочитані рядки/);
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert(source.includes('sum+readingSummary(r).uncertain'));assert(source.includes('readingSummary(r).empty_rows>0'));
+});

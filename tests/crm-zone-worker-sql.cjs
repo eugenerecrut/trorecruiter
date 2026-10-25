@@ -43,6 +43,10 @@ try{
  await db.exec(file('tests/fixtures/splav-zone-document-triggers.sql'));
  await db.exec(file('supabase/migrations/20261023193100_splav_zone_metadata_provenance.sql'));
  await db.exec(file('supabase/migrations/20261023195033_splav_scoped_single_step_canary.sql'));
+ const qualityPermissionsBefore=(await db.query("select prosecdef,proconfig,proacl::text acl from pg_proc where oid='public.crm_splav_zone_step(uuid,uuid,text,jsonb)'::regprocedure")).rows[0];
+ await db.exec(file('supabase/migrations/'+fs.readdirSync(path.join(__dirname,'../supabase/migrations')).find(name=>name.endsWith('_splav_zone_quality_verdict.sql'))));
+ assert.deepEqual((await db.query("select prosecdef,proconfig,proacl::text acl from pg_proc where oid='public.crm_splav_zone_step(uuid,uuid,text,jsonb)'::regprocedure")).rows[0],qualityPermissionsBefore);checks++;
+ await db.exec(file('supabase/migrations/'+fs.readdirSync(path.join(__dirname,'../supabase/migrations')).find(name=>name.endsWith('_splav_zone_quality_verdict.sql'))));
  await db.exec(`create trigger crm_guard_document before insert or update on public.documents for each row execute function crm_private.guard_document();
  create trigger crm_activity_documents after insert or update or delete on public.documents for each row execute function crm_private.record_activity();`);
  const hash='a'.repeat(64),full={x:0,y:0,w:1,h:1};
@@ -239,6 +243,18 @@ try{
  await owner();await db.exec("set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_job_status',[sourceJob]),/permission denied|Human staff/);checks++;
  await actor(1);await db.query("update public.documents set verification_status='Підтверджено' where id=$1",[id(64)]);
  await actor(1);const replacedSourceStatus=await call('crm_splav_job_status',[sourceJob]);assert.equal(replacedSourceStatus.zone_binding,null);assert.equal(replacedSourceStatus.zone_reports.length,0);checks+=2;
+
+ await owner();
+ const definition=(await db.query("select pg_get_functiondef('public.crm_splav_zone_step(uuid,uuid,text,jsonb)'::regprocedure) as body")).rows[0].body;
+ const verdict=definition.slice(definition.indexOf('status:=case')+8,definition.indexOf("  report:=jsonb_build_object",definition.indexOf('status:=case'))).trim().replace(/;$/,'').replace("c.snapshot->'errors'",'$2::jsonb');
+ const vm=require('node:vm'),viewContext={window:{}};vm.createContext(viewContext);vm.runInContext(file('military-zone-review.js'),viewContext);
+ const reading=viewContext.window.CRMMilitaryZoneReview.readingSummary;
+ const good={value:'Example',legibility:'clear'},zone=rows=>({mode:'zone',rows}),sample=field=>zone([{fields:[field]}]);
+ const spaces=Array.from(' \t\n\r\f\v').concat([0x00a0,0x1680,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,0x2009,0x200a,0x2028,0x2029,0x202f,0x205f,0x3000,0xfeff].map(n=>String.fromCharCode(n)));
+ const samples=[sample(good),sample({...good,value:0}),sample({...good,value:false}),sample({...good,alternatives:[]}),sample({...good,alternatives:['Other']}),sample({...good,value:null}),sample({legibility:'clear'}),sample({...good,legibility:'uncertain'}),zone([]),zone([{fields:[good]},{fields:[]}]),zone([{fields:[good]},{}]),zone([{fields:null}]),zone([{fields:[good]},null]),...spaces.map(value=>sample({...good,value}))];
+ for(const report of samples){const summary=reading(report),expected=!summary.count||summary.uncertain||summary.empty_rows?'complete_with_gaps':'complete';const actual=(await db.query('select '+verdict+' as status from (select $1::jsonb as reports) input',[JSON.stringify([report]),JSON.stringify([])])).rows[0].status;assert.equal(actual,expected,JSON.stringify(report));checks++;}
+ const errorsVerdict=(await db.query('select '+verdict+' as status from (select $1::jsonb as reports) input',[JSON.stringify([sample(good)]),JSON.stringify([{code:'failed'}])])).rows[0].status;assert.equal(errorsVerdict,'complete_with_gaps');checks++;
+
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
