@@ -223,7 +223,7 @@ test('replayed legacy receipts get semantic review without changing stored facts
 
 test('native-only delegated lease is rejected by AI validation before any provider or receipt',async()=>{
  const s=server({processor:true,zoneLease:true,nativeOnly:true}),r=await s.invoke({job_id:'11111111-1111-1111-1111-111111111111',lease_token:'22222222-2222-2222-2222-222222222222',coordinator_id:'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',coordinator_version:7});
- assert.equal(r.status,403);assert(!s.calls.some(c=>/api.openai.com|generativelanguage|openrouter.ai|crm_zone_begin/.test(c.url)));
+ assert.equal(r.status,403);assert(!s.calls.some(c=>(['api.openai.com','generativelanguage.googleapis.com','openrouter.ai'].includes(new URL(c.url).hostname)||c.url.includes('crm_zone_begin'))));
 });
 
 test('graduation years preserve exact clear source years without inventing dates or choosing alternatives',()=>{
@@ -242,7 +242,7 @@ test('source precision accepts Ukrainian year suffixes but never extracts years 
  const out=contract.projectField({key:'start_date',raw_text:'у 2017 році',value:'2017-01-01',legibility:'clear'});assert.equal(out.value,null);assert.equal(out.partial_value,'2017');assert.equal(out.date_precision,'year');
 });
 test('legacy year projection is read only and does not call AI on cached receipt replay',async()=>{
- const cached={contract:'military-zones-2',review_only:true,mode:'zone',source:{page:1},rows:[{fields:[{key:'graduation_year',raw_text:'2017',value:null,legibility:'clear'}]}]};const before=JSON.stringify(cached),s=server({ledger:'completed',cachedResult:cached});const result=await (await s.invoke()).json();assert.equal(result.request_replayed,true);assert.equal(result.rows[0].fields[0].value,'2017');assert.equal(result.rows[0].fields[0].requires_review,true);assert.equal(JSON.stringify(cached),before);assert(!s.calls.some(c=>/api.openai.com|openrouter.ai|generativelanguage/.test(c.url)));
+ const cached={contract:'military-zones-2',review_only:true,mode:'zone',source:{page:1},rows:[{fields:[{key:'graduation_year',raw_text:'2017',value:null,legibility:'clear'}]}]};const before=JSON.stringify(cached),s=server({ledger:'completed',cachedResult:cached});const result=await (await s.invoke()).json();assert.equal(result.request_replayed,true);assert.equal(result.rows[0].fields[0].value,'2017');assert.equal(result.rows[0].fields[0].requires_review,true);assert.equal(JSON.stringify(cached),before);assert(!s.calls.some(c=>['api.openai.com','generativelanguage.googleapis.com','openrouter.ai'].includes(new URL(c.url).hostname)));
 });
 
 test('oversized model results are rejected before silent text, row, field or alternative truncation',()=>{
@@ -252,5 +252,5 @@ test('oversized model results are rejected before silent text, row, field or alt
  assert.equal(contract.result('zone',{raw_text:'x'.repeat(4000),rows:Array(12).fill({fields:Array(20).fill(field)})},{}).rows.length,12);
 });
 test('known oversized response produces a durable failure and no extra provider fallback or paid replay',async()=>{
- const outputValue={rows:Array(13).fill({raw_text:'private marker',fields:[{key:'other',raw_text:'x',value:'x',legibility:'clear'}]})};const s=server({ledger:'durable',fallback:true,router:true,outputValue});const result=await (await s.invoke()).json();assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[0].diagnosis,'OUTPUT_LIMIT_EXCEEDED');assert.match(result.error,/перевищила/);assert(!JSON.stringify(result).includes('private marker'));const paid=s.calls.filter(c=>/api.openai.com|generativelanguage|openrouter.ai/.test(c.url)).length;assert.equal(paid,1);await s.invoke();assert.equal(s.calls.filter(c=>/api.openai.com|generativelanguage|openrouter.ai/.test(c.url)).length,1);
+ const outputValue={rows:Array(13).fill({raw_text:'private marker',fields:[{key:'other',raw_text:'x',value:'x',legibility:'clear'}]})};const s=server({ledger:'durable',fallback:true,router:true,outputValue});const result=await (await s.invoke()).json();assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[0].diagnosis,'OUTPUT_LIMIT_EXCEEDED');assert.match(result.error,/перевищила/);assert(!JSON.stringify(result).includes('private marker'));const paid=s.calls.filter(c=>['api.openai.com','generativelanguage.googleapis.com','openrouter.ai'].includes(new URL(c.url).hostname)).length;assert.equal(paid,1);await s.invoke();assert.equal(s.calls.filter(c=>['api.openai.com','generativelanguage.googleapis.com','openrouter.ai'].includes(new URL(c.url).hostname)).length,1);
 });
