@@ -50,6 +50,13 @@
   }
   function summary(c,requirements,documents) {
     const list=rows(c,requirements,documents), docs=latest(documents), seen=new Set();
+    const current=[],excluded=[];
+    for(const d of docs){
+      const original=(requirements||[]).find(r=>match(r,d));
+      const r=original&&conditions().forCandidate(conditions().normalizeRequirement(original),c);
+      const applies=r?(r.active===false?false:conditions().requirement(r,c)):d.document_type?conditions().documentCondition(d.document_type,c):null;
+      (applies===false?excluded:current).push(d); // Unknown conditions remain visible for review.
+    }
     const required=list.filter(row=>{
       if(!row.r.is_required||row.condition!==true)return false;
       if(row.group==='military-alternative'){if(seen.has(row.group))return false;seen.add(row.group);}
@@ -57,10 +64,13 @@
     });
     return {rows:list,total:required.length,received:required.filter(r=>r.received).length,
       verified:required.filter(r=>r.verified).length,unknown:list.filter(r=>r.r.is_required&&r.condition===null).length,
-      copies:docs.filter(d=>d.storage_path&&conditions().documentCondition(d.document_type,c)!==false).length,
-      review:docs.filter(d=>d.verification_status!=='Підтверджено').length,
-      errors:docs.filter(d=>d.processing_status==='AI помилка').length,
-      processing:docs.filter(d=>d.processing_status==='AI обробка').length,
+      copies:current.filter(d=>d.storage_path).length,
+      review:current.filter(d=>d.verification_status!=='Підтверджено').length,
+      errors:current.filter(d=>d.processing_status==='AI помилка').length,
+      processing:current.filter(d=>d.processing_status==='AI обробка').length,
+      excludedReview:excluded.filter(d=>d.verification_status!=='Підтверджено').length,
+      excludedErrors:excluded.filter(d=>d.processing_status==='AI помилка').length,
+      excludedProcessing:excluded.filter(d=>d.processing_status==='AI обробка').length,
       paper:window.CRMDocumentPresence?.withoutCopies(c,docs).length||0};
   }
   function packageState(c,documents) {
