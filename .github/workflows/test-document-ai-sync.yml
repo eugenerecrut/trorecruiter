@@ -30,6 +30,7 @@ jobs:
           node tests/crm-education-fields.cjs
           node tests/crm-archive-path.cjs
           node --test tests/crm-safe-archive.cjs
+          node --test tests/crm-archive-edge.cjs
       - name: Install isolated PostgreSQL test runtime
         run: npm ci --prefix tests/sql-runtime --ignore-scripts
       - name: Verify source-bound decisions in isolated PostgreSQL
@@ -46,3 +47,5 @@ jobs:
         run: node tests/crm-zone-checkpoints-sql.cjs
       - name: Verify delegated zonal worker in isolated PostgreSQL
         run: node tests/crm-zone-worker-sql.cjs
+      - name: Verify retained archive write guard in isolated PostgreSQL
+        run: node tests/crm-archive-write-sql.cjs
