@@ -3,7 +3,10 @@
 'use strict';
 const norm=value=>String(value??'').normalize('NFKC').replace(/[’ʼ`]/g,"'").trim().replace(/\s+/g,' ').toLocaleLowerCase('uk');
 function parts(value){
- const match=norm(value).match(/^([а-яіїєґ][а-яіїєґ'-]+)(?:\s*\(([а-яіїєґ][а-яіїєґ'-]+)\))?\s+([а-яіїєґ][а-яіїєґ'-]+)(?:\s+([а-яіїєґ][а-яіїєґ'-]+))?$/u);
+ const normalized=norm(value);
+ // OCR placeholders are not maiden surnames and must never establish an identity match.
+ if(/\(\s*(?:нерозбірливо|нерозбірливе|нечитабельно|нечитабельне|невідомо|невідоме|не зазначено|не вказано|відсутнє)\s*\)/u.test(normalized))return null;
+ const match=normalized.match(/^([а-яіїєґ][а-яіїєґ'-]+)(?:\s*\(([а-яіїєґ][а-яіїєґ'-]+)\))?\s+([а-яіїєґ][а-яіїєґ'-]+)(?:\s+([а-яіїєґ][а-яіїєґ'-]+))?$/u);
  return match&&{surname:match[1],alias:match[2],given:match[3],patronymic:match[4]};
 }
 function maidenNameMatch(values){

@@ -31,6 +31,13 @@ function maidenNameMatch(values){
  const names=root.CRMParentNames||(typeof module!=='undefined'&&module.exports?require('./parent-names.js'):null);
  return names?.maidenNameMatch(values)||false;
 }
+function emptyParentNameNotation(values){
+ const names=values.filter(v=>typeof v==='string'&&v.trim());
+ if(names.length<2||!names.some(v=>/\(\s*\)/u.test(v)))return false;
+ // Only compare complete names around one empty placeholder. Never read missing letters into it.
+ const parsed=names.map(v=>{if((v.match(/\(\s*\)/gu)||[]).length>1)return null;return parentNameParts(v.replace(/\(\s*\)/u,' '));});
+ return parsed.every(v=>v?.patronymic&&!v.alias)&&['surname','given','patronymic'].every(k=>new Set(parsed.map(v=>v[k])).size===1);
+}
 function parentNameReview(sources,current){
  const values=[...sources.map(s=>s.value),current].filter(v=>typeof v==='string'&&v.trim());
  if(new Set(values.map(norm)).size<2)return false;
@@ -103,6 +110,7 @@ function structured(documents,candidate){
    const dates=[...entry.sources.map(s=>s.birth_date),...stored.map(r=>r.birth_date)].filter(v=>v!=null&&String(v).trim());
    if(stored.length>1){entry.status='conflict';entry.reason='У картці кілька записів цієї спорідненості. Потрібно перевірити, якому родичу належать джерела.';}
    else if(new Set(dates.map(norm)).size>1){entry.status='conflict';entry.reason='Дати народження цього родича відрізняються. ПІБ не доповнюється автоматично.';}
+   else if(emptyParentNameNotation([...entry.sources.map(s=>s.value),entry.current])){entry.status='needs_review';entry.reason='Повне основне ПІБ збігається, але є порожні дужки. Вони не містять прочитаного дівочого прізвища; звірте оформлення з оригіналом. Тотожність не підтверджена, картка не змінена.';}
    else if(entry.subject==='мати'&&maidenNameMatch([...entry.sources.map(s=>s.value),entry.current])){entry.status=new Set(entry.sources.map(s=>s.fingerprint||s.document_id)).size>1?'corroborated':'single_source';entry.reason='Прізвище в дужках — дівоче. Повне ПІБ збігається; наявність або відсутність дівочого прізвища не є розбіжністю. Картка не змінена.';}
    else if(parentNameReview(entry.sources,entry.current)){entry.status='needs_review';entry.reason='ПІБ батька або матері відрізняється повнотою чи прізвищем у дужках. Це ймовірний зв’язок, а не підтверджена тотожність; ручне ПІБ не змінено.';}
    else if(entry.status==='conflict')entry.reason='ПІБ цього родича відрізняються або записані неоднозначно. Звірте основне прізвище, ім’я та по батькові в оригіналах; зміна прізвища не вгадується.';

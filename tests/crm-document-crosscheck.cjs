@@ -134,3 +134,15 @@ test('education and service presentation preserves source spelling without chang
  assert.equal(edu.status,'single_source');assert.equal(work.status,'single_source');assert.equal(work.sources[0].display_fields.start_date,'2020');assert.equal(work.sources[0].display_fields.unit,'ВЧ А0998');
  assert.equal(JSON.stringify(docs),before);assert.equal(edu.learning_eligible,false);
 });
+
+test('empty surname parentheses ask for notation review, never establish identity or erase conflicts',()=>{
+ const plain='Тестенко Олена Іванівна',blank='Тестенко ( ) Олена Іванівна';
+ const parent=(id,name,birth='1979-06-28')=>d(id,null,{ai_extracted:{full_name:c.full_name,relatives:[{relationship:'мати',full_name:name,birth_date:birth}]}});
+ const candidate={...c,profile_data:{relatives:[{relationship:'мати',full_name:plain,birth_date:'1979-06-28',confirmed_by_user:true}]}};
+ const docs=[parent('a',blank)],before=JSON.stringify([docs,candidate]),entry=x.compare(docs,candidate).find(e=>e.key==='relatives');
+ assert.equal(entry.status,'needs_review');assert.match(entry.reason,/порожні дужки/);assert.match(entry.reason,/Тотожність не підтверджена/);assert.equal(entry.learning_eligible,false);assert.equal(JSON.stringify([docs,candidate]),before);
+ const dated=x.compare([parent('a',blank,'1980-01-01')],candidate).find(e=>e.key==='relatives');assert.equal(dated.status,'conflict');assert.match(dated.reason,/Дати народження/);
+ const duplicate={...candidate,profile_data:{relatives:[candidate.profile_data.relatives[0],candidate.profile_data.relatives[0]]}};assert.equal(x.compare(docs,duplicate).find(e=>e.key==='relatives').status,'conflict');
+ for(const name of ['Іваненко ( ) Олена Іванівна','Тестенко (Коваленко) Олена Петрівна','Тестенко (?) Олена Іванівна','Тестенко (нерозбірливо) Олена Іванівна','Тестенко ( ) Олена','Тестенко ( ) ( ) Олена Іванівна'])assert.equal(x.compare([parent('a',name)],candidate).find(e=>e.key==='relatives').status,'conflict',name);
+ assert.equal(x.maidenNameMatch([blank,plain]),false);
+});

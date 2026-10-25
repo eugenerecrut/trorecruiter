@@ -32,3 +32,12 @@ test('the shared maiden-name rule is loaded before both live browser and server 
  assert.equal(ctx.window.CRMParentNames.maidenNameMatch(['Тестенко (Коваленко) Олена Іванівна','Тестенко Олена Іванівна']),true);
  assert.equal(ctx.window.CRMParentNames.maidenNameMatch(['Тестенко (Коваленко) Олена Іванівна','Коваленко Олена Іванівна']),false);
 });
+
+test('OCR placeholder words in surname parentheses never create an automatic maiden-name match',()=>{
+ const names=require('../parent-names.js'),plain='Гречко Світлана Олексіївна';
+ for(const placeholder of ['нерозбірливо','нерозбірливе','нечитабельно','нечитабельне','невідомо','невідоме','не зазначено','не вказано','відсутнє']){
+  const name='Гречко ('+placeholder+') Світлана Олексіївна';assert.equal(names.parts(name),null);assert.equal(names.maidenNameMatch([name,plain]),false);
+  const stored={...old,full_name:plain,confirmed_by_user:true},next={...incoming,full_name:name},before=JSON.stringify([stored,next]),rows=[];const result=sync.mergeRelatives([stored],[next],(...args)=>rows.push(args),source);assert.equal(result.length,1);assert.equal(result[0].full_name,plain);assert(rows.some(r=>r[3]==='conflict'));assert(!rows.some(r=>r[3]==='fill'));assert.equal(JSON.stringify([stored,next]),before);
+ }
+ assert.equal(names.maidenNameMatch(['Гречко (Коваленко) Світлана Олексіївна',plain]),true);
+});
