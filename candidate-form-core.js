@@ -241,7 +241,7 @@
 
     await CRMResponsibility.mountCard(c,content);
     const formForNavigation=content.querySelector('#candidateCardV2');
-    CRMCandidateName.bind(formForNavigation);
+    if(!CRMWorkflow.readOnly(c))CRMCandidateName.bind(formForNavigation);
     const updateConditions=CRMCandidateConditions.bind(formForNavigation);
     const updateEducation=()=>{
       const secondary=formForNavigation.elements.education_level?.value==='середня';
@@ -351,6 +351,7 @@
     });
     const saveCard=async function (event) {
       event.preventDefault();
+      if(CRMWorkflow.wf(c).archived_at||CRMWorkflow.wf(c).archive_lock){content.querySelector('#ccStatus').textContent='Справа в архіві або заблокована. Спочатку поверніть її в роботу.';return false;}
       const form = event.target;
       if(!form.reportValidity())return false;
       const status = document.getElementById('ccStatus');
@@ -461,12 +462,14 @@
       return true;
     };
     cardState.save=()=>{
+      if(CRMWorkflow.readOnly(c)){content.querySelector('#ccStatus').textContent='Спочатку поверніть справу з архіву в роботу.';return Promise.resolve(false);}
       if(cardState.saving)return cardState.saving;
       CRMWorkspace.busy=true;const button=formForNavigation.querySelector('[type=submit]');button.disabled=true;
       cardState.saving=saveCard({preventDefault(){},target:formForNavigation}).catch(err=>{content.querySelector('#ccStatus').textContent='Помилка збереження: '+err.message;return false}).finally(()=>{cardState.saving=null;CRMWorkspace.busy=false;button.disabled=false});
       return cardState.saving;
     };
     formForNavigation.addEventListener('submit',event=>{event.preventDefault();cardState.save()});
+    CRMWorkflow.protectCard(formForNavigation,c);
 
   }
 

@@ -10,8 +10,9 @@
   const date=v=>v?new Date(v).toLocaleString('uk-UA',{timeZone:'Europe/Kyiv'}):'Час не записаний';
   const canAssign=()=>staff.some(s=>s.user_id===user?.id&&s.active&&['owner','lead'].includes(s.role));
   const options=(current=null)=>'<option value="">Не призначено</option>'+staff.filter(s=>s.active&&['lead','recruiter'].includes(s.role)||s.user_id===current).map(s=>'<option value="'+esc(s.user_id)+'" '+(s.user_id===current?'selected':'')+'>'+esc(s.display_name)+(s.active?'':' (неактивний)')+'</option>').join('');
-  const control=c=>canAssign()?'<select class="crm-owner-select" aria-label="Відповідальний рекрутер" data-assign="'+esc(c.id)+'">'+options(c.responsible_recruiter_id)+'</select>':'<strong>'+esc(name(c.responsible_recruiter_id))+'</strong>';
+  const control=c=>canAssign()&&!window.CRMWorkflow?.readOnly(c)?'<select class="crm-owner-select" aria-label="Відповідальний рекрутер" data-assign="'+esc(c.id)+'">'+options(c.responsible_recruiter_id)+'</select>':'<strong>'+esc(name(c.responsible_recruiter_id))+'</strong>';
   async function assign(c,value){
+    if(window.CRMWorkflow?.readOnly(c))throw Error('Поверніть справу з архіву в роботу перед зміною рекрутера.');
     let q=supabaseClient.from('candidates').update({responsible_recruiter_id:value||null}).eq('id',c.id);
     const expected=c.updated_at; q=expected?q.eq('updated_at',expected):q.is('updated_at',null);
     q=c.responsible_recruiter_id?q.eq('responsible_recruiter_id',c.responsible_recruiter_id):q.is('responsible_recruiter_id',null);
