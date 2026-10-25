@@ -32,7 +32,7 @@ test('one-step canary is owner-only, sends a durable budget of one and never fal
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
  assert.match(source,/get\('zoneBudget'\)\s*===\s*'1'/);
  assert.match(source,/supabaseClient.auth.getUser\(\)/);
- assert.match(source,/rpc\(nativeCanary\?'crm_splav_zone_native_canary_enqueue':'crm_splav_zone_canary_enqueue'/);
+ assert(source.includes("rpc(pageCanary?'crm_splav_zone_page_canary_enqueue':nativeCanary?'crm_splav_zone_native_canary_enqueue':'crm_splav_zone_canary_enqueue'"));
  assert.match(source,/p_budget:canary\?1:2600/);
  assert.match(source,/if\(canary&&\(ready.error\|\|ready.data!==true\)\)throw/);
  assert(source.indexOf("if(canary)throw Error('Немає придатного")<source.indexOf('await autopilot.run'));
@@ -254,4 +254,11 @@ test('mixed empty rows and uncertain alternatives use the same summary in final 
  const result=reading({rows:[{fields:[{value:0,legibility:'clear'},{value:false,legibility:'clear'}]},{fields:[]}]});
  assert.equal(result.count,2);assert.equal(result.uncertain,0);assert.equal(result.empty_rows,1);assert.match(result.label,/непрочитаних рядків: 1/);assert.match(result.notice,/непрочитані рядки/);
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert(source.includes('sum+readingSummary(r).uncertain'));assert(source.includes('readingSummary(r).empty_rows>0'));
+});
+
+test('draft full-page canary requires one PDF page, rejects native-only mixing and never uses browser fallback',()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert(source.includes("get('zoneBudget')==='13'"));assert(source.includes("pageCanary&&(total!==1||new URLSearchParams(location.search).get('zoneNativeOnly')==='1')"));
+ const gate=source.indexOf("if(pageCanary&&(total!==1");assert(gate>=0);assert(gate<source.indexOf("rpc(pageCanary?'crm_splav_zone_page_canary_enqueue'"));
+ assert(source.includes('до 13 логічних кроків'));assert(source.includes('Це не грошовий ліміт'));
 });

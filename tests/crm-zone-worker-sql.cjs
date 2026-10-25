@@ -291,6 +291,52 @@ try{
  for(const report of samples){const summary=reading(report),expected=!summary.count||summary.uncertain||summary.empty_rows?'complete_with_gaps':'complete';const actual=(await db.query('select '+verdict+' as status from (select $1::jsonb as reports) input',[JSON.stringify([report]),JSON.stringify([])])).rows[0].status;assert.equal(actual,expected,JSON.stringify(report));checks++;}
  const errorsVerdict=(await db.query('select '+verdict+' as status from (select $1::jsonb as reports) input',[JSON.stringify([sample(good)]),JSON.stringify([{code:'failed'}])])).rows[0].status;assert.equal(errorsVerdict,'complete_with_gaps');checks++;
 
+
+ // Draft one-page canary: exactly one owner-scoped document, budget 13, global zones OFF.
+ await owner();const pageMigration=file('supabase/migrations/'+fs.readdirSync(path.join(__dirname,'../supabase/migrations')).find(name=>name.endsWith('_splav_single_page_control.sql')));await db.exec(pageMigration);await db.exec(pageMigration);
+ await db.exec('update crm_private.splav_settings set zones_enabled=false');
+ for(const n of [90,91,92])await db.query("insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status) values($1,$2,$3,$1,1,'Автобіографія друкована',$4,'{}','Не перевірено')",[id(n),id(10),'page-control-'+n+'.pdf',id(30)]);
+ await actor(1);const pageCoordinator=await call('crm_zone_coordinator_open',[id(90),hash,false]),otherCoordinator=await call('crm_zone_coordinator_open',[id(91),hash,false]),holdCoordinator=await call('crm_zone_coordinator_open',[id(92),hash,false]);
+ for(const pages of [0,2,200,null]){await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,pages]),/exactly one page/);checks++;}
+ await owner();await db.exec('update crm_private.splav_settings set zones_enabled=true');await actor(1);
+ await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]),/global zones off/);checks++;
+ const unrelated=await call('crm_splav_zone_enqueue',[otherCoordinator.id,1]);
+ await owner();await db.exec("update crm_private.splav_settings set zones_enabled=false;update public.crm_staff set role='recruiter' where user_id='"+id(1)+"'");await actor(1);
+ await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]),/Active owner/);checks++;
+ await owner();await db.exec("update public.crm_staff set role='owner',active=false where user_id='"+id(1)+"'");await actor(1);await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]),/Active owner/);checks++;
+ await actor(2);await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]),/Active owner/);checks++;
+ await owner();await db.exec("set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]),/permission denied/);checks++;
+ await owner();await db.exec("update public.crm_staff set active=true where user_id='"+id(1)+"'");await actor(1);
+ const pageJob=await call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]);
+ await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]),/already consumed/);checks++;
+ await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[holdCoordinator.id,1]),/unused allowance/);checks++;
+ await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,pageJob.id);assert.notEqual(lease.id,unrelated.id);checks+=2;
+ await owner();assert.equal((await db.query("select has_function_privilege('anon','public.crm_splav_zone_page_canary_enqueue(uuid,integer)','EXECUTE') allowed")).rows[0].allowed,false);assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.zone_canary_enqueue_core(uuid,integer,integer)','EXECUTE') allowed")).rows[0].allowed,false);checks+=2;await actor(2);
+ let pageCalls=0;
+ for(;;){let ctx=await step('load');const p=pilot.restore(ctx.snapshot,{source:ctx.source});assert.equal(p.snapshot().budget,13);assert.equal(p.snapshot().pages,1);checks+=2;
+  await assert.rejects(step('save',{version:ctx.version,snapshot:{...ctx.snapshot,budget:14}}));checks++;
+  const result=await p.run({limit:1,checkpoint:async snapshot=>{ctx.version=await step('save',{version:ctx.version,snapshot});},read:async task=>{
+   const crop=zoneRasterBox(task.mode,task.box||full),r=await step('begin',{version:ctx.version,mode:task.mode,page:1,box:crop,render_sha256:hash});assert.equal(r.state,'accepted');checks++;
+   const report={review_only:true,mode:task.mode,...(task.mode==='overview'?{zones:Array.from({length:6},(_,i)=>({box:{x:.1,y:.05+i*.12,w:.3,h:.08}}))}:{rows:[{fields:[{value:'Synthetic',legibility:'clear',...(task.retry?{}:{alternatives:['Other']})}]}]}),source:{document_id:id(90),page:1,box:crop,render_sha256:hash}};
+   await step('finish',{request_id:r.id,receipt:r.receipt,result:report});pageCalls++;return report;
+  }});
+  if(result.done){assert.equal((await step('final')).status,'complete_with_gaps');checks++;break;}
+  assert(pageCalls<13);checks++;await step('yield');lease=await call('crm_splav_zone_claim');assert.equal(lease.id,pageJob.id);checks++;
+ }
+ assert.equal(pageCalls,13);checks++;
+ await owner();const pageSettings=(await db.query('select zones_enabled,zone_canary_coordinator from crm_private.splav_settings')).rows[0];assert.equal(pageSettings.zones_enabled,false);assert.equal(pageSettings.zone_canary_coordinator,null);checks+=2;
+ await actor(2);assert.equal(await call('crm_splav_zone_claim'),null);checks++; // unrelated queued job remains out of scope
+ await actor(1);await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[pageCoordinator.id,1]),/already consumed/);checks++;
+ const heldPage=await call('crm_splav_zone_page_canary_enqueue',[holdCoordinator.id,1]);await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,heldPage.id);checks++;await step('hold');
+ await owner();assert.equal((await db.query('select zone_canary_coordinator from crm_private.splav_settings')).rows[0].zone_canary_coordinator,null);checks++;
+ assert.equal((await db.query('select state from crm_private.splav_jobs where id=$1',[unrelated.id])).rows[0].state,'queued');checks++;
+
+
+ await db.query("insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status) values($1,$2,'old-one-step.pdf',$1,1,'Автобіографія друкована',$3,'{}','Не перевірено')",[id(93),id(10),id(30)]);
+ await actor(1);const oldModeCoordinator=await call('crm_zone_coordinator_open',[id(93),hash,false]),oldModeJob=await call('crm_splav_zone_canary_enqueue',[oldModeCoordinator.id,1]);
+ await assert.rejects(call('crm_splav_zone_page_canary_enqueue',[oldModeCoordinator.id,1]),/already consumed/);checks++;
+ await actor(2);lease=await call('crm_splav_zone_claim');assert.equal(lease.id,oldModeJob.id);assert.equal((await step('load')).snapshot.budget,1);checks+=2;await step('hold');
+
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
