@@ -75,7 +75,15 @@ function prompt(mode,type='Копія військового квитка'){
  if(mode==='overview')return rules+' Оглянь одну сторінку/розворот військового документа. Визнач тип сторінки та до 12 змістових зон. Координати нормовані 0..1 від лівого верхнього кута зображення. Для таблиці служби виділяй цілі рядки з усіма колонками; не розрізай дату й посаду. Схема: {page_type:"personal|service|ranks|notes|other",quality_issues:["..."],zones:[{label:"...",kind:"service_row|personal|rank|note|other",box:{x:0,y:0,w:1,h:1},reason:"..."}]}';
  return rules+' Читай виділений фрагмент разом із контекстом сусідніх рядків. Не перенось дані між рядками таблиці. Порожнє значення — null. Якщо символ нерозбірливий, поверни null та alternatives, а не здогадку. Схема: {raw_text:"дослівний текст",rows:[{raw_text:"...",fields:[{key:"start_date|end_date|unit|position|military_specialty|order_number|order_date|rank|other",raw_text:"...",value:null,alternatives:["..."],legibility:"clear|uncertain|unreadable",reason:"..."}]}],warnings:["..."]}';
 }
+function assertOutputBounds(mode,value){
+ const tooLong=v=>typeof v==='string'&&v.length>4000;
+ const rows=Array.isArray(value?.rows)?value.rows:[];
+ const overflow=mode==='zone'?(rows.length>12||tooLong(value?.raw_text)||rows.some(r=>tooLong(r?.raw_text)||Array.isArray(r?.fields)&&(r.fields.length>20||r.fields.some(f=>tooLong(f?.raw_text)||tooLong(f?.value)||tooLong(f?.reason)||Array.isArray(f?.alternatives)&&(f.alternatives.length>5||f.alternatives.some(tooLong)))))||Array.isArray(value?.warnings)&&(value.warnings.length>20||value.warnings.some(tooLong))):
+  Array.isArray(value?.zones)&&(value.zones.length>12||value.zones.some(z=>tooLong(z?.label)||tooLong(z?.reason)))||Array.isArray(value?.quality_issues)&&(value.quality_issues.length>12||value.quality_issues.some(tooLong))||tooLong(value?.page_type);
+ if(overflow){const error=Error('AI output exceeds bounded result contract');error.diagnosis='OUTPUT_LIMIT_EXCEEDED';error.uncertain=true;throw error;}
+}
 function result(mode,value,source){
+ assertOutputBounds(mode,value);
  const warnings=(Array.isArray(value?.warnings)?value.warnings:[]).map(text).filter(Boolean).slice(0,20);
  const base={contract:VERSION,review_only:true,requires_review:true,source,created_at:new Date().toISOString()};
  if(mode==='overview')return {...base,page_type:text(value?.page_type),quality_issues:(Array.isArray(value?.quality_issues)?value.quality_issues:[]).map(text).slice(0,12),zones:(Array.isArray(value?.zones)?value.zones:[]).slice(0,12).flatMap(z=>{const b=box(z?.box);return b?[{label:text(z.label),kind:text(z.kind),box:b,reason:text(z.reason)}]:[]})};

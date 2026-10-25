@@ -15,7 +15,7 @@ test('review output strips candidate merge fields and never accepts uncertain va
  assert.equal(contract.fieldValid('military_specialty','4900347 А'),false);assert.equal(contract.fieldValid('start_date','11.07.16'),false);assert.equal(contract.fieldValid('start_date','2024-02-30'),false);assert.equal(contract.fieldValid('military_specialty','216182А'),true);
  assert.equal(out.review_only,true);assert.equal(out.requires_review,true);assert.equal(out.full_name,undefined);assert.equal(out.extracted,undefined);assert.equal(out.rows[0].fields.length,4);assert.equal(out.rows[0].fields[0].value,null);assert.equal(out.rows[0].fields[1].value,'оператор');assert.equal(out.rows[0].fields[2].value,null);assert(out.rows[0].fields.every(f=>f.requires_review));
 });
-function server({auth=true,staff=true,processor=false,zoneLease=false,nativeOnly=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,geminiThoughts=false,router=false,cachedResult=null,ledger='accepted',finish='completed'}={}){
+function server({auth=true,staff=true,processor=false,zoneLease=false,nativeOnly=false,doc=true,enabled=true,type='Копія військового квитка',newer=false,provider=true,fallback=false,geminiFailure=false,geminiThoughts=false,router=false,cachedResult=null,ledger='accepted',finish='completed',outputValue=null}={}){
  let handler;const calls=[];let savedReceipt=null;
  const context={globalThis:null,TextDecoder,Response,Request,AbortController,setTimeout,clearTimeout,atob,btoa,console,crypto:require('node:crypto').webcrypto,CRMMilitaryZoneContract:contract,Deno:{env:{get:k=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'publishable-test',OPENAI_API_KEY:'unit-test-not-a-real-key',...(fallback?{GEMINI_API_KEY:'test-gemini'}:{}),...(router?{OPENROUTER_API_KEY:'test-router'}:{})}[k])},serve:fn=>handler=fn},fetch:async(url,init={})=>{
   calls.push({url,method:init.method||'GET'});
@@ -49,7 +49,7 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,nativeOnly
    return finish==='error'?Response.json({error:'unavailable'},{status:503}):Response.json({state:finish});
   }
   if(url.includes('/documents?'))return Response.json(doc?[{id:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',candidate_id:'c',storage_path:'c/original.pdf',document_type:type,version_group_id:'g',version_number:1}]:[]);
-  if(url.includes('openrouter.ai'))return router==='malformed'?Response.json({choices:[]}):Response.json({choices:[{message:{content:'{"rows":[]}'}}]});
+  if(url.includes('openrouter.ai'))return router==='malformed'?Response.json({choices:[]}):Response.json({choices:[{message:{content:JSON.stringify(outputValue||{rows:[]})}}]});
   if(url.includes('api.openai.com')){
    if(provider==='quota')return Response.json({error:{code:'insufficient_quota',message:'SECRET PASSPORT DATA'}},{status:429,headers:{'retry-after':'30'}});
    if(provider==='unknown-code')return Response.json({error:{code:'SECRET PASSPORT DATA',message:'SECRET'}},{status:429});
@@ -58,7 +58,7 @@ function server({auth=true,staff=true,processor=false,zoneLease=false,nativeOnly
    if(provider==='malformed')return Response.json({output:[]});
    if(provider==='body-lost')return new Response('{truncated');
    if(provider==='5xx')return Response.json({error:'synthetic'}, {status:503});
-   return provider?Response.json({output:[{content:[{text:JSON.stringify({raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
+   return provider?Response.json({output:[{content:[{text:JSON.stringify(outputValue||{raw_text:'оператор',rows:[]})}]}]}):Response.json({error:'not available'},{status:429});
   }
   if(url.includes('generativelanguage.googleapis.com')&&geminiThoughts)return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{thought:true,text:'{"SECRET_THOUGHT":1}'},{text:'{"rows":[]}' }]}}]});
   if(url.includes('generativelanguage.googleapis.com')&&geminiFailure)return Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:geminiFailure==='valid-json'?'{"rows":[]}':'truncated SECRET'}]}}]});
@@ -243,4 +243,14 @@ test('source precision accepts Ukrainian year suffixes but never extracts years 
 });
 test('legacy year projection is read only and does not call AI on cached receipt replay',async()=>{
  const cached={contract:'military-zones-2',review_only:true,mode:'zone',source:{page:1},rows:[{fields:[{key:'graduation_year',raw_text:'2017',value:null,legibility:'clear'}]}]};const before=JSON.stringify(cached),s=server({ledger:'completed',cachedResult:cached});const result=await (await s.invoke()).json();assert.equal(result.request_replayed,true);assert.equal(result.rows[0].fields[0].value,'2017');assert.equal(result.rows[0].fields[0].requires_review,true);assert.equal(JSON.stringify(cached),before);assert(!s.calls.some(c=>/api.openai.com|openrouter.ai|generativelanguage/.test(c.url)));
+});
+
+test('oversized model results are rejected before silent text, row, field or alternative truncation',()=>{
+ const field={key:'other',raw_text:'x',value:'x',legibility:'clear'},row={raw_text:'x',fields:[field]};
+ for(const value of [{rows:Array(13).fill(row)},{rows:[{fields:Array(21).fill(field)}]},{raw_text:'x'.repeat(4001)},{rows:[{raw_text:'x'.repeat(4001)}]},{rows:[{fields:[{...field,alternatives:Array(6).fill('x')}]}]},{warnings:Array(21).fill('x')}]){const before=JSON.stringify(value);assert.throws(()=>contract.result('zone',value,{}),e=>e.diagnosis==='OUTPUT_LIMIT_EXCEEDED'&&e.uncertain===true);assert.equal(JSON.stringify(value),before);}
+ assert.throws(()=>contract.result('overview',{zones:Array(13).fill({box:{x:0,y:0,w:1,h:1}})},{}),/exceeds/);
+ assert.equal(contract.result('zone',{raw_text:'x'.repeat(4000),rows:Array(12).fill({fields:Array(20).fill(field)})},{}).rows.length,12);
+});
+test('known oversized response produces a durable failure and no extra provider fallback or paid replay',async()=>{
+ const outputValue={rows:Array(13).fill({raw_text:'private marker',fields:[{key:'other',raw_text:'x',value:'x',legibility:'clear'}]})};const s=server({ledger:'durable',fallback:true,router:true,outputValue});const result=await (await s.invoke()).json();assert.equal(result.code,'ZONE_RESULT_UNCERTAIN');assert.equal(result.provider_errors[0].diagnosis,'OUTPUT_LIMIT_EXCEEDED');assert.match(result.error,/перевищила/);assert(!JSON.stringify(result).includes('private marker'));const paid=s.calls.filter(c=>/api.openai.com|generativelanguage|openrouter.ai/.test(c.url)).length;assert.equal(paid,1);await s.invoke();assert.equal(s.calls.filter(c=>/api.openai.com|generativelanguage|openrouter.ai/.test(c.url)).length,1);
 });

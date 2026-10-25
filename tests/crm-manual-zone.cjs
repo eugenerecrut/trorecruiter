@@ -303,3 +303,13 @@ test('empty relative-name placeholders are explained without inventing a maiden 
  for(const key of ['other','institution'])assert.doesNotMatch(describe({rows:[{fields:[{...data.rows[0].fields[0],key}]}]}).notice,/порожні дужки/);
  for(const raw_text of ['Тестенко (Коваленко) Олена Іванівна','Тестенко (?) Олена Іванівна'])assert.doesNotMatch(describe({rows:[{fields:[{...data.rows[0].fields[0],raw_text}]}]}).notice,/порожні дужки/);
 });
+
+test('full-page biography plans are explained without claiming verified content or starting AI',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ const plan={review_only:true,mode:'overview',source:{origin:'server_text_layer'},reading_plan:{contract:'native-biography-page-1',strategy:'full_page',original_zones:[{},{}]}};const result=describe({state:'queued',zone_reports:[plan]});assert.match(JSON.stringify(result),/Початкові рамки збережено/);assert.match(JSON.stringify(result),/не виключалися/);
+ assert.doesNotMatch(JSON.stringify(describe({state:'queued',zone_reports:[{...plan,review_only:false}]})),/План читання друкованої/);
+});
+test('known output overflow requests page-splitting review instead of a billing or retry instruction',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ const result=describe({state:'needs_review',result:{status:'complete_with_gaps'},zone_summary:{code:'ZONE_RESULT_UNCERTAIN',providers:[{provider:'OpenRouter',diagnosis:'OUTPUT_LIMIT_EXCEEDED'}]}});assert.equal(result.title,'Опрацювання зупинено');assert.match(JSON.stringify(result),/Скорочений результат не прийнято/);assert.doesNotMatch(JSON.stringify(result),/перевірити ліміти та доступ AI-сервісів/);
+});

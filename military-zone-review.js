@@ -40,8 +40,9 @@ function textLayerZones(items,viewport){
 }
 function backgroundSummary(job){
  const s=job.zone_summary||{},notes=[];
+ const outputLimit=Array.isArray(s.providers)&&s.providers.some(p=>['OpenAI','Gemini','OpenRouter'].includes(p?.provider)&&p.diagnosis==='OUTPUT_LIMIT_EXCEEDED');
  const gaps=job.result?.status==='complete_with_gaps'||s.error_count>0;
- const finishedWithGaps=job.result?.status==='complete_with_gaps'&&['completed','needs_review'].includes(job.state)&&
+ const finishedWithGaps=!outputLimit&&job.result?.status==='complete_with_gaps'&&['completed','needs_review'].includes(job.state)&&
   !(s.pending_steps>0)&&!['ZONE_RESULT_UNCERTAIN','ZONE_PROVIDERS_REJECTED','ZONE_PREP_FAILED','ZONE_OVERVIEW_INVALID','ZONE_OVERVIEW_TOO_MANY_ZONES'].includes(s.code);
  const readings=(Array.isArray(job.zone_reports)?job.zone_reports:[]).filter(r=>r?.mode==='zone').map(readingSummary);
  const emptyReadings=readings.filter(r=>r.count===0).length,uncertainReadings=readings.filter(r=>r.count>0&&(r.uncertain>0||r.empty_rows>0)).length;
@@ -56,6 +57,7 @@ function backgroundSummary(job){
  }
  if(finishedWithGaps)notes.push('Прохід завершено, звіт збережено. Частину значень потрібно звірити з оригіналом; новий AI-запуск автоматично не виконується.');
  else if(['queued','running'].includes(job.state))notes.push('Можна закрити це вікно. СПЛАВ продовжить роботу на сервері.');
+ else if(outputLimit)notes.push('AI відповів, але відповідь перевищила безпечні межі структури. Скорочений результат не прийнято. Перед новим погодженим запуском потрібно перевірити поділ сторінки.');
  else if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Сервіс міг прийняти запит, але придатний результат не отримано. Автоматичний повтор заблоковано, щоб уникнути повторних витрат.');
  else if(s.code==='ZONE_PROVIDERS_REJECTED')notes.push('AI-сервіси відхилили запит. Адміністратору потрібно перевірити їх доступність і ліміти.');
  else if(s.code==='ZONE_OVERVIEW_TOO_MANY_ZONES')notes.push('Огляд містить понад 6 різних зон. Їх не обрізали мовчки: читання цих зон не запускали, потрібне уточнення поділу сторінки.');
@@ -71,10 +73,12 @@ function backgroundSummary(job){
   if(uncertainReadings)notes.push('Читань із непевними значеннями або непрочитаними рядками: '+uncertainReadings+'. Перевірте позначені поля та їхні варіанти.');
   notes.push('Ці кількості стосуються читань, включно з контекстними повторами, а не унікальних полів чи документів.');
  }
- if(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain')notes.push('Наступна дія: адміністратору перевірити ліміти та доступ AI-сервісів. Цей фрагмент не запускати повторно без окремого рішення.');
+ if(!outputLimit&&(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain'))notes.push('Наступна дія: адміністратору перевірити ліміти та доступ AI-сервісів. Цей фрагмент не запускати повторно без окремого рішення.');
+ const pagePlans=(Array.isArray(job.zone_reports)?job.zone_reports:[]).filter(r=>r?.review_only===true&&r.mode==='overview'&&r.source?.origin==='server_text_layer'&&r.reading_plan?.contract==='native-biography-page-1'&&r.reading_plan.strategy==='full_page'&&Array.isArray(r.reading_plan.original_zones)&&r.reading_plan.original_zones.length>=2&&r.reading_plan.original_zones.length<=6);
+ if(pagePlans.length)notes.push('План читання друкованої автобіографії: уся сторінка в одному контексті. Початкові рамки збережено у звіті; заголовок, дата й підпис не виключалися.');
  if(Array.isArray(job.zone_reports)&&job.zone_reports.length)notes.push('Збережених результатів: '+job.zone_reports.length+'. Це відповіді огляду та читання, а не кількість підтверджених полів.');
  if(job.zone_reports_truncated)notes.push('Збережений звіт перевищує ліміт перегляду. Новий AI-запит не потрібен; зверніться до адміністратора.');
- const labels={insufficient_quota:'вичерпано API-квоту або баланс; адміністратору перевірити білінг',rate_limit_exceeded:'перевищено частоту запитів; адміністратору перевірити ліміти',QUOTA_OR_RATE_LIMIT:'квота або частота запитів; точної причини сервіс не надав',MAX_TOKENS:'відповідь обрізана через обмеження довжини',max_output_tokens:'відповідь обрізана через обмеження довжини',length:'відповідь обрізана через обмеження довжини',SAFETY:'сервіс заблокував відповідь',content_filter:'сервіс заблокував відповідь',invalid_api_key:'адміністратору перевірити ключ доступу',AUTHENTICATION_FAILED:'адміністратору перевірити ключ доступу',UNAUTHENTICATED:'адміністратору перевірити ключ доступу',model_not_found:'адміністратору перевірити доступ до моделі',MODEL_OR_ENDPOINT_UNAVAILABLE:'адміністратору перевірити доступ до моделі',PERMISSION_DENIED:'адміністратору перевірити права сервісу',ACCESS_DENIED:'адміністратору перевірити права сервісу'};
+ const labels={OUTPUT_LIMIT_EXCEEDED:'відповідь перевищила межі структури; потрібна перевірка поділу сторінки, автоматичного повтору немає',insufficient_quota:'вичерпано API-квоту або баланс; адміністратору перевірити білінг',rate_limit_exceeded:'перевищено частоту запитів; адміністратору перевірити ліміти',QUOTA_OR_RATE_LIMIT:'квота або частота запитів; точної причини сервіс не надав',MAX_TOKENS:'відповідь обрізана через обмеження довжини',max_output_tokens:'відповідь обрізана через обмеження довжини',length:'відповідь обрізана через обмеження довжини',SAFETY:'сервіс заблокував відповідь',content_filter:'сервіс заблокував відповідь',invalid_api_key:'адміністратору перевірити ключ доступу',AUTHENTICATION_FAILED:'адміністратору перевірити ключ доступу',UNAUTHENTICATED:'адміністратору перевірити ключ доступу',model_not_found:'адміністратору перевірити доступ до моделі',MODEL_OR_ENDPOINT_UNAVAILABLE:'адміністратору перевірити доступ до моделі',PERMISSION_DENIED:'адміністратору перевірити права сервісу',ACCESS_DENIED:'адміністратору перевірити права сервісу'};
  for(const p of (Array.isArray(s.providers)?s.providers:[]).slice(0,8)){
   if(!['OpenAI','Gemini','OpenRouter'].includes(p.provider))continue;
   notes.push(p.provider+': '+(labels[p.diagnosis]||(p.http_status===429?labels.QUOTA_OR_RATE_LIMIT:p.http_status?'сервіс відхилив запит (HTTP '+Number(p.http_status)+')':'придатної відповіді немає; причина не збережена.')));
