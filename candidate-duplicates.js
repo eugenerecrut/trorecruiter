@@ -4,9 +4,11 @@ const norm=v=>String(v||'').normalize('NFKC').replace(/[’ʼ`]/g,"'").replace(/
 const profile=c=>{try{return typeof c.profile_data==='string'?JSON.parse(c.profile_data):c.profile_data||{}}catch{return {}}};
 const names=c=>[c.name_nominative||c.full_name,...(window.CRMNameHistory?.records(c)||[]).filter(r=>r.verified).map(r=>r.previous_full_name)].map(norm).filter(Boolean);
 function matching(incoming,rows){return rows.filter(c=>!profile(c).merged_into&&((/^\d{10}$/.test(incoming.rnokpp||'')&&incoming.rnokpp===c.rnokpp)||(incoming.birth_date&&incoming.birth_date===c.birth_date&&names(c).some(n=>names(incoming).includes(n)))));}
+const canAttach=c=>!!c&&!profile(c).merged_into&&!profile(c).workflow?.archived_at&&!profile(c).workflow?.archive_lock;
 async function choose(rows,hasFile){
- const esc=CRMWorkspace.escape,d=document.createElement('dialog');d.className='crm-dialog';d.innerHTML='<h2>Кандидат уже є в CRM</h2><p>Оберіть наявну справу. Її заповнені дані залишаться без змін.</p><label>Справа<select data-existing>'+rows.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.full_name)+(profile(c).workflow?.archived_at?' · Архів':'')+' · '+esc(c.birth_date||'Дата не вказана')+'</option>').join('')+'</select></label><div class="crm-actions"><button type="button" data-choice="open">Відкрити справу</button>'+(hasFile?'<button type="button" data-choice="attach">Додати РЛ до цієї справи</button>':'')+'<button type="button" data-choice="cancel">Скасувати</button></div>';
- document.body.append(d);d.showModal();return new Promise(resolve=>{const finish=action=>{const id=d.querySelector('[data-existing]').value;d.close();d.remove();resolve({action,id});};d.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>finish(b.dataset.choice));d.addEventListener('cancel',e=>{e.preventDefault();finish('cancel')});});
+ const esc=CRMWorkspace.escape,d=document.createElement('dialog');d.className='crm-dialog';d.innerHTML='<h2>Кандидат уже є в CRM</h2><p>Оберіть наявну справу. Її заповнені дані залишаться без змін.</p><label>Справа<select data-existing>'+rows.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.full_name)+(profile(c).workflow?.archived_at?' · Архів':'')+' · '+esc(c.birth_date||'Дата не вказана')+'</option>').join('')+'</select></label><p data-existing-status role="status"></p><div class="crm-actions"><button type="button" data-choice="open">Відкрити справу</button>'+(hasFile?'<button type="button" data-choice="attach">Додати РЛ до цієї справи</button>':'')+'<button type="button" data-choice="cancel">Скасувати</button></div>';
+ const select=d.querySelector('[data-existing]'),attach=d.querySelector('[data-choice=attach]'),note=d.querySelector('[data-existing-status]'),selected=()=>rows.find(c=>c.id===select.value),sync=()=>{const allowed=canAttach(selected());if(attach)attach.disabled=!allowed;note.textContent=allowed?'':'Архівна або заблокована справа. Відкрийте її; додавання РЛ доступне після повернення в роботу.';};select.onchange=sync;sync();
+ document.body.append(d);d.showModal();return new Promise(resolve=>{const finish=action=>{if(action==='attach'&&!canAttach(selected())){sync();return;}const id=select.value;d.close();d.remove();resolve({action,id});};d.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>finish(b.dataset.choice));d.addEventListener('cancel',e=>{e.preventDefault();finish('cancel')});});
 }
 
 function groups(rows){const map=new Map();for(const c of rows){if(!/^\d{10}$/.test(c.rnokpp||'')||profile(c).merged_into)continue;const key=c.rnokpp+'|'+(c.birth_date||'');if(!map.has(key))map.set(key,[]);map.get(key).push(c);}return [...map.values()].filter(g=>g.length>1);}
@@ -39,6 +41,6 @@ async function mergePreview(ids){
  };
 }
 function mount(rows,root){const list=groups(rows),host=root.querySelector('.quick-actions');if(!host)return;host.querySelector('[data-duplicates]')?.remove();if(!list.length||!CRMResponsibility.canMerge())return;const b=document.createElement('button');b.type='button';b.dataset.duplicates='1';b.textContent='Дублікати: '+list.length;b.onclick=()=>mergePreview(list[0].slice(0,2).map(c=>c.id)).catch(e=>alert(e.message));host.append(b);}
-window.CRMCandidateDuplicates={matching,choose,groups,mergePreview,mount};
+window.CRMCandidateDuplicates={matching,choose,groups,mergePreview,mount,canAttach};
 
 })();

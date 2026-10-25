@@ -68,7 +68,32 @@ test('ordinary completion and archive screen cannot invoke permanent deletion or
 test('archive list includes retained cases and historical PDFs, excludes merged cases and clears stale context',async()=>{
  const nodes=Object.fromEntries(['[data-archive-rows]','[data-archive-search]','[data-archive-status]'].map(k=>[k,{value:'',innerHTML:'',textContent:''}]));
  const content={innerHTML:'',querySelector:s=>nodes[s]};let contextCleared=false;
- const c=runtime({document:{querySelector:s=>s==='.content'?content:null},CRMWorkspace:{escape:v=>String(v??'').replaceAll('<','&lt;'),setContext(id,name){assert.equal(id,null);assert.equal(name,'');contextCleared=true;},markMenu(){}},supabaseClient:{from(table){return {select(){return this},async order(){return {data:table==='crm_archive'?[{id:'old',candidate_id:'old-c',full_name:'Old',state:'Готово',archived_at:'2025-01-01',pdf_path:'old.pdf'}]:[{id:'new',full_name:'Retained',profile_data:{workflow:{archived_at:'2026-01-01',archive_mode:'retained',outcome:'Відмова кандидата'}}},{id:'merged',full_name:'Do not show',profile_data:{merged_into:'new',workflow:{archived_at:'2026-01-01'}}}]};}}}}});
+ const c=runtime({document:{querySelector:s=>s==='.content'?content:null},CRMWorkspace:{escape:v=>String(v??'').replaceAll('<','&lt;'),setContext(id,name){assert.equal(id,null);assert.equal(name,'');contextCleared=true;},markMenu(){}},supabaseClient:{from(table){return {select(){return this},async order(){return {data:table==='crm_archive'?[{id:'old',candidate_id:'old-c',full_name:'Old',state:'Готово',archived_at:'2025-01-01',pdf_path:'old.pdf'}]:[{id:'new',full_name:'Retained',profile_data:{workflow:{id:'wrong',candidate_id:'other',full_name:'Wrong name',archived_at:'2026-01-01',archive_mode:'retained',outcome:'Відмова кандидата'}}},{id:'merged',full_name:'Do not show',profile_data:{merged_into:'new',workflow:{archived_at:'2026-01-01'}}}]};}}}}});
  await c.CRMWorkflow.showArchive();const html=nodes['[data-archive-rows]'].innerHTML;assert(contextCleared);assert(html.includes('data-archive-restore="new"'));assert(html.includes('data-archive-open="new"'));assert(html.includes('data-archive-download="old"'));assert(!html.includes('Do not show'));assert(!html.includes('data-archive-resume'));assert(html.indexOf('Retained')<html.indexOf('Old'));
  nodes['[data-archive-search]'].value='OLD';nodes['[data-archive-search]'].oninput();assert(!nodes['[data-archive-rows]'].innerHTML.includes('Retained'));
+});
+test('repeated completion opening reuses the dialog without rebinding it',()=>{
+ const existing={sentinel:true},c=runtime({document:{querySelector:s=>{assert.equal(s,'dialog[data-crm-completion]');return existing;},createElement(){throw Error('must not create another modal');}}});
+ assert.equal(c.CRMWorkflow.completionDialog(candidate(),[],[],()=>{}),existing);
+ assert.equal(c.CRMWorkflow.completionDialog(candidate(),[],[],()=>{}),existing);
+});
+test('duplicate chooser blocks attaching to archived/locked cases and updates when selection changes',async()=>{
+ const select={value:'archived'},note={textContent:''},buttons=['open','attach','cancel'].map(choice=>({dataset:{choice},disabled:false}));let closed=0;
+ const dialog={innerHTML:'',querySelector:s=>s==='[data-existing]'?select:s==='[data-existing-status]'?note:buttons.find(b=>b.dataset.choice==='attach'),querySelectorAll:()=>buttons,showModal(){},close(){closed++;},remove(){},addEventListener(){}};
+ const c=vm.createContext({CRMWorkspace:{escape:String},document:{createElement:()=>dialog,body:{append(){}}}});c.window=c;vm.runInContext(read('candidate-duplicates.js'),c);
+ const archived={id:'archived',full_name:'Archive',profile_data:{workflow:{archived_at:'date'}}},active={id:'active',full_name:'Active'};
+ for(const row of [archived,{profile_data:{merged_into:'other'}},{profile_data:{workflow:{archive_lock:'lock'}}}])assert.equal(c.CRMCandidateDuplicates.canAttach(row),false);
+ const chosen=c.CRMCandidateDuplicates.choose([archived,active],true),attach=buttons.find(b=>b.dataset.choice==='attach');assert.equal(attach.disabled,true);assert(note.textContent.includes('Архівна'));
+ attach.onclick();assert.equal(closed,0,'disabled action must not resolve even if triggered directly');select.value='active';select.onchange();assert.equal(attach.disabled,false);assert.equal(note.textContent,'');attach.onclick();assert.deepEqual(json(await chosen),{action:'attach',id:'active'});
+});
+test('retained card offers restore and reloads the card only after successful restoration',async()=>{
+ assert(source.includes('data-restore>Повернути в роботу'));
+ const handler=source.split('\n').find(l=>l.includes("host.querySelector('[data-restore]')"));
+ const factory=new Function('host','confirm','run','persist','restorePatch','c','isArchived','CRMWorkspace','crmNavigate',handler);
+ for(const mode of ['cancel','failed','success']){
+  const api=runtime().CRMWorkflow,row=candidate();row.profile_data.workflow={...row.profile_data.workflow,...api.completionPatch(row,values(),[],[])};
+  let click,navigations=0,writes=0;const workspace={card:{dirty:false}};
+  factory({querySelector(){return {addEventListener(_event,fn){click=fn;}}}},()=>mode!=='cancel',async fn=>{if(mode!=='failed')await fn();},async(c,patch)=>{writes++;c.profile_data.workflow={...c.profile_data.workflow,...patch};},api.restorePatch,row,api.isArchived,workspace,async(key,id)=>{assert.equal(key,'card');assert.equal(id,row.id);assert.equal(workspace.card,null);navigations++;});
+  await click();assert.equal(writes,mode==='success'?1:0);assert.equal(navigations,mode==='success'?1:0);
+ }
 });
