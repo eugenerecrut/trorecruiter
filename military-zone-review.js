@@ -79,6 +79,19 @@ function readingSummary(data){
  const uncertain=fields.filter(f=>f?.value==null||typeof f.value==='string'&&!f.value.trim()||f?.legibility!=='clear'||Array.isArray(f.alternatives)&&f.alternatives.length>0).length;
  return {count:fields.length,uncertain,label:fields.length?fields.length+' полів · '+uncertain+' потребують перевірки':'Структурованих полів немає · потрібна перевірка',notice:!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':uncertain?'Є непевні значення. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.'};
 }
+function savedReportView(saved,documentId){
+ const supplied=Array.isArray(saved?.reports)?saved.reports:[];
+ const reports=supplied.filter(r=>typeof documentId==='string'&&documentId.trim()&&r?.review_only===true&&r.source?.document_id===documentId&&
+  ['overview','zone'].includes(r.mode)&&Number.isSafeInteger(r.source.page)&&r.source.page>0&&r.source.page<=200);
+ const omitted=supplied.length-reports.length,errors=Array.isArray(saved?.errors)?saved.errors.length:0;
+ const gaps=saved?.status!=='complete'||!reports.length||errors>0||omitted>0||reports.some(r=>
+  Array.isArray(r.quality_issues)&&r.quality_issues.length>0||r.mode==='zone'&&(!readingSummary(r).count||readingSummary(r).uncertain>0));
+ const notes=[gaps?'Залишилися непрочитані або непевні відомості. Перевірте збережені фрагменти з оригіналом.':'Читання збережено. Зіставлення та підтвердження відомостей виконуються окремо.'];
+ if(errors)notes.push('Кроків із помилками: '+errors+'.');
+ if(omitted)notes.push('Не показано фрагментів без підтвердженої належності цьому документу: '+omitted+'. Вони не беруть участі у зіставленні.');
+ notes.push('Перегляд не запускає AI. Дані картки та основне розпізнавання не змінюються.');
+ return {title:gaps?'Звіт збережено · потрібна перевірка':'Звіт збережено',notes,reports,omitted,errors};
+}
 function sourceTarget(report,current,binding){
  const s=report?.source;if(report?.mode!=='zone'||s?.document_id!==current.document_id||!Number.isInteger(s.page)||s.page<1||s.page>current.pages||!/^[a-f0-9]{64}$/.test(current.file_sha256||''))return null;
  const box=CRMMilitaryZoneContract.box(s.box);if(!box)return null;
@@ -307,9 +320,15 @@ async function open(doc,{autostart=false}={}){
    await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';pdf=await pdfjsLib.getDocument({data:new Uint8Array(originalBytes)}).promise;total=pdf.numPages;if(total>200)throw Error('Поглиблене читання підтримує до 200 сторінок на файл.');
   }else if(blob.type.startsWith('image/'))bitmap=await createImageBitmap(blob);else throw Error('Потрібен PDF або зображення');
   await render();let backgroundJob=null;try{const jobs=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:doc.candidate_id});if(!jobs.error&&Array.isArray(jobs.data))backgroundJob=jobs.data.find(j=>j.document_id===doc.id&&j.kind==='zone');}catch{}
-  const saved=doc.ai_extracted?._military_zone_report;if(backgroundJob)showBackground(backgroundJob);else if(saved&&Array.isArray(saved.reports)&&['complete','complete_with_gaps'].includes(saved.status)){reports.push(...saved.reports);for(const report of saved.reports)if(report.mode==='zone')showReport(report,report.source.page);$('[data-auto-progress]').textContent='Готовий результат збережено '+(saved.saved_at||'')+'. Повторне розпізнавання не запускалося.';$('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));try{await crosscheck()}catch(e){status('Зіставлення не завершено: '+e.message)}}else if(autostart&&!canary&&sourceReady)$('[data-auto]').onclick();
+  const saved=doc.ai_extracted?._military_zone_report;if(backgroundJob)showBackground(backgroundJob);else if(saved&&Array.isArray(saved.reports)&&['complete','complete_with_gaps'].includes(saved.status)){
+   const view=savedReportView(saved,doc.id);reports.push(...view.reports);
+   for(const report of view.reports)if(report.mode==='zone')showReport(report,report.source.page);
+   $('[data-auto-progress]').textContent=[view.title,...view.notes].join(' ');
+   $('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));
+   if(view.reports.length)try{await crosscheck()}catch(e){status('Зіставлення не завершено: '+e.message)}
+  }else if(autostart&&!canary&&sourceReady)$('[data-auto]').onclick();
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,selectedBox,textLayerZones,readingSummary,sourceTarget,cardValueHTML,evidenceValueHTML};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,savedReportView,selectedBox,textLayerZones,readingSummary,sourceTarget,cardValueHTML,evidenceValueHTML};
 })();
