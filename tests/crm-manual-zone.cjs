@@ -262,3 +262,16 @@ test('draft full-page canary requires one PDF page, rejects native-only mixing a
  const gate=source.indexOf("if(pageCanary&&(total!==1");assert(gate>=0);assert(gate<source.indexOf("rpc(pageCanary?'crm_splav_zone_page_canary_enqueue'"));
  assert(source.includes('до 13 логічних кроків'));assert(source.includes('Це не грошовий ліміт'));
 });
+
+ test('finished gap results distinguish content review from interruption without weakening uncertainty',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
+ const job={state:'needs_review',result:{status:'complete_with_gaps'},zone_summary:{attempts:6,budget:13,error_count:2,pending_steps:0},zone_reports:[{mode:'overview'},{mode:'zone',rows:[{fields:[],raw_text:'date/signature'}]},{mode:'zone',rows:[{fields:[{value:null,legibility:'uncertain'}]}]},{mode:'zone',rows:[{fields:[{value:0,legibility:'clear'},{value:false,legibility:'clear'}]}]}]};
+ const result=describe(job),text=JSON.stringify(result);assert.equal(result.title,'Звіт збережено з прогалинами');assert.match(text,/Прохід завершено/);assert.match(text,/без структурованих полів: 1/);assert.match(text,/непрочитаними рядками: 1/);assert.match(text,/не унікальних полів/);assert.doesNotMatch(text,/Адміністратору потрібно перевірити збережені причини/);
+ for(const code of ['ZONE_RESULT_UNCERTAIN','ZONE_PROVIDERS_REJECTED','ZONE_PREP_FAILED'])assert.equal(describe({...job,zone_summary:{...job.zone_summary,code}}).title,'Опрацювання зупинено');
+ assert.equal(describe({...job,zone_summary:{...job.zone_summary,pending_steps:1}}).title,'Опрацювання зупинено');
+ assert.equal(describe({...job,state:'running'}).title,'Документ опрацьовується на сервері');
+ assert.equal(describe({...job,state:'uncertain'}).title,'Відповідь AI не підтверджено');
+ assert.equal(describe({...job,result:{},zone_summary:{attempts:13,budget:13,pending_steps:1}}).title,'Опрацювання зупинено');
+ assert.equal(describe({...job,state:'superseded'}).title,'Джерело документа змінилося');
+ });
