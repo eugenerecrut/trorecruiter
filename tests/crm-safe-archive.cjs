@@ -97,3 +97,55 @@ test('retained card offers restore and reloads the card only after successful re
   await click();assert.equal(writes,mode==='success'?1:0);assert.equal(navigations,mode==='success'?1:0);
  }
 });
+test('archived, merged and legacy-locked cards are read-only; active cards remain editable',()=>{
+ const api=runtime().CRMWorkflow;
+ assert.equal(api.readOnly(candidate()),false);
+ for(const profile_data of [{workflow:{archived_at:'date'}},{workflow:{archive_lock:'lock'}},{merged_into:'other'}])assert.equal(api.readOnly({...candidate(),profile_data}),true);
+ const controls=[{disabled:false},{disabled:false}],notices=[];
+ const c=runtime({document:{createElement:()=>({dataset:{}})}}),form={dataset:{},querySelectorAll:()=>controls,querySelector:()=>notices[0],prepend:n=>notices.push(n)};
+ c.CRMWorkflow.protectCard(form,{profile_data:{workflow:{archived_at:'date'}}});assert(controls.every(e=>e.disabled));assert.equal(notices.length,1);
+ c.CRMWorkflow.protectCard(form,{profile_data:{workflow:{archived_at:'date'}}});assert.equal(notices.length,1,'No repeated notice after tab refresh');
+ assert(notices[0].textContent.includes('перегляд'));
+});
+test('archived core save returns before validation, serialization or any database write',async()=>{
+ const s=read('candidate-form-core.js'),start=s.indexOf('    const saveCard=async function'),end=s.indexOf('    cardState.save=',start);
+ const factory=new Function('context','with(context){return '+s.slice(start,end).trim().replace(/^const saveCard=/,'').replace(/;$/,'')+';}');
+ const api=runtime().CRMWorkflow,status={};let serialized=false;
+ const fn=factory({c:{profile_data:{workflow:{archived_at:'date'}}},CRMWorkflow:api,content:{querySelector:()=>status},FormData:function(){serialized=true;throw Error('Must not serialize');}});
+ assert.equal(await fn({preventDefault(){},target:{reportValidity(){throw Error('Must not validate');}}}),false);assert.equal(serialized,false);assert(status.textContent.includes('поверніть'));
+});
+test('document protection blocks mutations but not originals/history and does not leak to another view',()=>{
+ const controls=[{disabled:false}],handlers={},body={};let currentBody=body;
+ const content={dataset:{},querySelector:s=>s==='#documentRows'?currentBody:null,querySelectorAll:()=>controls,addEventListener:(name,fn)=>handlers[name]=fn,prepend(){}};
+ const c=runtime({document:{readyState:'loading',addEventListener(){},createElement:()=>({})}});vm.runInContext(read('documents.js'),c);
+ const archived={profile_data:{workflow:{archived_at:'date'}}};c.protectArchivedDocuments(content,archived);assert(controls[0].disabled);
+ let blocked=0;const event=mutation=>({target:{closest:()=>mutation?{}:null},preventDefault(){blocked++;},stopImmediatePropagation(){}});
+ handlers.click(event(true));assert.equal(blocked,1);handlers.click(event(false));assert.equal(blocked,1);
+ currentBody={};handlers.click(event(true));assert.equal(blocked,1,'Old ancestor guard must ignore a new document manager');
+ c.protectArchivedDocuments(content,candidate());handlers.click(event(true));assert.equal(blocked,1,'Active view remains usable');
+ const selectors=vm.runInContext('archiveDocumentMutations',c);assert(selectors.includes('[data-doc-confirm]'));assert(selectors.includes('[data-doc-presence]'));assert(!selectors.includes('[data-doc-open]'));assert(!selectors.includes('[data-ai-history]'));
+});
+test('opening archived documents never starts job polling',async()=>{
+ let requests=0;const c=runtime({document:{readyState:'loading',addEventListener(){},getElementById:()=>null},supabaseClient:{async rpc(){requests++;return {data:[]};}}});vm.runInContext(read('documents.js'),c);vm.runInContext('activeDocumentsReadOnly=true',c);
+ await c.resumeSplavJobs('archived');assert.equal(requests,0);
+ vm.runInContext("activeDocumentsReadOnly=false;activeDocumentsCandidateId='active'",c);await c.resumeSplavJobs('active');assert.equal(requests,1,'Active-case status polling must remain available');
+ assert(read('documents.js').includes('if(!activeDocumentsReadOnly)resumeSplavJobs(id)'));
+});
+test('archive controls stay locked after package actions; full package download remains available',()=>{
+ const controls=[{disabled:false}],api=runtime().CRMWorkflow;let selector='';
+ api.protectWorkflow({querySelectorAll:s=>{selector=s;return controls;}},{profile_data:{workflow:{archived_at:'date'}}});assert(controls[0].disabled);assert(!selector.includes('data-full-package'));assert(!selector.includes('data-restore'));
+ assert(source.includes(";protectWorkflow(host,c);}"));
+});
+test('archive intake and deleted-document dialogs cannot expose mutation actions',()=>{
+ const v=read('candidate-card-v3.js'),d=read('documents.js');
+ assert(v.indexOf("active==='review'&&CRMWorkflow.readOnly(candidate)")<v.indexOf("active==='review'&&!reviewLoaded"));
+ assert(d.includes("!readOnly&&CRMResponsibility.canDelete()?'<button"));assert(d.includes("if(!b||readOnly)return;"));
+ assert(d.includes('viewSequence!==documentViewSequence'));assert(d.includes('||CRMWorkflow.readOnly(c);if(archived)changes.splice(0)'));
+});
+test('a late document response cannot render the previous candidate over a newer view',async()=>{
+ let resolveOld;const oldDocs=new Promise(resolve=>resolveOld=resolve);let rendered=0;
+ const c=runtime({document:{readyState:'loading',addEventListener(){}},supabaseClient:{from(){return {select(){return this;},eq(){return this;},async single(){return {data:candidate()};}};}}});vm.runInContext(read('documents.js'),c);
+ c.getCandidateDocuments=id=>id==='old'?oldDocs:Promise.resolve([]);c.getDocumentRequirements=async()=>[];
+ const first=c.showDocuments('old',{host:{isConnected:true,classList:{add(){rendered++;throw Error('Stale screen must not render');}}}});
+ await c.showDocuments('new',{host:{isConnected:false}});resolveOld([]);await first;assert.equal(rendered,0);
+});

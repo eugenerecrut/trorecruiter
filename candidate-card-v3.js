@@ -229,6 +229,7 @@
       });
       form.querySelector('[data-card-photo]').hidden = true;
       activeTabs.set(id,active);manager.hidden=active!=='documents';reviewHost.hidden=active!=='review';manual.hidden=active!=='review';caseHost.hidden=active!=='case';
+      if(active==='review'&&CRMWorkflow.readOnly(candidate)){reviewLoaded=true;reviewHost.textContent='Архівна справа: дані доступні для перегляду. Для перенесення полів або підтвердження документів поверніть справу в роботу.';manual.textContent='Переглянути картку';}
       if(active==='review'&&!reviewLoaded&&candidate.id){reviewLoaded=true;reviewHost.textContent='Звіряємо документи…';CRMIntake.review(reviewHost,candidate,documents).catch(e=>{reviewHost.textContent='Перевірку не завершено: '+e.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=()=>{reviewLoaded=false;select('review');};reviewHost.append(retry);});}
       if(active==='case'&&!caseLoaded&&candidate.id){caseLoaded=true;CRMWorkflow.mount(candidate,caseHost.parentElement).then(()=>{
         const tools=caseHost.querySelector('.wf-tools'),full=tools?.querySelector('[data-full-package]');
@@ -260,7 +261,7 @@
     let candidate = {}, documents = [], sources = new Map();
     function refresh() {
       if (!form.isConnected) return;
-      decorate(); conditional(); select(active);
+      decorate(); conditional();CRMWorkflow.protectCard(form,candidate); select(active);
       header.querySelector('[data-v3-name]').textContent = value('name_nominative') || 'Кандидат';
       const phone = header.querySelector('[data-v3-phone]'); phone.textContent = value('phone') || 'Телефон не вказаний'; phone.href = 'tel:'+value('phone');
       header.querySelector('[data-v3-position]').textContent = value('desired_position') || 'Не вказана';

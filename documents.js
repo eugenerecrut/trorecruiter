@@ -4,6 +4,19 @@ const DOC_MAX_SIZE=20*1024*1024;
 const AI_DOC_FUNCTION='process-id-document';
 let activeDocumentsCandidateId=null;
 let activeDocumentsOptions=null;
+let activeDocumentsReadOnly=false;
+let documentViewSequence=0;
+const archiveDocumentMutations='#docAddFiles,#docCameraFiles,#docScanFiles,[data-doc-add],[data-doc-replace],[data-doc-delete],[data-doc-retry],[data-doc-confirm],[data-doc-recheck],[data-doc-sync],[data-doc-edit-ai],[data-doc-zone],[data-doc-zone-manual],[data-doc-presence],[data-excluded-edit-ai],[data-excluded-retry]';
+function protectArchivedDocuments(content,c){
+ const locked=CRMWorkflow.readOnly(c);content.dataset.archiveReadOnly=String(locked);content.__archiveDocumentRows=content.querySelector('#documentRows');
+ if(!content.dataset.archiveProtectionBound){
+  content.dataset.archiveProtectionBound='true';
+  const block=e=>{if(content.__archiveDocumentRows&&content.querySelector('#documentRows')===content.__archiveDocumentRows&&content.dataset.archiveReadOnly==='true'&&e.target.closest?.(archiveDocumentMutations)){e.preventDefault();e.stopImmediatePropagation();}};
+  content.addEventListener('click',block,true);content.addEventListener('change',block,true);
+ }
+ if(locked){content.querySelectorAll(archiveDocumentMutations).forEach(el=>el.disabled=true);const note=document.createElement('p');note.className='crm-notice';note.textContent='Архівна справа: відкриття оригіналів, пошук та історія доступні. Для змін поверніть справу в роботу.';content.prepend(note);}
+ return locked;
+}
 async function reloadDocumentView(id){
   const options=activeDocumentsCandidateId===id?activeDocumentsOptions:null;
   if(options?.host?.isConnected&&options.reload)return options.reload();
@@ -87,12 +100,14 @@ async function retryExcludedDocument(button,ensureSaved){
   finally{CRMWorkspace.busy=false;if(button.isConnected)button.disabled=false;}
 }
 async function showDocuments(id,options={}){
+  const viewSequence=++documentViewSequence;
   const content=options.host||document.querySelector('.content');if(!content)return;
   const embedded=!!options.host;activeDocumentsOptions=embedded?options:null;
   const ensureSaved=async()=>!embedded||await CRMWorkspace.guard();
   activeDocumentsCandidateId=id;
   const [docs,reqs,cr]=await Promise.all([getCandidateDocuments(id),getDocumentRequirements(),supabaseClient.from('candidates').select('*').eq('id',id).single()]);
-  if(cr.error)throw cr.error;if(embedded&&!content.isConnected)return;await CRMResponsibility.ready();content.classList.add('crm-doc-manager');const allDocs=docs.slice();docs.splice(0,docs.length,...CRMResponsibility.latest(docs));const c=cr.data,esc=docEscape;
+  if(viewSequence!==documentViewSequence||embedded&&!content.isConnected)return;if(cr.error)throw cr.error;await CRMResponsibility.ready();if(viewSequence!==documentViewSequence||embedded&&!content.isConnected)return;content.classList.add('crm-doc-manager');const allDocs=docs.slice();docs.splice(0,docs.length,...CRMResponsibility.latest(docs));const c=cr.data,esc=docEscape;
+  activeDocumentsReadOnly=CRMWorkflow.readOnly(c);
   CRMWorkspace.setContext(id,c.name_nominative||c.full_name);if(!embedded)CRMWorkspace.markMenu('documents');
   let profile=c.profile_data||{};if(typeof profile==='string'){try{profile=JSON.parse(profile)}catch(_){profile={}}}
   const children=Number(c.children_count)||((profile.relatives||[]).filter(r=>/син|доньк|дитин/i.test(r.relationship||r.relation||'')).length);
@@ -102,9 +117,9 @@ async function showDocuments(id,options={}){
   documentScope.current.filter(d=>!knownIds.has(d.requirement_id)&&!knownTypes.has(d.document_type)).forEach(d=>rows.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true}));
   content.innerHTML='<div class="dashboard-top"><div><h1 class="page-title">Документи особової справи</h1><p class="page-subtitle">'+esc(c.name_nominative||c.full_name)+'</p></div><div class="quick-actions"><button id="docBackCard">Картка кандидата</button><button id="docAddFiles" class="primary">＋ Додати документи</button><button id="docCameraFiles">📷 Сканувати камерою</button><details class="crm-extra-actions"><summary>Інші дії</summary><div><button id="docDeletedFiles">Видалені ('+allDocs.filter(d=>d.deleted_at).length+')</button><button id="docCaseHistory">Історія дій</button><button id="docScanFiles" class="crm-desktop-scanner">PDF зі сканера</button></div></details></div></div><section class="card" style="margin-bottom:18px"><strong>Контроль комплекту</strong><p id="docProgressText"></p><div id="docProgress" style="height:9px;background:#edf0f1;border-radius:8px"><div style="height:100%;background:#b7d957;border-radius:8px"></div></div><p class="muted" id="docBatchStatus"></p></section><input type="search" id="docSearch" class="crm-search" placeholder="Знайти документ або файл" aria-label="Пошук документів"><div class="crm-filter-bar" id="docFilters">'+[['all','Усі'],['missing','Не вистачає'],['review','Потребують перевірки'],['errors','Помилки'],['additional','Додаткові']].map(([key,title])=>'<button type="button" data-doc-filter="'+key+'">'+title+'</button>').join('')+'</div><section class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Документ</th><th>Обов’язковість</th><th>Файли та статус</th><th>Дії</th></tr></thead><tbody id="documentRows" data-requirements-managed="1"></tbody></table><p id="docEmpty" class="muted" style="padding:18px" hidden>Документів за цим фільтром немає.</p></section>';
   content.querySelector('#documentRows').dataset.splavCandidate=id;
-  resumeSplavJobs(id).catch(()=>{});
+  if(!activeDocumentsReadOnly)resumeSplavJobs(id).catch(()=>{});
   content.querySelector('#docBackCard').onclick=()=>crmNavigate('card',id);
-  content.querySelector('#docDeletedFiles').onclick=()=>showDeletedDocuments(id,allDocs);
+  content.querySelector('#docDeletedFiles').onclick=()=>showDeletedDocuments(id,allDocs,CRMWorkflow.readOnly(c));
   content.querySelector('#docCaseHistory').onclick=()=>CRMResponsibility.history(id).catch(e=>alert(e.message));
   content.querySelector('#docAddFiles').onclick=async()=>{if(await ensureSaved())openAddDocumentModal(id)};
   content.querySelector('#docScanFiles').onclick=async()=>{if(await ensureSaved())openScannerImport(id)};
@@ -182,6 +197,7 @@ async function showDocuments(id,options={}){
   };
   content.querySelector('#docSearch').addEventListener('input',()=>filter(activeFilter));
   content.querySelector('#docFilters').addEventListener('click',e=>{const key=e.target.closest('[data-doc-filter]')?.dataset.docFilter;if(key)filter(key)});filter('all');
+  protectArchivedDocuments(content,c);
 }
 async function confirmDocument(id){
   const user=await getCurrentUser();if(!user)throw new Error('Увійдіть повторно.');
@@ -287,7 +303,7 @@ function trackSplavJob(jobId,candidateId,attempt=0){
  if(attempt===0&&splavTrackedJobs.has(jobId))return;
  splavTrackedJobs.add(jobId);
  setTimeout(async()=>{
-  if(activeDocumentsCandidateId!==candidateId){splavTrackedJobs.delete(jobId);return;}
+  if(activeDocumentsCandidateId!==candidateId||activeDocumentsReadOnly){splavTrackedJobs.delete(jobId);return;}
   try{
    const result=await supabaseClient.rpc('crm_splav_job_status',{job_id:jobId});
    if(!result.error&&result.data&&['completed','needs_review','uncertain','superseded'].includes(result.data.state)&&!CRMWorkspace.busy){
@@ -302,6 +318,7 @@ function trackSplavJob(jobId,candidateId,attempt=0){
  },10000);
 }
 async function resumeSplavJobs(candidateId){
+ if(activeDocumentsReadOnly)return;
  const result=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:candidateId});
  if(result.error||!Array.isArray(result.data)||activeDocumentsCandidateId!==candidateId)return;
  for(const job of result.data)if(['queued','running'].includes(job.state))trackSplavJob(job.id,candidateId);
@@ -505,9 +522,9 @@ async function reviewDocumentData(id){
   if(nameChangeCheck?.blocked)changes.splice(0);
   if(idCheck?.blocked)changes.splice(0);
   if(militaryCheck?.blocked)changes.splice(0);
-  const currentVersion=await supabaseClient.from('documents').select('id').eq('version_group_id',d.version_group_id).gt('version_number',d.version_number).limit(1);if(currentVersion.error)throw currentVersion.error;const archived=!!currentVersion.data?.length;if(archived)changes.splice(0);
+  const currentVersion=await supabaseClient.from('documents').select('id').eq('version_group_id',d.version_group_id).gt('version_number',d.version_number).limit(1);if(currentVersion.error)throw currentVersion.error;const archived=!!currentVersion.data?.length||CRMWorkflow.readOnly(c);if(archived)changes.splice(0);
   const dialog=document.createElement('dialog');dialog.className='crm-dialog';
-  dialog.innerHTML='<h2>Розпізнані дані документа</h2><p>'+esc(c.name_nominative||c.full_name)+' · '+esc(d.file_name)+'</p><div class="crm-actions"><button data-original>Відкрити оригінал</button><button data-close>Закрити</button></div>'+(changes.length?'<h3>Перенесення даних у картку</h3><p>Підтвердження документа фіксує перевірку файла. Щоб зберегти його дані в картці, позначте поля та натисніть «Перенести позначені поля». Непозначені значення залишаться без змін.</p><button type="button" data-select-empty>Позначити порожні поля картки</button><div class="crm-review-grid">'+changes.map((change,i)=>'<label class="crm-review-field"><input type="checkbox" data-change="'+i+'"> <strong>'+esc(change.label)+'</strong><div class="crm-review-values"><span>У картці:<br>'+esc(display(change.current))+'</span><span>З документа:<br>'+esc(display(change.incoming))+'</span></div></label>').join('')+'</div><div class="crm-actions"><button data-apply disabled>Перенести позначені поля (0)</button></div>':'<p>'+(archived?'Це архівна версія: її дані доступні лише для перегляду.':Object.values(e).some(v=>v!==null&&v!==undefined&&v!=='')?'Доступні для перенесення дані вже збігаються з карткою або цей тип документа не підтримує перенесення.':'AI не повернув даних для перенесення. Повторіть розпізнавання або заповніть картку вручну.')+'</p>')+'<p role="status"></p><h3>Контейнер документа</h3><div class="crm-review-grid">'+Object.entries(e).map(([key,value])=>'<section class="crm-review-field"><strong>'+esc(labels[key]||key)+'</strong><div>'+renderValue(value)+'</div></section>').join('')+'</div>'+(d.ai_warnings?.length?'<h3>Попередження</h3><p>'+renderValue(d.ai_warnings)+'</p>':'');
+  dialog.innerHTML='<h2>Розпізнані дані документа</h2><p>'+esc(c.name_nominative||c.full_name)+' · '+esc(d.file_name)+'</p><div class="crm-actions"><button data-original>Відкрити оригінал</button><button data-close>Закрити</button></div>'+(changes.length?'<h3>Перенесення даних у картку</h3><p>Підтвердження документа фіксує перевірку файла. Щоб зберегти його дані в картці, позначте поля та натисніть «Перенести позначені поля». Непозначені значення залишаться без змін.</p><button type="button" data-select-empty>Позначити порожні поля картки</button><div class="crm-review-grid">'+changes.map((change,i)=>'<label class="crm-review-field"><input type="checkbox" data-change="'+i+'"> <strong>'+esc(change.label)+'</strong><div class="crm-review-values"><span>У картці:<br>'+esc(display(change.current))+'</span><span>З документа:<br>'+esc(display(change.incoming))+'</span></div></label>').join('')+'</div><div class="crm-actions"><button data-apply disabled>Перенести позначені поля (0)</button></div>':'<p>'+(archived?'Це архівна справа або попередня версія: дані доступні лише для перегляду.':Object.values(e).some(v=>v!==null&&v!==undefined&&v!=='')?'Доступні для перенесення дані вже збігаються з карткою або цей тип документа не підтримує перенесення.':'AI не повернув даних для перенесення. Повторіть розпізнавання або заповніть картку вручну.')+'</p>')+'<p role="status"></p><h3>Контейнер документа</h3><div class="crm-review-grid">'+Object.entries(e).map(([key,value])=>'<section class="crm-review-field"><strong>'+esc(labels[key]||key)+'</strong><div>'+renderValue(value)+'</div></section>').join('')+'</div>'+(d.ai_warnings?.length?'<h3>Попередження</h3><p>'+renderValue(d.ai_warnings)+'</p>':'');
   if(militaryCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=militaryCheck.issues.join(' ')||'Власника звірено. Порожня дата завершення не означає поточну службу. Звання, підготовка та сумнівні записи доступні в контейнері документа.';dialog.prepend(notice);}
   if(nameChangeCheck){const n=document.createElement('p');n.textContent=nameChangeCheck.issues.join(' ')||'Чинне ПІБ не змінюється. Після перенесення попереднє ПІБ враховуватиметься для звірки документів.';dialog.prepend(n);}
   if(workCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=(workCheck.issues.length?workCheck.issues.join(' '):'Власника документа звірено.')+' Події служби й безробіття зберігаються окремо. Особисті реквізити не переносяться. Період без звільнення не підтверджує поточну роботу.';dialog.prepend(notice);}
@@ -557,11 +574,11 @@ async function setDocumentDeleted(doc,deleted){
   if(r.error)throw r.error;if(!r.data)throw new Error('Дію не виконано. Оновіть список.');
   window.CandidatePhotos?.clear();await reloadDocumentView(doc.candidate_id);return true;
 }
-function showDeletedDocuments(candidateId,docs){
+function showDeletedDocuments(candidateId,docs,readOnly=false){
   const esc=docEscape,removed=docs.filter(d=>d.deleted_at).sort((a,b)=>new Date(b.deleted_at)-new Date(a.deleted_at));
   const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-history';
-  dialog.innerHTML='<h2>Видалені документи</h2><p class="muted">Файли й результати AI збережено для історії. Після відновлення документ знову враховується у комплекті.</p><button type="button" data-close>Закрити</button>'+ (removed.map(d=>'<article><h3>'+esc(d.file_name||d.document_name)+'</h3><p>'+esc(d.document_type)+' · версія '+esc(d.version_number)+'</p><p><b>Видалив: '+esc(d.deleted_by_name||CRMResponsibility.name(d.deleted_by))+'</b><br>'+esc(CRMResponsibility.date(d.deleted_at))+'</p>'+CRMResponsibility.documentInfo(d)+(CRMResponsibility.canDelete()?'<button type="button" data-doc-restore="'+esc(d.id)+'">Відновити</button>':'')+'</article>').join('')||'<p>Видалених документів немає.</p>');
+  dialog.innerHTML='<h2>Видалені документи</h2><p class="muted">Файли й результати AI збережено для історії. Після відновлення документ знову враховується у комплекті.</p><button type="button" data-close>Закрити</button>'+ (removed.map(d=>'<article><h3>'+esc(d.file_name||d.document_name)+'</h3><p>'+esc(d.document_type)+' · версія '+esc(d.version_number)+'</p><p><b>Видалив: '+esc(d.deleted_by_name||CRMResponsibility.name(d.deleted_by))+'</b><br>'+esc(CRMResponsibility.date(d.deleted_at))+'</p>'+CRMResponsibility.documentInfo(d)+(!readOnly&&CRMResponsibility.canDelete()?'<button type="button" data-doc-restore="'+esc(d.id)+'">Відновити</button>':'')+'</article>').join('')||'<p>Видалених документів немає.</p>');
   document.body.append(dialog);dialog.showModal();const close=()=>{dialog.close();dialog.remove()};dialog.querySelector('[data-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close()});
   CRMResponsibility.bindHistory(dialog);
-  dialog.addEventListener('click',async e=>{const b=e.target.closest('[data-doc-restore]');if(!b)return;b.disabled=true;CRMWorkspace.busy=true;try{if(await setDocumentDeleted(removed.find(d=>d.id===b.dataset.docRestore),false))close()}catch(error){alert(error.message)}finally{CRMWorkspace.busy=false;if(b.isConnected)b.disabled=false}});
+  dialog.addEventListener('click',async e=>{const b=e.target.closest('[data-doc-restore]');if(!b||readOnly)return;b.disabled=true;CRMWorkspace.busy=true;try{if(await setDocumentDeleted(removed.find(d=>d.id===b.dataset.docRestore),false))close()}catch(error){alert(error.message)}finally{CRMWorkspace.busy=false;if(b.isConnected)b.disabled=false}});
 }
