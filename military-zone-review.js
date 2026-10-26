@@ -251,6 +251,12 @@ function openingPolicy(doc,{autostart=false,viewOnly=false}={}){
  const saved=!!doc?.ai_extracted?._military_zone_report;
  return {autostart:autostart===true&&!viewOnly&&!saved,viewOnly:viewOnly===true||saved};
 }
+async function existingBackgroundJob(client,doc){
+ if(!doc?.candidate_id||!doc?.id)throw Error('Не визначено справу для перевірки черги. Нове AI не запускалося.');
+ let result;try{result=await client.rpc('crm_splav_candidate_jobs',{candidate_id:doc.candidate_id});}catch{throw Error('Не вдалося перевірити чергу СПЛАВ. Нове AI не запускалося. Спробуйте відкрити документ пізніше.');}
+ if(result?.error||!Array.isArray(result?.data))throw Error('Не вдалося перевірити чергу СПЛАВ. Нове AI не запускалося. Спробуйте відкрити документ пізніше.');
+ return result.data.find(job=>job?.document_id===doc.id&&job.kind==='zone')||null;
+}
 async function open(doc,options={}){
  const {autostart,viewOnly}=openingPolicy(doc,options);
  if(!doc?.storage_path)throw Error('Документ не має файла');
@@ -485,7 +491,10 @@ async function open(doc,options={}){
  canvas.onpointermove=e=>{if(!start)return;const end=point(e);setBox({x:Math.min(start.x,end.x),y:Math.min(start.y,end.y),w:Math.abs(end.x-start.x),h:Math.abs(end.y-start.y)})};canvas.onpointerup=canvas.onpointercancel=()=>start=null;
  $('[data-export]').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({pilot:CRMMilitaryZoneContract.VERSION,document_id:doc.id,reports,autopilot_errors:autopilot?.errors||[]},null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='Зональне_читання_'+doc.id+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
  lock(true);try{
-  if(autostart&&!canary&&(!doc.ai_extracted||doc.processing_status==='AI помилка')){
+  let backgroundJob=null,backgroundLookupError=null;try{backgroundJob=await existingBackgroundJob(supabaseClient,doc);}catch(e){backgroundLookupError=e;}
+  if(closed)return dialog;
+  if(autostart&&backgroundLookupError)throw backgroundLookupError;
+  if(autostart&&!backgroundJob&&!canary&&(!doc.ai_extracted||doc.processing_status==='AI помилка')){
    status('Виконуємо основне розпізнавання документа…');
    const initial=await supabaseClient.functions.invoke('process-id-document',{body:{document_id:doc.id}});
    if(initial.error||(!initial.data?.ok&&!initial.data?.extracted))throw Error('Основне розпізнавання не завершено. '+(initial.error?.message||initial.data?.error||''));
@@ -501,7 +510,7 @@ async function open(doc,options={}){
   if(/pdf/i.test(doc.mime_type||'')||/\.pdf$/i.test(doc.file_name||'')){
    await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';pdf=await pdfjsLib.getDocument({data:new Uint8Array(originalBytes)}).promise;total=pdf.numPages;if(total>200)throw Error('Поглиблене читання підтримує до 200 сторінок на файл.');
   }else if(blob.type.startsWith('image/'))bitmap=await createImageBitmap(blob);else throw Error('Потрібен PDF або зображення');
-  await render();if(closed)return dialog;let backgroundJob=null;try{const jobs=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:doc.candidate_id});if(!jobs.error&&Array.isArray(jobs.data))backgroundJob=jobs.data.find(j=>j.document_id===doc.id&&j.kind==='zone');}catch{}
+  await render();if(closed)return dialog;
   if(closed)return dialog;
   const saved=doc.ai_extracted?._military_zone_report;if(backgroundJob)showBackground(backgroundJob);else if(saved){
    dialog.querySelector('h2').textContent='Документ · результат СПЛАВ';dialog.querySelectorAll('p')[1].textContent='Перегляд збереженого звіту без нового AI.';
@@ -510,11 +519,12 @@ async function open(doc,options={}){
    $('[data-auto-progress]').textContent=[view.title,...view.notes].join(' ');
    $('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));
    if(view.reports.length)try{await crosscheck()}catch(e){status('Зіставлення не завершено: '+e.message)}
-  }else if(autostart&&!canary&&sourceReady)$('[data-auto]').onclick();
+  }else if(autostart&&!backgroundLookupError&&!canary&&sourceReady)$('[data-auto]').onclick();
+  else if(backgroundLookupError){dialog.querySelector('h2').textContent='Документ · стан черги недоступний';dialog.querySelectorAll('p')[1].textContent=backgroundLookupError.message;}
   else if(viewOnly){dialog.querySelector('h2').textContent='Документ · збережений результат недоступний';dialog.querySelectorAll('p')[1].textContent='Не знайдено збереженого звіту або доручення. Нове розпізнавання не запускалося. Закрийте вікно та оновіть список документів.';}
   else if(!autostart){dialog.querySelector('h2').textContent='Документ · оригінал і ручне читання';dialog.querySelectorAll('p')[1].textContent='Оригінал відкрито. Нове читання можна запустити окремою кнопкою; сам перегляд не запускає AI.';}
  }catch(e){if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено';dialog.querySelectorAll('p')[1].textContent='Не вдалося завершити відкриття документа. Перевірте повідомлення нижче.';status(e.message);lock(false)}}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,openingPolicy,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
+window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
 })();
