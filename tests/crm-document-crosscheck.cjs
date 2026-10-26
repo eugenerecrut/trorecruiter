@@ -163,6 +163,7 @@ test('zonal parents remain row-bound review evidence, with verified independent 
  assert.equal(run([source,parent('b',name,{file_hash:context.file_sha256})])[0].sources.length,1);
  assert.equal(run([source,parent('b',name,{storage_path:source.storage_path})])[0].sources.length,1);
  assert.equal(run([source,parent('b')],[report,report])[0].sources.length,2);
+ const repeated=run([source],[report,{...report,source:{...report.source,box:{x:0,y:0,w:.9,h:1}}}])[0];assert.equal(repeated.sources.length,2);assert.match(repeated.reason,/Незалежного перевіреного джерела немає/);
  assert.equal(run([source,parent('b','Тестенко Інна Іванівна')])[0].status,'conflict');
  assert.equal(run([source],undefined,{...c,profile_data:{relatives:[{relationship:'мати',full_name:name,birth_date:'1971-01-01'}]}})[0].status,'conflict');
  assert.equal(run([source],undefined,{...c,profile_data:{relatives:[{relationship:'мати',full_name:name},{relationship:'мати',full_name:name}]}})[0].status,'conflict');

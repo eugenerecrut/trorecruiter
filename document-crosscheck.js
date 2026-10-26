@@ -210,7 +210,7 @@ function compareZoneParents(documents,candidate,{reports=[],context,binding}={})
    // A qualified or contradictory role must not be relabelled as the candidate's parent.
    if(relation.value!=null&&(!role(relation.value)||role(relation.value)!==subject))continue;
    const dates=fields.filter(f=>f?.key==='birth_date'),date=dates.length===1&&clear(dates[0])&&dates[0].value.length===10&&dateRange(dates[0].value)?dates[0].value:null;
-   const signature=JSON.stringify([subject,norm(name.value),date,s.page,s.box]);if(seen.has(signature))continue;seen.add(signature);
+   const signature=JSON.stringify([subject,norm(name.value),date,s.page,s.box.x,s.box.y,s.box.w,s.box.h]);if(seen.has(signature))continue;seen.add(signature);
    const group=groups.get(subject)||{key:'relatives',subject,current:null,current_birth_date:null,sources:[],status:'needs_review',zone_crosscheck:true,learning_eligible:false};
    group.sources.push({document_id:document.id,document_type:document.document_type,file_name:document.file_name,value:name.value,raw_text:name.raw_text||null,birth_date:date,page:s.page,box:{...s.box},fingerprint:context.file_sha256,verified:false,kind:'zone_reading'});
    groups.set(subject,group);
@@ -230,7 +230,7 @@ function compareZoneParents(documents,candidate,{reports=[],context,binding}={})
   const compatible=new Set(values.map(norm)).size<=1||group.subject==='мати'&&maidenNameMatch(values)||emptyParentNameNotation(values);
   const conflict=stored.length>1||new Set(dates.map(norm)).size>1||!compatible;
   group.status=conflict?'conflict':'needs_review';
-  group.reason=conflict?'ПІБ, дата народження або записи родича відрізняються. Звірте оригінали; картка не змінена.':group.sources.length>1?'Знайдено відповідні відомості про родича в іншому перевіреному документі. Спорідненість у зональному читанні потребує підтвердження; картка не змінена.':'Збережено ймовірний зв’язок із рядка документа. Незалежного перевіреного джерела немає; спорідненість потрібно підтвердити.';
+  group.reason=conflict?'ПІБ, дата народження або записи родича відрізняються. Звірте оригінали; картка не змінена.':group.sources.some(s=>s.kind!=='zone_reading'&&s.verified)?'Знайдено відповідні відомості про родича в іншому перевіреному документі. Спорідненість у зональному читанні потребує підтвердження; картка не змінена.':'Збережено ймовірний зв’язок із рядка документа. Незалежного перевіреного джерела немає; спорідненість потрібно підтвердити.';
   return group;
  });
 }
