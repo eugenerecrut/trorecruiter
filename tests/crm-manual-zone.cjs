@@ -431,7 +431,7 @@ test('the real reader paints neutral loading, handles status failure, and guards
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
  assert(code.includes("dialog.innerHTML='<h2>Документ · завантаження</h2>"));assert(code.includes("if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено'"));
  assert(code.includes("paintBackgroundSummary(job,job._detailed?'ready':'loading')"));
- assert(code.includes('await render();if(closed)return dialog;'));assert(code.replaceAll('\r','').includes('if(closed)return dialog;\n  if(autostart&&backgroundLookupError)'));  assert.match(code,/if\(closed\)return dialog;\s+const saved=doc.ai_extracted/);
+ assert(code.includes('await render();if(closed)return dialog;'));assert(code.indexOf('if(closed)return dialog;',code.indexOf('let backgroundJob=null'))<code.indexOf('if(autostart&&backgroundLookupError)'));   assert.match(code,/if\(closed\)return dialog;\s+const saved=doc.ai_extracted/);
  assert(code.includes("readBackgroundStatus(supabaseClient,job.id,doc.id,backgroundReadScope).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}"));
  assert(code.includes(".catch(error=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,error?.code==='STATUS_READ_TIMEOUT'?'timeout':'unavailable');})"));
  const first=code.indexOf('if(!job._detailed){readBackgroundStatus'),end=code.indexOf("if(['queued','running'].includes(job.state))",first),body=code.slice(first,end);
@@ -483,7 +483,7 @@ test('saved-result opening suppresses autostart even with stale primary errors o
 });
 
 test('queue lookup distinguishes empty from failed and never dispatches or mutates documents',async()=>{
- const c={window:{}};vm.createContext(c);const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');vm.runInContext(source,c);
+ const c={window:{},setTimeout,clearTimeout,AbortController};vm.createContext(c);const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');vm.runInContext(source,c);
  const lookup=c.window.CRMMilitaryZoneReview.existingBackgroundJob,doc={id:'d',candidate_id:'c'},before=JSON.stringify(doc),calls=[];
  const client=result=>({rpc:async(name,args)=>{calls.push({name,args});return result}});
  assert.equal(await lookup(client({data:[],error:null}),doc),null);
@@ -500,14 +500,40 @@ test('queue lookup distinguishes empty from failed and never dispatches or mutat
 });
 
 test('actual opening preflight blocks primary OCR on unavailable queue or existing job',async()=>{
- const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),api={window:{}};vm.createContext(api);vm.runInContext(source,api);
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),api={window:{},setTimeout,clearTimeout,AbortController};vm.createContext(api);vm.runInContext(source,api);
  const start=source.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=source.indexOf("const {data,error}=await supabaseClient.storage",start),body=source.slice(start,end);
  for(const mode of ['error','running','completed','empty']){
   let invokes=0,syncs=0;const doc={id:'d',candidate_id:'c',processing_status:'AI помилка'};
   const client={rpc:async()=>mode==='error'?{error:{message:'offline'}}:{data:mode==='empty'?[]:[{id:'j',document_id:'d',kind:'zone',state:mode}]},functions:{invoke:async()=>{invokes++;return {data:{ok:true}}}},from:()=>({select(){return this},eq(){return this},single:async()=>({data:{ai_extracted:{}}})})};
-  const sync={automate:async()=>{syncs++}},context={existingBackgroundJob:api.window.CRMMilitaryZoneReview.existingBackgroundJob,supabaseClient:client,doc,closed:false,autostart:true,canary:false,status:()=>{},window:{CRMDocumentSync:sync},CRMDocumentSync:sync};
+  const sync={automate:async()=>{syncs++}},context={existingBackgroundJob:api.window.CRMMilitaryZoneReview.existingBackgroundJob,supabaseClient:client,doc,closed:false,autostart:true,canary:false,queueChecking:false,$:()=>({}),status:()=>{},window:{CRMDocumentSync:sync},CRMDocumentSync:sync};
   const run=vm.runInNewContext('(async()=>{'+body+'return backgroundJob;})()',context);
   if(mode==='error')await assert.rejects(run,/чергу СПЛАВ/);else await run;
   assert.equal(invokes,mode==='empty'?1:0,mode);assert.equal(syncs,mode==='empty'?1:0,mode);
  }
+});
+
+test('queue preflight times out once, aborts supported transport and ignores late success',async()=>{
+ for(const supportsAbort of [true,false]){
+  const timers=new Map();let serial=0,resolve,calls=0,signal;
+  const pending=new Promise(r=>resolve=r),query=supportsAbort?{then:pending.then.bind(pending),abortSignal:s=>{signal=s;return query}}:pending;
+  const context={window:{},AbortController,setTimeout:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id},clearTimeout:id=>timers.delete(id)};
+  vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+  const result=context.window.CRMMilitaryZoneReview.existingBackgroundJob({rpc:()=>{calls++;return query}},{id:'d',candidate_id:'c'});
+  assert.equal(timers.size,1);const clock=[...timers.values()][0];assert.equal(clock.ms,20000);clock.fn();
+  await assert.rejects(result,error=>error.code==='QUEUE_READ_TIMEOUT'&&/Нове AI не запускалося/.test(error.message));
+  assert.equal(timers.size,0);assert.equal(calls,1);if(supportsAbort)assert.equal(signal.aborted,true);
+  resolve({data:[{document_id:'d',kind:'zone'}]});await new Promise(r=>setImmediate(r));assert.equal(calls,1);
+ }
+});
+test('closing during queue lookup is allowed while closing active processing remains blocked',()=>{
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.indexOf('function close(){'),end=code.indexOf(" $('[data-close]').onclick",start),body=code.slice(start,end);
+ for(const queueChecking of [true,false]){
+  let removed=0;const c={queueChecking,busy:true,autoActive:false,closed:false,backgroundPoll:null,originalURL:null,pdf:null,bitmap:null,source:{},canvas:{},dialog:{close(){},remove(){removed++}},status:()=>{}};
+  vm.createContext(c);vm.runInContext(body,c);c.close();assert.equal(c.closed,queueChecking);assert.equal(removed,queueChecking?1:0);
+ }
+});
+test('a queue response after the dialog closed never reaches primary OCR',async()=>{
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=code.indexOf("const {data,error}=await supabaseClient.storage",start);let resolve,invokes=0;
+ const pending=new Promise(r=>resolve=r),dialog={},c={queueChecking:false,$:()=>({}),existingBackgroundJob:()=>pending,supabaseClient:{functions:{invoke:()=>{invokes++}}},doc:{processing_status:'AI помилка'},closed:false,autostart:true,canary:false,dialog};
+ const result=vm.runInNewContext('(async()=>{'+code.slice(start,end)+'})()',c);c.closed=true;resolve(null);assert.equal(await result,dialog);assert.equal(invokes,0);assert.equal(c.queueChecking,false);
 });
