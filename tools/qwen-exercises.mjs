@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {MODEL,KNOWLEDGE_VERSION,loadKnowledge,makeRequest,requestProposal} from './qwen-collaborator.mjs';
 
 export const exercises=Object.freeze([
+ {id:'police_service_question',question:'worked_before=true, served_before=true. Only work_records entry is a usable police_service record; no legacy narratives. Must the military_service_history clarification question be asked? Boolean.',expected:false},
  {id:'selection_property',question:'What exact selection property identifies a field in CRMDocumentSync.plan?',expected:'key'},
  {id:'target_conflict',question:'Rows: phone=conflict, military_registry_number=leave. Does this prove a conflict of military_registry_number? Boolean.',expected:false},
  {id:'failed_ocr_fallback',question:'AI помилка with old ai_extracted and supported:false. May the legacy mapper run? Boolean.',expected:false},
