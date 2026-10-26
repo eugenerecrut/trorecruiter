@@ -15,10 +15,17 @@ async function birthLinks(candidateId){
 }
 
 const isDocument=t=>/свідоцтв.*змін.*(?:імен|прізвищ)/iu.test(String(t||''));
+const nameValue=v=>typeof v==='string'&&!!norm(v)&&/\p{L}/u.test(v);
+const changeDate=v=>{
+ if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
+ const [year,month,day]=v.split('-').map(Number),value=new Date(Date.UTC(year,month-1,day));
+ return year>=1800&&year<=new Date().getUTCFullYear()&&value.getUTCFullYear()===year&&value.getUTCMonth()===month-1&&value.getUTCDate()===day;
+};
 function review(e,c,d){
  const n=e.name_change||{},issues=[],history=records(c).map(r=>({...r}));
  if(d.verification_status!=='Підтверджено')issues.push('Спочатку перевірте й підтвердьте документ.');
- if(!n.previous_full_name||!n.new_full_name||n.requires_review||!matches(n.new_full_name,c))issues.push('Нове ПІБ має відповідати чинному ПІБ кандидата; нечіткі дані потребують ручної перевірки.');
+ if(!nameValue(n.previous_full_name)||!nameValue(n.new_full_name)||n.requires_review||!matches(n.new_full_name,c))issues.push('Попереднє й нове ПІБ мають бути текстом; нове ПІБ має відповідати чинному ПІБ кандидата. Нечіткі дані потребують ручної перевірки.');
+ if(n.change_date!==undefined&&n.change_date!==null&&n.change_date!==''&&!changeDate(n.change_date))issues.push('Некоректна або неповна дата зміни ПІБ: звірте дату в документі. Відсутню дату не вигадуємо.');
  if((e.birth_date&&c.birth_date&&e.birth_date!==c.birth_date)||(e.rnokpp&&c.rnokpp&&e.rnokpp!==c.rnokpp))issues.push('Реквізити власника не збігаються.');
  if(!issues.length){const draft=history.findIndex(r=>!r.verified&&norm(r.previous_full_name)===norm(n.previous_full_name));if(draft>=0)history.splice(draft,1);}
  if(!issues.length&&!history.some(r=>r.verified&&norm(r.previous_full_name)===norm(n.previous_full_name)&&norm(r.new_full_name)===norm(n.new_full_name)&&String(r.change_date||'')===String(n.change_date||'')))history.push({...n,verified:true,source_document_id:d.id,document_number:e.document_number||null,document_series:e.document_series||null,document_issuer:e.document_issuer||null,document_date:e.document_date||null});
