@@ -42,7 +42,7 @@ test('manual entry saves workspace first and never enables autostart',async()=>{
 });
 test('the real reader gates primary OCR on autostart and provides the original with a verified hash',()=>{
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
- assert.match(source,/if\(autostart&&!canary&&\(!doc.ai_extracted\|\|doc.processing_status==='AI помилка'\)\)/);
+ assert.match(source,/if\(autostart&&!backgroundJob&&!canary&&\(!doc.ai_extracted\|\|doc.processing_status==='AI помилка'\)\)/);
  assert.match(source,/crypto.subtle.digest\('SHA-256',originalBytes\)/);
  assert.match(source,/originalLink.download=doc.file_name/);
  assert.match(source,/URL.revokeObjectURL\(originalURL\)/);
@@ -56,7 +56,7 @@ test('one-step canary is owner-only, sends a durable budget of one and never fal
  assert.match(source,/if\(canary&&\(ready.error\|\|ready.data!==true\)\)throw/);
  assert(source.indexOf("if(canary)throw Error('Немає придатного")<source.indexOf('await autopilot.run'));
  assert.match(source,/async function read\(mode\)\{if\(canary\)/);
- assert.match(source,/else if\(autostart&&!canary&&sourceReady\)/);
+ assert.match(source,/else if\(autostart&&!backgroundLookupError&&!canary&&sourceReady\)/);
 });
 
 
@@ -431,7 +431,7 @@ test('the real reader paints neutral loading, handles status failure, and guards
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
  assert(code.includes("dialog.innerHTML='<h2>Документ · завантаження</h2>"));assert(code.includes("if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено'"));
  assert(code.includes("paintBackgroundSummary(job,job._detailed?'ready':'loading')"));
- assert(code.includes('await render();if(closed)return dialog;let backgroundJob=null;'));assert.match(code,/if\(closed\)return dialog;\s+const saved=doc.ai_extracted/);
+ assert(code.includes('await render();if(closed)return dialog;'));assert(code.replaceAll('\r','').includes('if(closed)return dialog;\n  if(autostart&&backgroundLookupError)'));  assert.match(code,/if\(closed\)return dialog;\s+const saved=doc.ai_extracted/);
  assert(code.includes("readBackgroundStatus(supabaseClient,job.id,doc.id,backgroundReadScope).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}"));
  assert(code.includes(".catch(error=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,error?.code==='STATUS_READ_TIMEOUT'?'timeout':'unavailable');})"));
  const first=code.indexOf('if(!job._detailed){readBackgroundStatus'),end=code.indexOf("if(['queued','running'].includes(job.state))",first),body=code.slice(first,end);
@@ -480,4 +480,34 @@ test('saved-result opening suppresses autostart even with stale primary errors o
  const entry=fs.readFileSync(require.resolve('../documents.js'),'utf8');
  assert(entry.includes('data-doc-zone-view="'));
  assert(entry.includes("autostart:b.dataset.docZoneView!=='1',viewOnly:b.dataset.docZoneView==='1'"));
+});
+
+test('queue lookup distinguishes empty from failed and never dispatches or mutates documents',async()=>{
+ const c={window:{}};vm.createContext(c);const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');vm.runInContext(source,c);
+ const lookup=c.window.CRMMilitaryZoneReview.existingBackgroundJob,doc={id:'d',candidate_id:'c'},before=JSON.stringify(doc),calls=[];
+ const client=result=>({rpc:async(name,args)=>{calls.push({name,args});return result}});
+ assert.equal(await lookup(client({data:[],error:null}),doc),null);
+ const job={id:'j',document_id:'d',kind:'zone',state:'running'};
+ assert.equal((await lookup(client({data:[null,{document_id:'other',kind:'zone'},job],error:null}),doc)).id,'j');
+ for(const result of [null,{}, {data:null},{data:{}},{data:[],error:{message:'private backend detail'}}])await assert.rejects(lookup(client(result),doc),/чергу СПЛАВ/);
+ await assert.rejects(lookup({rpc:async()=>{throw Error('private failure')}},doc),/чергу СПЛАВ/);
+ await assert.rejects(lookup(client({data:[]}),{id:'d'}),/Не визначено справу/);
+ assert.equal(JSON.stringify(doc),before);assert(calls.every(x=>x.name==='crm_splav_candidate_jobs'&&x.args.candidate_id==='c'));
+ const opening=source.slice(source.indexOf('lock(true);try{',source.indexOf("$('[data-export]').onclick")));
+ assert(opening.indexOf('await existingBackgroundJob')<opening.indexOf("functions.invoke('process-id-document'"));
+ assert(opening.indexOf('if(autostart&&backgroundLookupError)throw backgroundLookupError')<opening.indexOf("functions.invoke('process-id-document'"));
+ assert(opening.includes('if(autostart&&!backgroundJob&&!canary'));
+});
+
+test('actual opening preflight blocks primary OCR on unavailable queue or existing job',async()=>{
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),api={window:{}};vm.createContext(api);vm.runInContext(source,api);
+ const start=source.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=source.indexOf("const {data,error}=await supabaseClient.storage",start),body=source.slice(start,end);
+ for(const mode of ['error','running','completed','empty']){
+  let invokes=0,syncs=0;const doc={id:'d',candidate_id:'c',processing_status:'AI помилка'};
+  const client={rpc:async()=>mode==='error'?{error:{message:'offline'}}:{data:mode==='empty'?[]:[{id:'j',document_id:'d',kind:'zone',state:mode}]},functions:{invoke:async()=>{invokes++;return {data:{ok:true}}}},from:()=>({select(){return this},eq(){return this},single:async()=>({data:{ai_extracted:{}}})})};
+  const sync={automate:async()=>{syncs++}},context={existingBackgroundJob:api.window.CRMMilitaryZoneReview.existingBackgroundJob,supabaseClient:client,doc,closed:false,autostart:true,canary:false,status:()=>{},window:{CRMDocumentSync:sync},CRMDocumentSync:sync};
+  const run=vm.runInNewContext('(async()=>{'+body+'return backgroundJob;})()',context);
+  if(mode==='error')await assert.rejects(run,/чергу СПЛАВ/);else await run;
+  assert.equal(invokes,mode==='empty'?1:0,mode);assert.equal(syncs,mode==='empty'?1:0,mode);
+ }
 });
