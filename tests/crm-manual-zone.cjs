@@ -401,3 +401,40 @@ test('parent card evidence stays separate from zonal reading uncertainty and nev
  assert.equal(render({...item,card_evidence:{state:'constructor'}}),'');assert.equal(render({...item,card_evidence:{state:'<script>'}}),'');assert.equal(render({...item,zone_crosscheck:false}),'');assert.equal(render({...item,key:'birth_date'}),'');
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/parentCardEvidenceHTML\(e\)/);
 });
+
+test('pending status details are loading, unavailable is not processing failure, and source changes stay explicit',()=>{
+ const ctx={window:{}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const describe=ctx.window.CRMMilitaryZoneReview.backgroundSummary;
+ for(const state of ['queued','running','completed','needs_review','uncertain']){
+  const job={state},before=JSON.stringify(job);
+  assert.equal(describe(job,{detailState:'loading'}).title,'Завантажуємо збережений результат');
+  const unavailable=describe(job,{detailState:'unavailable'});assert.equal(unavailable.title,'Не вдалося отримати стан результату');assert.match(unavailable.notes.join(' '),/а не підтвердження помилки опрацювання/);assert.equal(JSON.stringify(job),before);
+ }
+ for(const detailState of ['loading','unavailable'])for(const job of [{state:'superseded'},{state:'needs_review',zone_summary:{source_changed:true}}])assert.equal(describe(job,{detailState}).title,'Джерело документа змінилося');
+ assert.equal(describe({state:'needs_review'}).title,'Опрацювання зупинено');
+ assert.equal(describe({state:'needs_review',result:{status:'complete_with_gaps'},zone_summary:{pending_steps:0}}).title,'Звіт збережено з прогалинами');
+});
+test('detailed status reads bind job and document, await the response and never dispatch AI or retry',async()=>{
+ const ctx={window:{}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const read=ctx.window.CRMMilitaryZoneReview.readBackgroundStatus,calls=[];let resolve;
+ const client={rpc:(name,args)=>{calls.push({name,args});return new Promise(r=>{resolve=r;});}};
+ let finished=false;const pending=read(client,'j','d').then(value=>{finished=true;return value;});await Promise.resolve();assert.equal(finished,false);
+ const job=Object.freeze({id:'j',document_id:'d',kind:'zone',state:'needs_review',result:{status:'complete_with_gaps'}});
+ resolve({data:job,error:null});const value=await pending;assert.equal(value._detailed,true);assert.equal(value.id,'j');assert.equal(job._detailed,undefined);assert.equal(calls.length,1);assert.equal(calls[0].name,'crm_splav_job_status');assert.equal(calls[0].args.job_id,'j');
+ for(const data of [null,[],{...job,id:'other'},{...job,document_id:'other'},{...job,kind:'root'},{...job,state:'unknown'}]){
+  let count=0;await assert.rejects(read({rpc:async()=>{count++;return {data,error:null};}},'j','d'));assert.equal(count,1);
+ }
+ let failures=0;await assert.rejects(read({rpc:async()=>{failures++;throw Error('network');}},'j','d'));assert.equal(failures,1);
+ await assert.rejects(read({rpc:async()=>({data:job,error:{message:'private-provider-detail'}})},'j','d'),e=>!e.message.includes('private-provider-detail'));
+});
+test('the real reader paints neutral loading, handles status failure, and guards stale callbacks',()=>{
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
+ assert(code.includes("dialog.innerHTML='<h2>Документ · завантаження</h2>"));assert(code.includes("if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено'"));
+ assert(code.includes("paintBackgroundSummary(job,job._detailed?'ready':'loading')"));
+ assert(code.includes('await render();if(closed)return dialog;let backgroundJob=null;'));assert.match(code,/if\(closed\)return dialog;\s+const saved=doc.ai_extracted/);
+ assert(code.includes("readBackgroundStatus(supabaseClient,job.id,doc.id).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}"));
+ assert(code.includes(".catch(()=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,'unavailable');})"));
+ const first=code.indexOf('if(!job._detailed){readBackgroundStatus'),end=code.indexOf("if(['queued','running'].includes(job.state))",first),body=code.slice(first,end);
+ assert(first>0&&end>first);assert.doesNotMatch(body,/functions.invoke|enqueue|\.update\(|\.insert\(/);
+ assert.match(code,/detailState==='unavailable'\?'Документ · стан недоступний'/);
+});
