@@ -1,4 +1,13 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+test('clear partial dates are explained separately while the saved gap verdict stays unchanged',()=>{
+ const contract=require('../supabase/functions/_shared/military-zone.js'),ctx={window:{},CRMMilitaryZoneContract:contract};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const date=contract.projectField({key:'start_date',raw_text:'вересня 2023',value:'2023-09-01',legibility:'clear'}),relation={key:'relationship',raw_text:'мати',value:null,legibility:'uncertain'};
+ const data={mode:'zone',rows:[{fields:[date,relation]}]},before=JSON.stringify(data),summary=ctx.window.CRMMilitaryZoneReview.readingSummary(data);
+ assert.equal(summary.uncertain,2);assert.equal(summary.source_precision,1);assert.equal(summary.unresolved,1);assert.match(summary.label,/1 непевних/);assert.match(summary.label,/1 дат із точністю/);assert.match(summary.notice,/інше джерело/);assert.equal(JSON.stringify(data),before);
+ const result=ctx.window.CRMMilitaryZoneReview.backgroundSummary({state:'needs_review',result:{status:'complete_with_gaps'},zone_summary:{pending_steps:0},zone_reports:[data]});assert.equal(result.title,'Звіт збережено з прогалинами');assert.match(JSON.stringify(result),/Інших непевних полів: 1/);assert.match(JSON.stringify(result),/а не повтор того самого AI/);
+ for(const patch of [{legibility:'uncertain'},{legibility:'unreadable'},{alternatives:['2024-09']},{alternatives:'2024-09'},{partial_value:'2024-09'},{date_precision:'year'},{raw_text:'2023-09-01'},{key:'other'},{value:'2023-09-01'}]){const r=ctx.window.CRMMilitaryZoneReview.readingSummary({rows:[{fields:[{...date,...patch}]}]});assert.equal(r.source_precision,0,JSON.stringify(patch));}
+ const year=contract.projectField({key:'end_date',raw_text:'2017',value:null,legibility:'clear'});assert.equal(ctx.window.CRMMilitaryZoneReview.readingSummary({rows:[{fields:[year]}]}).source_precision,1);
+});
 test('explicit rerun is limited to a finished one-page biography and never starts from a saved view',()=>{
  const context={window:{}};vm.createContext(context);const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');vm.runInContext(code,context);
  const eligible=context.window.CRMMilitaryZoneReview.pageRerunEligible,doc={id:'d',document_type:'Автобіографія друкована'};

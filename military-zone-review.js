@@ -71,6 +71,8 @@ function backgroundSummary(job){
  if(finishedWithGaps){
   if(emptyReadings)notes.push('Читань без структурованих полів: '+emptyReadings+'. Відкрийте ці фрагменти нижче й звірте дослівний текст з оригіналом.');
   if(uncertainReadings)notes.push('Читань із непевними значеннями або непрочитаними рядками: '+uncertainReadings+'. Перевірте позначені поля та їхні варіанти.');
+  const precision=readings.reduce((n,r)=>n+r.source_precision,0),unresolved=readings.reduce((n,r)=>n+r.unresolved,0);
+  if(precision)notes.push('Дат із точністю лише до року або місяця: '+precision+'. Їх прочитано в межах точності джерела; день не додається. Інших непевних полів: '+unresolved+'. Для точнішої дати потрібне джерело з повною датою, а не повтор того самого AI-запиту.');
   notes.push('Ці кількості стосуються читань, включно з контекстними повторами, а не унікальних полів чи документів.');
  }
  if(!outputLimit&&(s.code==='ZONE_RESULT_UNCERTAIN'||job.state==='uncertain'))notes.push('Наступна дія: адміністратору перевірити ліміти та доступ AI-сервісів. Цей фрагмент не запускати повторно без окремого рішення.');
@@ -107,10 +109,20 @@ function readingContext(data){
  if(emptyAlias)notices.push('У записі ПІБ родича є порожні дужки. Це не прочитане дівоче прізвище. ПІБ, дослівний текст і альтернативи збережено; їх потрібно звірити з оригіналом.');
  return {label:labels.join(' · '),notice:notices.filter(Boolean).join(' ')};
 }
+function sourcePrecisionDate(f){
+ // Presentation only: never turn a partial date into a full date or a verified fact.
+ if(!['start_date','end_date','order_date','birth_date','document_date'].includes(f?.key)||f.value!=null||f.legibility!=='clear'||
+  f.alternatives!=null&&(!Array.isArray(f.alternatives)||f.alternatives.length)||typeof CRMMilitaryZoneContract==='undefined'||!CRMMilitaryZoneContract)return false;
+ const partial=CRMMilitaryZoneContract.partialDate?.(f.raw_text);
+ return !!partial&&partial.partial_value===f.partial_value&&partial.date_precision===f.date_precision;
+}
 function readingSummary(data){
  const rows=Array.isArray(data?.rows)?data.rows:[],fields=rows.flatMap(row=>Array.isArray(row?.fields)?row.fields:[]),empty_rows=rows.filter(row=>!Array.isArray(row?.fields)||!row.fields.length).length;
  const uncertain=fields.filter(f=>f?.value==null||typeof f.value==='string'&&!f.value.trim()||f?.legibility!=='clear'||Array.isArray(f.alternatives)&&f.alternatives.length>0).length;
- return {count:fields.length,uncertain,empty_rows,label:fields.length?fields.length+' полів · '+uncertain+' потребують перевірки'+(empty_rows?' · непрочитаних рядків: '+empty_rows:''):'Структурованих полів немає · потрібна перевірка',notice:!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':uncertain||empty_rows?'Є непевні значення або непрочитані рядки. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.'};
+ const source_precision=fields.filter(sourcePrecisionDate).length,unresolved=uncertain-source_precision;
+ const label=fields.length?fields.length+' полів · '+(source_precision?unresolved+' непевних · '+source_precision+' дат із точністю до року/місяця':uncertain+' потребують перевірки')+(empty_rows?' · непрочитаних рядків: '+empty_rows:''):'Структурованих полів немає · потрібна перевірка';
+ const notice=!fields.length?'Відповідь збережена, але структуровані поля не прочитані. Звірте дослівний текст з оригіналом.':source_precision?'Часткові дати збережено без вигаданого дня. Для точнішої дати потрібне інше джерело з повною датою. Непевні значення та непрочитані рядки перевіряються окремо; поля не підтверджені автоматично.':uncertain||empty_rows?'Є непевні значення або непрочитані рядки. Кількість полів не підтверджує їх достовірність.':'Поля прочитано; зіставлення з іншими документами та підтвердження виконуються окремо.';
+ return {count:fields.length,uncertain,source_precision,unresolved,empty_rows,label,notice};
 }
 function savedReportView(saved,documentId,{context=null,binding=null}={}){
  const supplied=Array.isArray(saved?.reports)?saved.reports:[];
