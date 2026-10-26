@@ -146,3 +146,43 @@ test('empty surname parentheses ask for notation review, never establish identit
  for(const name of ['Іваненко ( ) Олена Іванівна','Тестенко (Коваленко) Олена Петрівна','Тестенко (?) Олена Іванівна','Тестенко (нерозбірливо) Олена Іванівна','Тестенко ( ) Олена','Тестенко ( ) ( ) Олена Іванівна'])assert.equal(x.compare([parent('a',name)],candidate).find(e=>e.key==='relatives').status,'conflict',name);
  assert.equal(x.maidenNameMatch([blank,plain]),false);
 });
+
+test('zonal parents remain row-bound review evidence, with verified independent sources only',async()=>{
+ const context={document_id:'a',file_sha256:'a'.repeat(64),revision:'r1',pages:1},binding={...context};
+ const name='Тестенко Олена Іванівна';
+ const source=d('a',null,{ai_processed_at:'r1',file_hash:context.file_sha256});
+ const parent=(id,full_name=name,extra={})=>d(id,null,{verification_status:'Підтверджено',ai_extracted:{full_name:c.full_name,relatives:[{relationship:'мати',full_name,birth_date:'1970-01-01'}]},...extra});
+ const field=(key,value,extra={})=>({key,value,raw_text:value,legibility:'clear',alternatives:[],...extra});
+ const row={fields:[field('relative_name',name),field('relationship',null,{raw_text:'мати',legibility:'uncertain'}),field('birth_date','1970-01-01')]};
+ const report={review_only:true,mode:'zone',source:{document_id:'a',page:1,box:{x:0,y:0,w:1,h:1}},rows:[row]};
+ const run=(docs=[source,parent('b')],reports=[report],candidate=c,options={})=>x.compareZoneParents(docs,candidate,{context,binding,reports,...options});
+ const before=JSON.stringify([source,report,c]);
+ let e=run()[0];assert.equal(e.status,'needs_review');assert.equal(e.sources.length,2);assert.equal(e.learning_eligible,false);assert.equal(e.sources[0].verified,false);assert.equal(e.sources[0].birth_date,'1970-01-01');assert.equal(e.subject,'мати');
+ assert.equal(JSON.stringify([source,report,c]),before);
+ assert.equal(run([source,parent('b',name,{verification_status:null})])[0].sources.length,1);
+ assert.equal(run([source,parent('b',name,{file_hash:context.file_sha256})])[0].sources.length,1);
+ assert.equal(run([source,parent('b',name,{storage_path:source.storage_path})])[0].sources.length,1);
+ assert.equal(run([source,parent('b')],[report,report])[0].sources.length,2);
+ assert.equal(run([source,parent('b','Тестенко Інна Іванівна')])[0].status,'conflict');
+ assert.equal(run([source],undefined,{...c,profile_data:{relatives:[{relationship:'мати',full_name:name,birth_date:'1971-01-01'}]}})[0].status,'conflict');
+ assert.equal(run([source],undefined,{...c,profile_data:{relatives:[{relationship:'мати',full_name:name},{relationship:'мати',full_name:name}]}})[0].status,'conflict');
+ for(const profile_data of [{merged_into:'other'},{workflow:{archived_at:'now'}}])assert.deepEqual(run(undefined,undefined,{...c,profile_data}),[]);
+ for(const patch of [{candidate_id:'other'},{deleted_at:'now'},{ai_processed_at:'old'},{file_hash:'b'.repeat(64)}])assert.deepEqual(run([{...source,...patch}]),[]);
+ assert.deepEqual(run([source,{...source,id:'new',version_group_id:'a',version_number:2}]),[]);
+ for(const patch of [{page:2},{document_id:'other'},{file_sha256:'b'.repeat(64)},{box:{x:0,y:0,w:2,h:1}}])assert.deepEqual(run(undefined,[{...report,source:{...report.source,...patch}}]),[]);
+ assert.deepEqual(run(undefined,undefined,undefined,{binding:null}),[]);
+ for(const bad of [
+  [field('relative_name','Тестенко Олена'),row.fields[1]],
+  [row.fields[0],field('relationship','батько',{raw_text:'мати'})],
+  [row.fields[0],field('relationship','мати',{raw_text:'мати дружини'})],
+  [row.fields[0],field('relationship','constructor',{raw_text:'constructor'})],
+  [row.fields[0],{...row.fields[1],alternatives:['батько']}],
+  [row.fields[0],row.fields[1],field('full_name',c.full_name)],
+  [row.fields[0],row.fields[0],row.fields[1]],
+  [{...row.fields[0],alternatives:['Тестенко Інна Іванівна']},row.fields[1]]
+ ])assert.deepEqual(run(undefined,[{...report,rows:[{fields:bad}]}]),[]);
+ assert.deepEqual(run(undefined,[{...report,rows:[{fields:[row.fields[0]]},{fields:[row.fields[1]]}]}]),[]);
+ assert.deepEqual(x.compareZones([source],c,{reports:[report],context,binding}),[]);
+ const client={from:()=>({select:()=>({eq:async()=>({data:[source,parent('b')],error:null})})})};
+ assert.equal((await x.load(client,c,{reports:[report],context,binding})).filter(e=>e.zone_crosscheck&&e.key==='relatives').length,1);
+});
