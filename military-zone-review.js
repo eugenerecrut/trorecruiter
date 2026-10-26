@@ -91,7 +91,7 @@ function textLayerZones(items,viewport){
  return blocks.map((block,i)=>({label:'Текстовий блок '+(i+1),kind:'text',reason:'Межі з текстового шару PDF; зміст і рукописні дописи не перевірені.',preview:block.lines.map(l=>l.text.sort((x,y)=>x.x-y.x).map(t=>t.text).join(' ')).join('\n').slice(0,4000),box:{x:block.left/width,y:block.top/height,w:(block.right-block.left)/width,h:(block.bottom-block.top)/height}}));
 }
 function backgroundSummary(job,{detailState='ready'}={}){
- if(!job.zone_summary?.source_changed&&job.state!=='superseded'&&['loading','unavailable'].includes(detailState))return detailState==='loading'?{title:'Завантажуємо збережений результат',notes:['Отримуємо деталі доручення. Короткий запис у черзі ще не визначає кінцевий результат.','Перегляд не запускає нового AI й не змінює дані.']}:{title:'Не вдалося отримати стан результату',notes:['Це збій отримання стану, а не підтвердження помилки опрацювання документа.','Закрийте вікно й відкрийте результат знову. Дані не змінені; новий AI не запускається.']};
+ if(!job.zone_summary?.source_changed&&job.state!=='superseded'&&['loading','unavailable','timeout'].includes(detailState))return detailState==='loading'?{title:'Завантажуємо збережений результат',notes:['Отримуємо деталі доручення. Короткий запис у черзі ще не визначає кінцевий результат.','Перегляд не запускає нового AI й не змінює дані.']}:detailState==='timeout'?{title:'Час очікування стану минув',notes:['Не отримано деталей за 20 секунд. Це не означає помилку опрацювання документа.','Нове AI-розпізнавання не запускається. Спробуйте відкрити результат знову; якщо запит не завершується, оновіть сторінку CRM.']}:{title:'Не вдалося отримати стан результату',notes:['Це збій отримання стану, а не підтвердження помилки опрацювання документа.','Закрийте вікно й відкрийте результат знову. Дані не змінені; новий AI не запускається.']};
  const s=job.zone_summary||{},notes=[];
  const outputLimit=Array.isArray(s.providers)&&s.providers.some(p=>['OpenAI','Gemini','OpenRouter'].includes(p?.provider)&&p.diagnosis==='OUTPUT_LIMIT_EXCEEDED');
  const gaps=job.result?.status==='complete_with_gaps'||s.error_count>0;
@@ -211,11 +211,31 @@ function sourceTarget(report,current,binding){
  else if(!binding||binding.document_id!==current.document_id||binding.file_sha256!==current.file_sha256||!current.revision||binding.revision!==current.revision)return null;
  return {page:s.page,box};
 }
-async function readBackgroundStatus(client,jobId,documentId){
- if(!jobId||!documentId)throw Error('Не визначено доручення для перегляду.');
- const result=await client.rpc('crm_splav_job_status',{job_id:jobId}),job=result?.data;
- if(result?.error||!job||Array.isArray(job)||job.id!==jobId||job.document_id!==documentId||job.kind!=='zone'||!['queued','running','completed','needs_review','uncertain','superseded'].includes(job.state))throw Error('Не вдалося отримати актуальні деталі цього доручення.');
- return {...job,_detailed:true};
+const backgroundStatusReads=new WeakMap();
+const statusReadTimeoutMs=20000;
+function readBackgroundStatus(client,jobId,documentId,scope=client){
+ if(!client||typeof client.rpc!=='function'||!jobId||!documentId)return Promise.reject(Error('Не визначено доручення для перегляду.'));
+ if(!scope||!['object','function'].includes(typeof scope))return Promise.reject(Error('Не визначено перегляд доручення.'));
+ let clients=backgroundStatusReads.get(scope);if(!clients){clients=new WeakMap();backgroundStatusReads.set(scope,clients);}
+ let reads=clients.get(client);if(!reads){reads=new Map();clients.set(client,reads);}
+ const key=JSON.stringify([jobId,documentId]),existing=reads.get(key);if(existing)return existing.wait;
+ const controller=typeof AbortController==='function'?new AbortController():null;
+ let query;try{query=client.rpc('crm_splav_job_status',{job_id:jobId});if(controller&&typeof query?.abortSignal==='function')query=query.abortSignal(controller.signal);}
+ catch{return Promise.reject(Error('Не вдалося отримати актуальні деталі цього доручення.'));}
+ const entry={},pending=Promise.resolve(query);
+ const release=()=>{if(reads.get(key)===entry)reads.delete(key);};
+ // Retain the slot until the transport settles, even when an older SDK cannot abort.
+ pending.then(release,release);
+ let timer;const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{
+  const error=Error('Час очікування стану минув.');error.code='STATUS_READ_TIMEOUT';reject(error);
+  try{controller?.abort();}catch{}
+ },statusReadTimeoutMs);});
+ entry.wait=Promise.race([pending,timeout]).then(result=>{
+  const job=result?.data;
+  if(result?.error||!job||Array.isArray(job)||job.id!==jobId||job.document_id!==documentId||job.kind!=='zone'||!['queued','running','completed','needs_review','uncertain','superseded'].includes(job.state))throw Error('Не вдалося отримати актуальні деталі цього доручення.');
+  return {...job,_detailed:true};
+ }).finally(()=>clearTimeout(timer));
+ reads.set(key,entry);return entry.wait;
 }
 function backgroundReports(job,saved){
  if(!job._detailed||!job.zone_summary||job.zone_summary.source_changed||!['completed','needs_review'].includes(job.state)||!saved||!['complete','complete_with_gaps'].includes(saved.status)||saved.status!==job.result?.status||!saved.saved_at||saved.saved_at!==job.result?.saved_at||!Array.isArray(saved.reports))return [];
@@ -234,6 +254,7 @@ async function open(doc,{autostart=false}={}){
  document.body.append(dialog);dialog.showModal();
  const $=s=>dialog.querySelector(s),canvas=$('[data-source]'),ctx=canvas.getContext('2d'),source=document.createElement('canvas'),reports=[];
  const canary=new URLSearchParams(location.search).get('zoneBudget')==='1'||new URLSearchParams(location.search).get('zoneBudget')==='13',pageCanary=new URLSearchParams(location.search).get('zoneBudget')==='13',nativeCanary=canary&&!pageCanary&&new URLSearchParams(location.search).get('zoneNativeOnly')==='1';
+ const backgroundReadScope={};
  let page=1,total=1,pdf=null,bitmap=null,box={...full},closed=false,busy=false,renderId=0,autopilot=null,autoActive=false,sourceReady=false,originalURL=null,originalDigest=null,coordinatorSession=null,stopRequested=false,backgroundPoll=null,backgroundSeen=false,backgroundReportLoaded=false,backgroundViewVersion=0,backgroundReportsKey=null,nativeZones=[],reportBinding=null,crosscheckVersion=0;
  const rerunButton=document.createElement('button'),rerunIntents=new Map();rerunButton.textContent='Новий контроль цього файла';rerunButton.hidden=true;$('[data-auto]').parentElement.append(rerunButton);
  if(!autostart){$('[data-manual]').open=true;dialog.querySelector('h2').textContent='Документ · завантаження';dialog.querySelectorAll('p')[1].textContent='Оригінал відкривається без AI. Огляд сторінки або читання зони починається лише після вашого натискання. Дані картки не перезаписуються.';if(!doc.ai_extracted||doc.processing_status==='AI помилка')$('[data-auto]').hidden=true;}
@@ -334,7 +355,7 @@ async function open(doc,{autostart=false}={}){
  function paintBackgroundSummary(job,detailState){
   if(job.zone_summary?.source_changed||job.state==='superseded')detailState='ready';
   const explanation=backgroundSummary(job,{detailState}),host=$('[data-auto-progress]');host.replaceChildren();const title=document.createElement('strong');title.textContent=explanation.title;host.append(title);for(const note of explanation.notes){const line=document.createElement('span');line.style.display='block';line.textContent=note;host.append(line);}
-  dialog.querySelector('h2').textContent=detailState==='loading'?'Документ · завантаження результату':detailState==='unavailable'?'Документ · стан недоступний':'Документ · результат СПЛАВ';
+  dialog.querySelector('h2').textContent=detailState==='loading'?'Документ · завантаження результату':['unavailable','timeout'].includes(detailState)?'Документ · стан недоступний':'Документ · результат СПЛАВ';
   dialog.querySelectorAll('p')[1].textContent=detailState==='ready'?'Показано збережений стан опрацювання. Перегляд не запускає нове розпізнавання.':detailState==='loading'?'Отримуємо лише збережений стан. Нове розпізнавання не запускається.':'Збережений стан недоступний. Нове розпізнавання не запускалося.';
  }
  function showBackground(job){
@@ -377,13 +398,13 @@ async function open(doc,{autostart=false}={}){
    }).catch(()=>{if(!closed&&viewVersion===backgroundViewVersion)status('Не вдалося відкрити збережений звіт. Оновіть документ; AI не запускався.');});
   }
   if(backgroundPoll)clearInterval(backgroundPoll);
-  if(!job._detailed){readBackgroundStatus(supabaseClient,job.id,doc.id).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}).catch(()=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,'unavailable');});}
+  if(!job._detailed){readBackgroundStatus(supabaseClient,job.id,doc.id,backgroundReadScope).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}).catch(error=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,error?.code==='STATUS_READ_TIMEOUT'?'timeout':'unavailable');});}
   if(['queued','running'].includes(job.state))backgroundPoll=setInterval(async()=>{
    if(closed){clearInterval(backgroundPoll);return;}
    try{
-    const result=await readBackgroundStatus(supabaseClient,job.id,doc.id);
+    const result=await readBackgroundStatus(supabaseClient,job.id,doc.id,backgroundReadScope);
     if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);
-   }catch{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,'unavailable');}
+   }catch(error){if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,error?.code==='STATUS_READ_TIMEOUT'?'timeout':'unavailable');}
   },5000);
  }
  $('[data-auto]').onclick=async()=>{if(busy||autoActive||!sourceReady)return;dialog.querySelector('h2').textContent='Документ · автоматичне опрацювання';dialog.querySelectorAll('p')[1].textContent='Опрацьовуємо документ. Дані картки не перезаписуються.';autoActive=true;stopRequested=false;lock(false);try{

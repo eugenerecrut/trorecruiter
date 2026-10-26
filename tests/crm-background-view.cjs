@@ -1,14 +1,15 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
 const start=source.indexOf('function paintBackgroundSummary(job,detailState){'),end=source.indexOf(" $('[data-auto]').onclick",start),body=source.slice(start,end);
-const apiContext={window:{}};vm.createContext(apiContext);vm.runInContext(source,apiContext);const api=apiContext.window.CRMMilitaryZoneReview;
+const statusTimers=new Map();let statusTimerId=0;
+const apiContext={window:{},AbortController,setTimeout:(fn,ms)=>{const id=++statusTimerId;statusTimers.set(id,{fn,ms});return id;},clearTimeout:id=>statusTimers.delete(id)};vm.createContext(apiContext);vm.runInContext(source,apiContext);const api=apiContext.window.CRMMilitaryZoneReview;
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 function setup(){
  const node=()=>({children:[],style:{},hidden:false,disabled:false,textContent:'',append(...items){this.children.push(...items)},replaceChildren(...items){this.children=items},querySelector(){return {remove(){}}}});
  const nodes=new Map(),get=key=>{if(!nodes.has(key))nodes.set(key,node());return nodes.get(key)},requests=[],timers=[],statuses=[];let checks=0;
  const client={auth:{getUser:()=>{const d=deferred();requests.push({kind:'auth',...d});return d.promise}},from:()=>{const chain={select(){return chain},eq(){return chain},single(){const d=deferred();requests.push({kind:'document',...d});return d.promise}};return chain},rpc:(name,args)=>{const d=deferred();requests.push({kind:'status',name,args,...d});return d.promise}};
- const context={reports:[],doc:{id:'d'},closed:false,backgroundViewVersion:0,backgroundReportsKey:null,backgroundReportLoaded:false,backgroundSeen:false,backgroundPoll:null,reportBinding:null,crosscheckVersion:0,
+ const context={backgroundReadScope:{},reports:[],doc:{id:'d'},closed:false,backgroundViewVersion:0,backgroundReportsKey:null,backgroundReportLoaded:false,backgroundSeen:false,backgroundPoll:null,reportBinding:null,crosscheckVersion:0,
   $:get,document:{createElement:node,createTextNode:text=>({textContent:text})},dialog:{querySelector:get,querySelectorAll:()=>[node(),node()]},
   backgroundSummary:api.backgroundSummary,readBackgroundStatus:api.readBackgroundStatus,showReport:report=>get('[data-result]').append(report),crosscheck:()=>{checks++;return Promise.resolve()},backgroundReports:(_job,saved)=>saved?.reports||[],status:text=>statuses.push(text),supabaseClient:client,
   rerunButton:node(),rerunIntents:new Map(),pageCanary:false,pageRerunEligible:()=>true,total:1,originalDigest:'hash',busy:false,autoActive:false,confirmed:true,
@@ -81,4 +82,12 @@ test('initial detail failures stop loading without mislabelling document process
   await flush();assert.equal(f.get('h2').textContent,'Документ · стан недоступний');assert.equal(f.get('[data-auto-progress]').children[0].textContent,'Не вдалося отримати стан результату');assert.equal(f.requests.length,1);assert.equal(f.context.reports.length,0);
  }
  const f=setup();f.context.showBackground(job({_detailed:false,state:'needs_review'}));f.context.closed=true;const title=f.get('h2').textContent;f.requests[0].reject(Error('late'));await flush();assert.equal(f.get('h2').textContent,title);
+});
+
+test('a hanging initial lookup and active poll share one request; timeout is explicit and late data is ignored',async()=>{
+ const f=setup();f.context.showBackground(job({_detailed:false}));assert.equal(f.requests.length,1);
+ const poll=f.timers[0]();assert.equal(f.requests.length,1);const timer=[...statusTimers.values()].at(-1);assert.equal(timer.ms,20000);
+ timer.fn();await poll;await flush();assert.equal(f.get('[data-auto-progress]').children[0].textContent,'Час очікування стану минув');assert.equal(f.get('h2').textContent,'Документ · стан недоступний');assert.equal(f.requests.length,1);
+ f.requests[0].resolve({data:job({state:'completed',zone_reports:[overview,zone]})});await flush();assert.equal(f.context.reports.length,0);assert.equal(f.get('[data-auto-progress]').children[0].textContent,'Час очікування стану минув');
+ const refreshed=f.timers[0]();assert.equal(f.requests.length,2);f.requests[1].resolve({data:job({state:'completed',zone_reports:[overview,zone]})});await refreshed;assert.equal(f.context.reports.length,2);assert(f.requests.every(r=>r.name==='crm_splav_job_status'));
 });
