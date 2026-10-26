@@ -5,9 +5,13 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const MODEL='qwen2.5-coder:7b';
+export const KNOWLEDGE_VERSION='2';
 export const ENDPOINT='http://127.0.0.1:11434/api/chat';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const LIMIT=16000;
+export async function loadKnowledge(){
+ return (await Promise.all(['knowledge.md','examples.md'].map(name=>readFile(path.join(ROOT,'docs/qwen',name),'utf8')))).join('\n\n');
+}
 const blocked=/^(?:tmp|backups|reports|output|\.git|\.codex|\.agents|\.aider[^/]*)(?:\/|$)|^supabase\/\.temp(?:\/|$)|(?:^|\/)\.env(?:\.|$)/i;
 export function validateRelative(value){
  const normalized=String(value).replaceAll('\\','/');
@@ -50,14 +54,14 @@ export async function main(args=process.argv.slice(2)){
   else if(args[i]==='--help'){console.log('node tools/qwen-collaborator.mjs --task "Specific coding task" [--file tracked-source.js] [--dry-run]');return;}
   else throw Error('Unknown option: '+args[i]);
  }
- const knowledge=await readFile(path.join(ROOT,'docs/qwen/knowledge.md'),'utf8');
+ const knowledge=await loadKnowledge();
  const files=[];for(const source of sources)files.push(await trackedSource(source));
  const body=makeRequest(task,knowledge,files);
  if(dryRun){console.log(JSON.stringify({model:MODEL,endpoint:ENDPOINT,files:files.map(f=>f.name),characters:body.messages.reduce((n,m)=>n+m.content.length,0),sent:false},null,2));return;}
  const startedAt=new Date().toISOString(),result=await requestProposal(body);
  const dir=path.join(ROOT,'tmp/qwen-runs');await mkdir(dir,{recursive:true});
  const report=path.join(dir,startedAt.replaceAll(':','-')+'-'+process.pid+'.json');
- await writeFile(report,JSON.stringify({version:1,startedAt,task,files:files.map(f=>f.name),knowledgeVersion:'1',...result,status:'unreviewed'},null,2),{flag:'wx'});
+ await writeFile(report,JSON.stringify({version:1,startedAt,task,files:files.map(f=>f.name),knowledgeVersion:KNOWLEDGE_VERSION,...result,status:'unreviewed'},null,2),{flag:'wx'});
  console.log(result.proposal+'\n\nUnreviewed proposal saved: '+report);
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{console.error(error.message);process.exitCode=1;});
