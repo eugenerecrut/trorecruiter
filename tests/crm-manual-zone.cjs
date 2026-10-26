@@ -391,3 +391,13 @@ test('crosscheck empty and agreement-only views never claim manual confirmation 
  assert.match(html,/Для звірки: 0. Інших пунктів: 1/);assert.match(html,/Це не ручне підтвердження документів/);assert.equal(html.includes('<h3>Спочатку перевірте</h3>'),false);
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/crosscheckHTML\(evidence\)/);
 });
+
+test('parent card evidence stays separate from zonal reading uncertainty and never supplies confirmation controls',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const render=context.window.CRMMilitaryZoneReview.parentCardEvidenceHTML;
+ const item={key:'relatives',zone_crosscheck:true,card_evidence:{state:'matched',source_ids:['hidden']}};
+ const html=render(item);assert.match(html,/Дані картки:.*ПІБ у картці збігається/);assert.match(html,/Якість зонального читання:.*потребує звірки/);assert.equal(html.includes('<button'),false);assert.equal(html.includes('hidden'),false);
+ for(const state of ['incomplete','missing','conflict','no_other_source'])assert(render({...item,card_evidence:{state}}).includes('Якість зонального читання:'));
+ assert.equal(render({...item,card_evidence:{state:'constructor'}}),'');assert.equal(render({...item,card_evidence:{state:'<script>'}}),'');assert.equal(render({...item,zone_crosscheck:false}),'');assert.equal(render({...item,key:'birth_date'}),'');
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/parentCardEvidenceHTML\(e\)/);
+});
