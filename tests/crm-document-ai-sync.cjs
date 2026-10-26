@@ -196,3 +196,23 @@ test('explicit draft-registration certificate names use registry planning withou
  const wrong=sync.plan({...document({...source,full_name:'Інший Петро Іванович',birth_date:'1980-01-01',rnokpp:'9999999999'},'Посвідчення про приписку до призовної дільниці'),verification_status:'Не перевірено',ai_confidence:0.2},candidate());
  assert.equal(wrong.selections.length,0);assert(wrong.rows.some(r=>r.action==='conflict'));
 });
+
+test('draft-registration preserves manual registry number',()=>{
+ const c=candidate();c.profile_data.military_registry_number='manual-registry';
+ const d=document({...personal(),military_registry_number:'987654321'},'Посвідчення про приписку до призовної дільниці'),before=JSON.stringify({c,d});
+ const result=sync.plan(d,c);
+ assert(!result.selections.some(selection=>selection.key==='military_registry_number'));
+ assert.equal(result.rows.find(row=>row.key==='military_registry_number').action,'conflict');
+ assert.equal(JSON.stringify({c,d}),before);
+});
+
+test('draft-registration rejects another card and unfinished OCR without proposing fields',()=>{
+ for(const type of ['Посвідчення про приписку до призовної дільниці','Копія Посвідчення про приписку до призовної дільниці']){
+  const source=document({...personal(),military_registry_number:'987654321'},type);
+  for(const patch of [{candidate_id:'another-card'},{processing_status:'AI обробка'},{processing_status:'AI помилка'},{deleted_at:'2026-10-26T00:00:00Z'}]){
+   const d={...source,...patch},c=candidate(),before=JSON.stringify({c,d}),result=sync.plan(d,c);
+   assert.equal(result.selections.length,0,JSON.stringify(patch));
+   assert.equal(JSON.stringify({c,d}),before);
+  }
+ }
+});
