@@ -7,7 +7,7 @@ function profile(c){if(typeof c.profile_data==='string'){try{return JSON.parse(c
 function build(candidate,requirements,documents,personalFile={}){
  // Use the same active-document scope as the card. Keep historical/conditional
  // files in storage, but do not turn an explicitly inapplicable file into a blocker.
- documents=root.CRMResponsibility.latest(documents).filter(d=>!d.document_type||root.CRMCandidateConditions.documentCondition(d.document_type,candidate)!==false);
+ documents=root.CRMResponsibility.latest(documents.filter(d=>!d.candidate_id||d.candidate_id===candidate.id)).filter(d=>!d.document_type||root.CRMCandidateConditions.documentCondition(d.document_type,candidate)!==false);
  const p=profile(candidate),value=k=>k==='birth_place'?[candidate[k],p[k],p.form_data?.[k],personalFile.birth_place].find(v=>!blank(v)):candidate[k]??p[k]??p.form_data?.[k],questions=[],missingData=[],issues=[],fills=[];
  const add=(key,text)=>{if(!questions.some(q=>q.key===key))questions.push({key,text});};
  const state=root.CRMDocumentState.summary(candidate,requirements,documents),pack=root.CRMDocumentState.packageState(candidate,documents);
