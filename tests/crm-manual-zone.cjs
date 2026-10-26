@@ -501,14 +501,14 @@ test('queue lookup distinguishes empty from failed and never dispatches or mutat
 
 test('actual opening preflight blocks primary OCR on unavailable queue or existing job',async()=>{
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),api={window:{},setTimeout,clearTimeout,AbortController};vm.createContext(api);vm.runInContext(source,api);
- const start=source.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=source.indexOf("const {data,error}=await supabaseClient.storage",start),body=source.slice(start,end);
- for(const mode of ['error','running','completed','empty']){
+ const start=source.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=source.indexOf("const originalBytes=",start),body=source.slice(start,end);
+ for(const mode of ['error','running','completed','empty','file_error','changed_source']){
   let invokes=0,syncs=0;const doc={id:'d',candidate_id:'c',processing_status:'AI помилка'};
-  const client={rpc:async()=>mode==='error'?{error:{message:'offline'}}:{data:mode==='empty'?[]:[{id:'j',document_id:'d',kind:'zone',state:mode}]},functions:{invoke:async()=>{invokes++;return {data:{ok:true}}}},from:()=>({select(){return this},eq(){return this},single:async()=>({data:{ai_extracted:{}}})})};
-  const sync={automate:async()=>{syncs++}},context={existingBackgroundJob:api.window.CRMMilitaryZoneReview.existingBackgroundJob,supabaseClient:client,doc,closed:false,autostart:true,canary:false,queueChecking:false,$:()=>({}),status:()=>{},window:{CRMDocumentSync:sync},CRMDocumentSync:sync};
+  const client={rpc:async()=>mode==='error'?{error:{message:'offline'}}:{data:['empty','file_error','changed_source'].includes(mode)?[]:[{id:'j',document_id:'d',kind:'zone',state:mode}]},functions:{invoke:async()=>{invokes++;return {data:{ok:true}}}},from:()=>({select(){return this},eq(){return this},single:async()=>({data:{ai_extracted:{},...(mode==='changed_source'?{storage_path:'new.pdf'}:{})}})})};
+  const sync={automate:async()=>{syncs++}},context={loadOriginalFile:async()=>{if(mode==='file_error')throw Error('original unavailable');return {}},existingBackgroundJob:api.window.CRMMilitaryZoneReview.existingBackgroundJob,supabaseClient:client,doc,closed:false,autostart:true,canary:false,queueChecking:false,$:()=>({}),status:()=>{},window:{CRMDocumentSync:sync},CRMDocumentSync:sync};
   const run=vm.runInNewContext('(async()=>{'+body+'return backgroundJob;})()',context);
-  if(mode==='error')await assert.rejects(run,/чергу СПЛАВ/);else await run;
-  assert.equal(invokes,mode==='empty'?1:0,mode);assert.equal(syncs,mode==='empty'?1:0,mode);
+  if(mode==='error')await assert.rejects(run,/чергу СПЛАВ/);else if(mode==='file_error')await assert.rejects(run,/original unavailable/);else if(mode==='changed_source')await assert.rejects(run,/Версія оригіналу змінилася/);else await run;
+  assert.equal(invokes,['empty','changed_source'].includes(mode)?1:0,mode);assert.equal(syncs,['empty','changed_source'].includes(mode)?1:0,mode);
  }
 });
 
@@ -533,7 +533,33 @@ test('closing during queue lookup is allowed while closing active processing rem
  }
 });
 test('a queue response after the dialog closed never reaches primary OCR',async()=>{
- const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=code.indexOf("const {data,error}=await supabaseClient.storage",start);let resolve,invokes=0;
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=code.indexOf("const originalBytes=",start);let resolve,invokes=0;
  const pending=new Promise(r=>resolve=r),dialog={},c={queueChecking:false,$:()=>({}),existingBackgroundJob:()=>pending,supabaseClient:{functions:{invoke:()=>{invokes++}}},doc:{processing_status:'AI помилка'},closed:false,autostart:true,canary:false,dialog};
  const result=vm.runInNewContext('(async()=>{'+code.slice(start,end)+'})()',c);c.closed=true;resolve(null);assert.equal(await result,dialog);assert.equal(invokes,0);assert.equal(c.queueChecking,false);
+});
+
+test('original loading signs once, keeps bytes and rejects unavailable or oversized files',async()=>{
+ const c={window:{},setTimeout,clearTimeout,AbortController};vm.createContext(c);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),c);const load=c.window.CRMMilitaryZoneReview.loadOriginalFile;
+ const doc={storage_path:'original.pdf'},before=JSON.stringify(doc),calls=[];
+ const client=result=>({storage:{from:bucket=>({createSignedUrl:async(path,ttl)=>{calls.push({bucket,path,ttl});return result}})}});
+ const signed={data:{signedUrl:'https://example.test/file?token=private'}},blob={size:123},fetchCalls=[];
+ assert.equal(await load(client(signed),doc,async(url,options)=>{fetchCalls.push({url,options});return {ok:true,blob:async()=>blob}}),blob);
+ assert.equal(fetchCalls.length,1);assert.equal(calls[0].bucket,'candidate-documents');assert.equal(calls[0].ttl,300);assert.equal(JSON.stringify(doc),before);
+ await assert.rejects(load(client({error:{message:'private'}}),doc,()=>{throw Error('must not fetch')}),/Немає доступу/);
+ await assert.rejects(load(client(signed),doc,async()=>({ok:false})),/Не вдалося відкрити/);
+ await assert.rejects(load(client(signed),doc,async()=>({ok:true,blob:async()=>({size:30000001})})),/до 30 МБ/);
+});
+test('original deadline covers signing, download and body without late fetch or retry',async()=>{
+ for(const stage of ['sign','fetch','body']){
+  const timers=new Map();let id=0,resolve,fetches=0,signal;
+  const pending=new Promise(r=>resolve=r),c={window:{},AbortController,setTimeout:(fn,ms)=>{timers.set(++id,{fn,ms});return id},clearTimeout:n=>timers.delete(n)};
+  vm.createContext(c);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),c);
+  const client={storage:{from:()=>({createSignedUrl:()=>stage==='sign'?pending:Promise.resolve({data:{signedUrl:'https://example.test/file'}})})}};
+  const fetcher=async(_url,options)=>{fetches++;signal=options.signal;return stage==='fetch'?pending:{ok:true,blob:()=>pending}};
+  const result=c.window.CRMMilitaryZoneReview.loadOriginalFile(client,{storage_path:'f'},fetcher);
+  await new Promise(r=>setImmediate(r));const timer=[...timers.values()][0];assert.equal(timer.ms,30000);timer.fn();
+  await assert.rejects(result,e=>e.code==='ORIGINAL_READ_TIMEOUT');assert.equal(timers.size,0);if(signal)assert.equal(signal.aborted,true);
+  resolve(stage==='sign'?{data:{signedUrl:'https://example.test/file'}}:stage==='fetch'?{ok:true,blob:async()=>({size:1})}:{size:1});
+  await new Promise(r=>setImmediate(r));assert.equal(fetches,stage==='sign'?0:1);
+ }
 });

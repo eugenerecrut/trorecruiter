@@ -263,6 +263,22 @@ async function existingBackgroundJob(client,doc){
  if(result?.error||!Array.isArray(result?.data))throw Error('Не вдалося перевірити чергу СПЛАВ. Нове AI не запускалося. Спробуйте відкрити документ пізніше.');
  return result.data.find(job=>job?.document_id===doc.id&&job.kind==='zone')||null;
 }
+async function loadOriginalFile(client,doc,fetcher=fetch){
+ const controller=typeof AbortController==='function'?new AbortController():null;let timer,expired=false;
+ const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{expired=true;const error=Error('Час завантаження оригіналу минув. Спробуйте відкрити документ пізніше.');error.code='ORIGINAL_READ_TIMEOUT';reject(error);try{controller?.abort();}catch{}},30000);});
+ const read=async()=>{
+  const {data,error}=await client.storage.from('candidate-documents').createSignedUrl(doc.storage_path,300);
+  if(expired)throw Error('Завантаження оригіналу припинено.');
+  if(error||!data?.signedUrl)throw Error('Немає доступу до оригіналу');
+  const response=await fetcher(data.signedUrl,controller?{signal:controller.signal}:{});
+  if(expired)throw Error('Завантаження оригіналу припинено.');
+  if(!response.ok)throw Error('Не вдалося відкрити файл');
+  const blob=await response.blob();if(expired)throw Error('Завантаження оригіналу припинено.');
+  if(blob.size>30000000)throw Error('Пілот підтримує файли до 30 МБ');
+  return blob;
+ };
+ try{return await Promise.race([read(),timeout]);}finally{clearTimeout(timer);}
+}
 async function open(doc,options={}){
  const {autostart,viewOnly}=openingPolicy(doc,options);
  if(!doc?.storage_path)throw Error('Документ не має файла');
@@ -501,15 +517,16 @@ async function open(doc,options={}){
   if(closed)return dialog;
   $('[data-close]').disabled=true;
   if(autostart&&backgroundLookupError)throw backgroundLookupError;
+  const originalPath=doc.storage_path,blob=await loadOriginalFile(supabaseClient,doc);
+  if(closed)return dialog;
   if(autostart&&!backgroundJob&&!canary&&(!doc.ai_extracted||doc.processing_status==='AI помилка')){
    status('Виконуємо основне розпізнавання документа…');
    const initial=await supabaseClient.functions.invoke('process-id-document',{body:{document_id:doc.id}});
    if(initial.error||(!initial.data?.ok&&!initial.data?.extracted))throw Error('Основне розпізнавання не завершено. '+(initial.error?.message||initial.data?.error||''));
    if(window.CRMDocumentSync?.automate)await CRMDocumentSync.automate(supabaseClient,doc.id);
    const fresh=await supabaseClient.from('documents').select('*').eq('id',doc.id).single();if(fresh.error)throw fresh.error;Object.assign(doc,fresh.data);
+   if(doc.storage_path!==originalPath)throw Error('Версія оригіналу змінилася. Оновіть список документів і відкрийте чинний файл.');
   }
-  const {data,error}=await supabaseClient.storage.from('candidate-documents').createSignedUrl(doc.storage_path,300);if(error||!data?.signedUrl)throw Error('Немає доступу до оригіналу');
-  const response=await fetch(data.signedUrl);if(!response.ok)throw Error('Не вдалося відкрити файл');const blob=await response.blob();if(blob.size>30000000)throw Error('Пілот підтримує файли до 30 МБ');
   const originalBytes=await blob.arrayBuffer(),originalHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',originalBytes)),b=>b.toString(16).padStart(2,'0')).join('');
   originalDigest=originalHash;
   originalURL=URL.createObjectURL(blob);const originalLink=document.createElement('a');originalLink.href=originalURL;originalLink.download=doc.file_name||'Оригінал';originalLink.textContent='Завантажити оригінал';
@@ -533,5 +550,5 @@ async function open(doc,options={}){
  }catch(e){if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено';dialog.querySelectorAll('p')[1].textContent='Не вдалося завершити відкриття документа. Перевірте повідомлення нижче.';status(e.message);lock(false)}}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
+window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,loadOriginalFile,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
 })();
