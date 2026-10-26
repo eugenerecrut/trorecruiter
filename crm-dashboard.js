@@ -32,6 +32,31 @@
     if(s.total&&s.verified===s.total)return 'Комплект перевірено';
     return s.received?'Додати документи':'Очікуємо документи';
   }
+  function serviceDataLabel(summary) {
+    if(summary?.state==='ready')return 'Послужний: основні дані заповнені';
+    if(summary?.state==='missing'&&Number.isInteger(summary.issueCount)&&summary.issueCount>0)return 'Послужний: уточнити дані ('+summary.issueCount+')';
+    return 'Послужний: перевірка недоступна';
+  }
+  function serviceDataSummary(candidate,files,docs) {
+    try {
+      if(!Array.isArray(files)||typeof window.CRMServiceReadiness?.review!=='function')return null;
+      const matches=files.filter(p=>p.candidate_id===candidate.id);if(matches.length>1)return null;
+      const report=window.CRMServiceReadiness.review(candidate,matches[0]||{},docs);
+      if(!Array.isArray(report?.issues))return null;
+      if(report.ready===true&&report.issues.length===0)return {state:'ready',issueCount:0};
+      if(report.ready===false&&report.issues.length>0)return {state:'missing',issueCount:report.issues.length};
+    }catch(error){/* Keep document counts available if data validation fails. */}
+    return null;
+  }
+  async function serviceFiles(client,timeoutMs=10000) {
+    let timer;const controller=new AbortController();
+    try {
+      let query=client.from('personal_files').select('candidate_id,birth_place');
+      if(typeof query.abortSignal==='function')query=query.abortSignal(controller.signal);
+      const result=await Promise.race([query,new Promise(resolve=>{timer=setTimeout(()=>{controller.abort();resolve(null);},timeoutMs);})]);
+      return result&&!result.error&&Array.isArray(result.data)?result.data:null;
+    }catch(error){return null;}finally{clearTimeout(timer);}
+  }
   async function load(mode='home') {
     const root=document.querySelector('.content');if(!root)return;
     CRMWorkspace.card=null;CRMWorkspace.setContext(null,'');CRMWorkspace.markMenu(mode==='documents'?'documents':'home');
@@ -41,10 +66,11 @@
     host.querySelector('[data-dashboard-new]').onclick=()=>crmNavigate('new');
     host.querySelector('[data-dashboard-candidates]').onclick=()=>crmNavigate('candidates');
     try {
-      const [all,requirements,staff,result]=await Promise.all([getCandidates(),getDocumentRequirements(),CRMResponsibility.ready(),supabaseClient.from('documents').select('id,candidate_id,requirement_id,document_type,storage_path,verification_status,processing_status,version_group_id,version_number,deleted_at')]);
+      const [all,requirements,staff,result,personalFiles]=await Promise.all([getCandidates(),getDocumentRequirements(),CRMResponsibility.ready(),supabaseClient.from('documents').select('id,candidate_id,requirement_id,document_type,storage_path,verification_status,processing_status,version_group_id,version_number,deleted_at'),serviceFiles(supabaseClient)]);
       if(result.error)throw result.error;if(!host.isConnected)return;
       const candidates=all.filter(active),docs=CRMResponsibility.latest(result.data||[]),day=today();
       const totals=new Map(candidates.map(c=>[c.id,CRMDocumentState.summary(c,requirements,docs.filter(d=>d.candidate_id===c.id))]));
+      const serviceData=new Map(candidates.map(c=>[c.id,serviceDataSummary(c,personalFiles,docs.filter(d=>d.candidate_id===c.id))]));
       const staffIds=[...new Set([...staff.filter(s=>s.active&&['lead','recruiter'].includes(s.role)).map(s=>s.user_id),...candidates.map(c=>c.responsible_recruiter_id).filter(Boolean)])];
       const current=staff.find(s=>s.user_id===CRMResponsibility.userId);
       let owner=current?.role==='recruiter'?current.user_id:'all',view=mode==='documents'?'review':'all';
@@ -60,7 +86,7 @@
         const selected=base.filter(c=>matches(c,view)).sort((a,b)=>(totals.get(b.id).errors-totals.get(a.id).errors)||(totals.get(b.id).review-totals.get(a.id).review)||String(a.full_name||'').localeCompare(String(b.full_name||''),'uk'));
         content.querySelector('[data-dashboard-rows]').innerHTML=selected.map(c=>{
           const s=totals.get(c.id);
-          return '<tr><td><button type="button" class="crm-name-link" data-dashboard-card="'+esc(c.id)+'">'+esc(c.name_nominative||c.full_name)+'</button><small>'+esc(CRMWorkflow.profile(c).service_type||'Вид оформлення не уточнено')+'</small></td><td>'+esc(documentStatus(s))+'</td><td>'+s.review+' документів на перевірку · '+s.errors+' помилок AI'+(s.excludedReview||s.excludedErrors||s.excludedProcessing?'<small>Поза поточним комплектом: '+(s.excludedReview||0)+' неперевірених'+(s.excludedErrors?' · '+s.excludedErrors+' помилок AI':'')+(s.excludedProcessing?' · '+s.excludedProcessing+' опрацьовується AI':'')+'</small>':'')+'</td><td>'+esc(CRMResponsibility.name(c.responsible_recruiter_id))+'</td><td>'+s.verified+'/'+s.total+(s.unknown?'<small>Уточнити: '+s.unknown+'</small>':'')+'</td><td><button type="button" data-dashboard-plan="'+esc(c.id)+'">Справа</button><button type="button" data-dashboard-docs="'+esc(c.id)+'">Документи</button></td></tr>';
+          return '<tr><td><button type="button" class="crm-name-link" data-dashboard-card="'+esc(c.id)+'">'+esc(c.name_nominative||c.full_name)+'</button><small>'+esc(CRMWorkflow.profile(c).service_type||'Вид оформлення не уточнено')+'</small></td><td>'+esc(documentStatus(s))+'<small>'+esc(serviceDataLabel(serviceData.get(c.id)))+'</small></td><td>'+s.review+' документів на перевірку · '+s.errors+' помилок AI'+(s.excludedReview||s.excludedErrors||s.excludedProcessing?'<small>Поза поточним комплектом: '+(s.excludedReview||0)+' неперевірених'+(s.excludedErrors?' · '+s.excludedErrors+' помилок AI':'')+(s.excludedProcessing?' · '+s.excludedProcessing+' опрацьовується AI':'')+'</small>':'')+'</td><td>'+esc(CRMResponsibility.name(c.responsible_recruiter_id))+'</td><td>'+s.verified+'/'+s.total+(s.unknown?'<small>Уточнити: '+s.unknown+'</small>':'')+'</td><td><button type="button" data-dashboard-plan="'+esc(c.id)+'">Справа</button><button type="button" data-dashboard-docs="'+esc(c.id)+'">Документи</button></td></tr>';
         }).join('');
         content.querySelector('[data-dashboard-empty]').hidden=selected.length>0;
         host.querySelector('[data-dashboard-status]').textContent='Справ: '+base.length+' · Без відповідального: '+base.filter(c=>!c.responsible_recruiter_id).length+' · '+date(day);
@@ -77,6 +103,6 @@
     }catch(error){if(host.isConnected){host.querySelector('[data-dashboard-status]').textContent='Не вдалося завантажити дашборд: '+error.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=()=>load(mode);host.append(retry);}}
   }
   window.CRMCaseTasks={today,date,due,bucket,next,compare,active};
-  window.CRMDashboard={load,documentStatus};
+  window.CRMDashboard={load,documentStatus,serviceDataLabel,serviceDataSummary,serviceFiles};
   CRMWorkspace.loadHome=()=>load();
 })();

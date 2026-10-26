@@ -57,3 +57,32 @@ test('inactive and explicitly unmet requirements cannot create invisible dashboa
  const scope=ctx.window.CRMDocumentState.scope(person,requirements,docs);assert.equal(scope.excluded.length,2);assert.equal(scope.current.length,0);
  const manager=fs.readFileSync(require('node:path').join(__dirname,'../documents.js'),'utf8');assert.match(manager,/CRMDocumentState.scope\(c,reqs,docs\)/);assert.match(manager,/documentScope.current.filter/);
 });
+
+test('service data labels distinguish incomplete data from document verification',()=>{
+ const label=c.CRMDashboard.serviceDataLabel;
+ assert.equal(label({state:'ready'}),'Послужний: основні дані заповнені');
+ assert.equal(label({state:'missing',issueCount:2}),'Послужний: уточнити дані (2)');
+ for(const value of [null,{}, {state:'unavailable',issueCount:2},...[-1,0,1.5,'2'].map(issueCount=>({state:'missing',issueCount}))])assert.equal(label(value),'Послужний: перевірка недоступна');
+});
+test('service data adapter rejects unavailable and inconsistent checks, preserves personal file fallback',()=>{
+ const person={id:'c'},files=[{candidate_id:'c',birth_place:'Україна'}],before=JSON.stringify([person,files]);
+ assert.equal(c.CRMDashboard.serviceDataSummary(person,files,[]),null);
+ c.CRMServiceReadiness={review:(candidate,pf)=>{assert.equal(pf.birth_place,'Україна');return {ready:true,issues:[]};}};
+ assert.equal(c.CRMDashboard.serviceDataSummary(person,files,[]).state,'ready');
+ assert.equal(c.CRMDashboard.serviceDataSummary(person,[...files,...files],[]),null);
+ assert.equal(c.CRMDashboard.serviceDataSummary(person,null,[]),null);
+ for(const report of [{ready:true,issues:[{}]},{ready:false,issues:[]},{}]){c.CRMServiceReadiness.review=()=>report;assert.equal(c.CRMDashboard.serviceDataSummary(person,files,[]),null);}
+ c.CRMServiceReadiness.review=()=>({ready:false,issues:[{},{}]});assert.equal(c.CRMDashboard.serviceDataSummary(person,files,[]).issueCount,2);
+ c.CRMServiceReadiness.review=()=>{throw Error('unavailable')};assert.equal(c.CRMDashboard.serviceDataSummary(person,files,[]),null);
+ assert.equal(JSON.stringify([person,files]),before);
+});
+test('personal file lookup fails closed on errors, malformed rows and timeout',async()=>{
+ const ctx=vm.createContext({CRMWorkspace:{},AbortController,setTimeout,clearTimeout});ctx.window=ctx;vm.runInContext(source,ctx);
+ const read=ctx.CRMDashboard.serviceFiles;
+ const client=result=>({from:table=>{assert.equal(table,'personal_files');return {select:columns=>{assert.equal(columns,'candidate_id,birth_place');return result;}};}});
+ for(const result of [{error:Error('denied')},{data:{}},null])assert.equal(await read(client(Promise.resolve(result))),null);
+ assert.equal(await read(client(new Promise(()=>{})),5),null);
+ const rows=[{candidate_id:'c',birth_place:'Україна'}];assert.equal(await read(client(Promise.resolve({data:rows}))),rows);
+ assert.equal(await read({from:()=>{throw Error('offline')}}),null);
+ assert.match(source,/serviceDataLabel\(serviceData.get\(c.id\)\)/);
+});
