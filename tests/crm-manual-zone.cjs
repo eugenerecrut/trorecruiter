@@ -339,7 +339,7 @@ test('parent review explains exact checks without unsafe HTML, extra controls or
  const evidence={key:'relatives',zone_crosscheck:true,review_details:['Ступінь споріднення прочитано непевно.','<script>alert(1)</script>',null,{}]};
  const html=render(evidence);
  assert.match(html,/Що перевірити:/);assert.match(html,/Ступінь споріднення/);assert.match(html,/&lt;script&gt;/);assert.match(html,/Збіг ПІБ.*не знімає непевність/);
- assert.doesNotMatch(html,/<script>|<button/);assert.equal(html.includes('[object Object]'),false);
+ assert.doesNotMatch(html,/<script>|<button/i);assert.equal(html.includes('[object Object]'),false);
  assert.equal(render({...evidence,zone_crosscheck:false}),'');assert.equal(render({...evidence,key:'birth_date'}),'');assert.equal(render({...evidence,review_details:[]}), '');
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(source,/evidenceReviewHTML\(e\)/);
 });
