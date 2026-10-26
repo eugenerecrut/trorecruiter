@@ -1,7 +1,7 @@
 (function(root){
 'use strict';
 const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ]/g,"'").replace(/\s+/g,' ').trim().toLocaleLowerCase('uk-UA');
-const isDocument=t=>/трудов|відомості.*реєстр.*застрахован/iu.test(String(t||''));
+const isDocument=t=>/трудов|відомості.*реєстр.*застрахован/iu.test(String(t||''))||/^(?:копія )?витяг (?:з|із) реєстру застрахованих осіб державного реєстру загальнообов'?я'?зкового державного соціального страхування \(пфу\)$/u.test(norm(t));
 const date=v=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(v||''))return null;const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v?v:null;};
 const employer=r=>norm(r.employer_code||r.employer);
 const eventKey=r=>[r.kind,r.event_date,employer(r),norm(r.order_number),norm(r.raw_text)].join('|');
