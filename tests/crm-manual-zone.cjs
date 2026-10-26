@@ -178,7 +178,7 @@ test('saved zonal crosscheck is read-only, source filtered and rendered without 
  assert.match(body,/reports.filter\(r=>sourceTarget\(r,context,binding\)\)/);assert.match(body,/CRMDocumentCrosscheck.load/);
  assert.match(body,/section.dataset.crosscheck/);assert(body.includes("querySelector('[data-crosscheck]')?.remove()"));
  assert.match(body,/if\(closed\|\|version!==crosscheckVersion\)return/);assert.doesNotMatch(body,/functions.invoke|\.update\(|\.insert\(|\.upsert\(/);
- assert.match(source,/crosscheck\(\).catch/);assert.match(body,/зональне читання, сторінка/);
+ assert.match(source,/crosscheck\(\).catch/);assert.match(body,/crosscheckHTML\(evidence\)/);assert.match(source,/зональне читання, сторінка/);
  assert(source.includes("if(job.zone_summary?.source_changed||job.state==='superseded'){crosscheckVersion++"));
 });
 
@@ -369,4 +369,25 @@ test('source opening checks current version before signing and preserves the sig
  for(const changed of [{...row,id:'new'},{...row,deleted_at:'now'},{...row,ai_processed_at:'new'}]){calls.length=0;current=changed;await assert.rejects(open(client,source,'c'));assert.equal(calls.filter(a=>a[0]==='sign').length,0);}
  calls.length=0;current=row;readError={message:'blocked'};await assert.rejects(open(client,source,'c'));assert.equal(calls.filter(a=>a[0]==='sign').length,0);
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/evidenceURL\(supabaseClient,source,doc.candidate_id\)/);assert.match(code,/!closed&&version===crosscheckVersion/);
+});
+
+test('crosscheck puts conflicts first, folds reference facts, and retains original source indices',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const render=context.window.CRMMilitaryZoneReview.crosscheckHTML;
+ const statuses=['corroborated','needs_review','conflict','missing','single_source','constructor'];
+ const evidence=statuses.map((status,i)=>Object.freeze({key:'birth_place',status,current:null,sources:Object.freeze([Object.freeze({document_id:'doc'+i,value:'value'+i,file_name:i===2?'<img src=x>':'file'+i})])}));
+ Object.freeze(evidence);const before=JSON.stringify(evidence),html=render(evidence);
+ assert.match(html,/Для звірки: 4. Інших пунктів: 2/);assert(html.includes('<details data-crosscheck-other>'));assert(html.includes('Статус не визначено — звірте'));assert(html.includes('&lt;img src=x&gt;'));assert.equal(html.includes('<img src=x>'),false);
+ const order=[2,1,3,5,0,4].map(i=>html.indexOf('data-evidence-entry="'+i+'"'));assert(order.every(i=>i>=0));for(let i=1;i<order.length;i++)assert(order[i]>order[i-1]);
+ assert(html.indexOf('data-crosscheck-other')>order[3]);assert(html.indexOf('data-crosscheck-other')<order[4]);
+ for(let i=0;i<6;i++)assert(html.includes('data-evidence-document="doc'+i+'" data-evidence-entry="'+i+'" data-evidence-source="0"'));
+ assert.equal(JSON.stringify(evidence),before);
+});
+test('crosscheck empty and agreement-only views never claim manual confirmation or case completeness',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const render=context.window.CRMMilitaryZoneReview.crosscheckHTML;
+ assert.match(render([]),/Немає придатних відомостей.*не підтвердження готовності/);
+ const html=render([{key:'rnokpp',status:'corroborated',sources:[]}]);
+ assert.match(html,/Для звірки: 0. Інших пунктів: 1/);assert.match(html,/Це не ручне підтвердження документів/);assert.equal(html.includes('<h3>Спочатку перевірте</h3>'),false);
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/crosscheckHTML\(evidence\)/);
 });
