@@ -38,6 +38,7 @@ async function getCount(table) {
 }
 
 async function updateDashboard() {
+  if(typeof CRMDashboard!=='undefined'&&typeof CRMDashboard.load==='function')return;
   const cards=document.querySelectorAll('.card-number');if(cards.length<3)return;
   cards.forEach(card=>card.textContent='…');
   try{
