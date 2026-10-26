@@ -48,8 +48,9 @@ function review(c,pf={},documents=[]){
   for(const k of ['start_date','end_date','order_date'])if(r[k]&&!date(r[k]))add(id,'Уточніть дату в записі.',r);
   if(date(r.start_date)&&date(r.end_date)&&r.end_date<r.start_date)add(id,'Завершення періоду раніше за початок.',r);
  }
- const relation=r=>norm(r.relationship||r.relation);
- for(const role of ['мати','батько','дружина','чоловік']){const people=list(p.relatives).filter(r=>relation(r)===role);if(new Set(people.map(r=>norm(r.full_name))).size>1)add(role==='мати'||role==='батько'?'family.parents':'family.members','Кілька різних записів: '+role+'. Звірте їх актуальність.');}
+ const relation=r=>norm(r?.relationship||r?.relation);
+ for(const r of list(p.relatives))if(!r||r.requires_review||r.crossed_out)add(['мати','батько'].includes(relation(r))?'family.parents':'family.members','Запис родича потребує звірки або закреслений і не використовується у друці.',r);
+ for(const role of ['мати','батько','дружина','чоловік']){const people=list(p.relatives).filter(r=>r&&!r.requires_review&&!r.crossed_out&&relation(r)===role);if(new Set(people.map(r=>norm(r.full_name))).size>1)add(role==='мати'||role==='батько'?'family.parents':'family.members','Кілька різних записів: '+role+'. Звірте їх актуальність.');}
  if(!blank(p.family_residence_address)&&!p.family_residence_confirmed)add('family.address','Адреса родини є, але її не підтверджено для друку.');
  const overrides=Object.keys(object(p.service_record_print));if(overrides.length)notes.push('Є окремі правки для друку: '+overrides.length+'. Вони не замінюють перевірку первинних даних.');
  return {form:'service_record',ready:issues.length===0,issues,notes,checkedGroups:root.CRMFieldRegistry.fields.length,worked,served};
