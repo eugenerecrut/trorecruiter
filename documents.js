@@ -430,7 +430,9 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 // Review the existing document container; never infer values that AI did not return.
 async function reviewDocumentData(id){
   const {data:d,error}=await supabaseClient.from('documents').select('*').eq('id',id).single();
-  if(error)throw error;if(CRMDocumentSync.plan(d,{profile_data:{}}).supported)return CRMDocumentSync.showPreview(supabaseClient,id);if(d.deleted_at)throw new Error('Документ видалено. Спочатку відновіть його.');
+  if(error)throw error;
+  if(['AI обробка','AI помилка'].includes(d.processing_status))throw new Error('Розпізнавання не завершено; попередні дані AI не переносяться. Дочекайтеся завершення або перевірте причину помилки розпізнавання.');
+  if(CRMDocumentSync.plan(d,{profile_data:{}}).supported)return CRMDocumentSync.showPreview(supabaseClient,id);if(d.deleted_at)throw new Error('Документ видалено. Спочатку відновіть його.');
   const [cr,pr]=await Promise.all([supabaseClient.from('candidates').select('*').eq('id',d.candidate_id).single(),supabaseClient.from('personal_files').select('*').eq('candidate_id',d.candidate_id).maybeSingle()]);
   if(cr.error)throw cr.error;if(pr.error)throw pr.error;
   await CRMResponsibility.ready();
