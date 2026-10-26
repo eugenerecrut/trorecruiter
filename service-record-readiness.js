@@ -19,9 +19,9 @@ function review(c,pf={},documents=[]){
  const worked=bool(c.worked_before??p.worked_before),served=bool(c.served_before??p.served_before);
  if(worked===null)add('employment.absence','Уточніть, чи працював кандидат.');
  if(served===null)add('service.absence','Уточніть, чи проходив кандидат військову службу.');
- const education=list(p.education_records),acceptedEducation=education.filter(r=>r&&!r.requires_review);
+ const education=list(p.education_records),acceptedEducation=education.filter(r=>r&&!r.requires_review&&!r.crossed_out);
  if(!acceptedEducation.length&&blank(p.education_institution))add('education.civil','Немає закладу освіти для послужного.');
- for(const r of education){if(!r||r.requires_review){add('education.civil','Запис освіти потребує звірки й не використовується у друці.',r);continue;}if(blank(r.institution))add('education.civil','У записі освіти бракує назви закладу.',r);if(r.graduation_year&&!/^\d{4}$/.test(String(r.graduation_year)))add('education.civil','Перевірте рік завершення навчання.',r);}
+ for(const r of education){if(!r||r.requires_review||r.crossed_out){add('education.civil','Запис освіти потребує звірки або закреслений і не використовується у друці.',r);continue;}if(blank(r.institution))add('education.civil','У записі освіти бракує назви закладу.',r);if(r.graduation_year&&!/^\d{4}$/.test(String(r.graduation_year)))add('education.civil','Перевірте рік завершення навчання.',r);}
  function periods(kind,enabled,id){
   if(enabled!==true)return;
   const records=list(p.work_records).filter(r=>(r?.kind===kind||kind==='military_service'&&r?.kind==='police_service'));
