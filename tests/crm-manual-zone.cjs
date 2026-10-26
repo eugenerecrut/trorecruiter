@@ -332,3 +332,14 @@ test('known output overflow requests page-splitting review instead of a billing 
  const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);const describe=context.window.CRMMilitaryZoneReview.backgroundSummary;
  const result=describe({state:'needs_review',result:{status:'complete_with_gaps'},zone_summary:{code:'ZONE_RESULT_UNCERTAIN',providers:[{provider:'OpenRouter',diagnosis:'OUTPUT_LIMIT_EXCEEDED'}]}});assert.equal(result.title,'Опрацювання зупинено');assert.match(JSON.stringify(result),/Скорочений результат не прийнято/);assert.doesNotMatch(JSON.stringify(result),/перевірити ліміти та доступ AI-сервісів/);
 });
+
+test('parent review explains exact checks without unsafe HTML, extra controls or false resolution',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const render=context.window.CRMMilitaryZoneReview.evidenceReviewHTML;
+ const evidence={key:'relatives',zone_crosscheck:true,review_details:['Ступінь споріднення прочитано непевно.','<script>alert(1)</script>',null,{}]};
+ const html=render(evidence);
+ assert.match(html,/Що перевірити:/);assert.match(html,/Ступінь споріднення/);assert.match(html,/&lt;script&gt;/);assert.match(html,/Збіг ПІБ.*не знімає непевність/);
+ assert.doesNotMatch(html,/<script>|<button/);assert.equal(html.includes('[object Object]'),false);
+ assert.equal(render({...evidence,zone_crosscheck:false}),'');assert.equal(render({...evidence,key:'birth_date'}),'');assert.equal(render({...evidence,review_details:[]}), '');
+ const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(source,/evidenceReviewHTML\(e\)/);
+});
