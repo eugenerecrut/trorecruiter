@@ -5,6 +5,7 @@ const label=k=>labels[k]||'Інші відомості ('+k+')';
 const blank=v=>v==null||typeof v==='string'&&!v.trim()||Array.isArray(v)&&!v.length;
 function profile(c){if(typeof c.profile_data==='string'){try{return JSON.parse(c.profile_data)||{}}catch{return {}}}return c.profile_data||{}}
 function build(candidate,requirements,documents,personalFile={}){
+ personalFile=personalFile&&(!personalFile.candidate_id||personalFile.candidate_id===candidate.id)?personalFile:{};
  // Use the same active-document scope as the card. Keep historical/conditional
  // files in storage, but do not turn an explicitly inapplicable file into a blocker.
  documents=root.CRMResponsibility.latest(documents.filter(d=>!d.candidate_id||d.candidate_id===candidate.id)).filter(d=>!d.document_type||root.CRMCandidateConditions.documentCondition(d.document_type,candidate)!==false);

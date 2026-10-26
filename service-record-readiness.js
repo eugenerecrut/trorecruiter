@@ -8,6 +8,7 @@ const bool=v=>v===true||v==='true'?true:v===false||v==='false'?false:null;
 const norm=v=>String(v||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
 function date(v){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')))return false;const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v;}
 function review(c,pf={},documents=[]){
+ pf=pf&&(!pf.candidate_id||pf.candidate_id===c.id)?pf:{};
  const raw=object(c.profile_data),p=root.CRMBiographyFacts?root.CRMBiographyFacts.profile(raw):raw,issues=[],notes=[];
  const candidateDocs=documents.filter(d=>!d.candidate_id||d.candidate_id===c.id);
  const docs=root.CRMResponsibility?.latest(candidateDocs)||candidateDocs.filter(d=>!d.deleted_at);
