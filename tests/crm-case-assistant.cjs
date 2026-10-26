@@ -85,3 +85,22 @@ test('unusable education records do not suppress institution questions',()=>{
  const c=candidate();delete c.profile_data.education_institution;c.profile_data.education_records=[{institution:'Ліцей'}];
  assert(!build(c,[],[]).questions.some(q=>q.key==='education_institution'));
 });
+
+test('case report scopes candidate sources before latest versions, counts and planning',()=>{
+ const savedResponsibility=w.CRMResponsibility,savedPlan=w.CRMDocumentSync.plan,calls=[];
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-responsibility.js'),'utf8'),ctx);
+ w.CRMDocumentSync.plan=d=>{calls.push(d.id);return {rows:d.rows||[]};};
+ try{
+  const c=candidate(),reqs=[{id:'passport',document_type:'Копія паспорта',is_required:true}],docs=[
+   {id:'own',candidate_id:c.id,requirement_id:'passport',document_type:'Копія паспорта',storage_path:'own.pdf',verification_status:'Підтверджено',version_group_id:'group',version_number:1,ai_extracted:{},rows:[{key:'shpk',action:'fill',incoming:'Тест'}]},
+   {id:'foreign',candidate_id:'other',requirement_id:'passport',document_type:'Копія паспорта',storage_path:'other.pdf',version_group_id:'group',version_number:2,ai_extracted:{},rows:[{key:'phone',action:'conflict',current:'saved',incoming:'foreign'}]},
+   {id:'foreign-error',candidate_id:'other',processing_status:'AI помилка'}];
+  const before=JSON.stringify({c,reqs,docs}),r=build(c,reqs,docs);
+  assert.deepEqual(calls,['own']);assert.equal(r.issues.length,0);assert.equal(r.state.errors,0);assert.equal(r.state.verified,1);
+  assert.equal(r.fills.length,1);assert.equal(r.fills[0].document.id,'own');assert.equal(r.missingDocuments.length,0);
+  assert.equal(JSON.stringify({c,reqs,docs}),before);
+  const sourceCandidate={...c,profile_data:{...c.profile_data,relatives:[{relationship:'Мати',full_name:'Тестова Олена',requires_review:true,source_document_id:'own'}]}};
+  const readiness=w.CRMServiceReadiness.review(sourceCandidate,{},docs);assert(readiness.issues.some(i=>i.documents.some(d=>d.id==='own')));assert(!readiness.issues.some(i=>i.documents.some(d=>d.id==='foreign')));
+  const onlyForeign=build(c,reqs,docs.slice(1));assert.equal(onlyForeign.fills.length,0);assert.equal(onlyForeign.issues.length,0);assert.equal(onlyForeign.state.verified,0);assert.equal(onlyForeign.missingDocuments.length,1);
+ }finally{w.CRMResponsibility=savedResponsibility;w.CRMDocumentSync.plan=savedPlan;}
+});

@@ -9,7 +9,8 @@ const norm=v=>String(v||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA'
 function date(v){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')))return false;const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v;}
 function review(c,pf={},documents=[]){
  const raw=object(c.profile_data),p=root.CRMBiographyFacts?root.CRMBiographyFacts.profile(raw):raw,issues=[],notes=[];
- const docs=(root.CRMResponsibility?.latest(documents)||documents.filter(d=>!d.deleted_at)).filter(d=>!d.candidate_id||d.candidate_id===c.id);
+ const candidateDocs=documents.filter(d=>!d.candidate_id||d.candidate_id===c.id);
+ const docs=root.CRMResponsibility?.latest(candidateDocs)||candidateDocs.filter(d=>!d.deleted_at);
  function add(fieldId,text,record){const field=root.CRMFieldRegistry.fields.find(f=>f.id===fieldId);const ids=record?.source_document_id?[record.source_document_id]:[];issues.push({fieldId,label:field?.label||fieldId,text,sources:field?.sources||[],documents:docs.filter(d=>ids.includes(d.id)).map(d=>({id:d.id,name:d.file_name||d.document_type}))});}
  for(const [key,id] of [['education_records','education.civil'],['work_records','service.records'],['military_rank_records','military.rank_order'],['relatives','family.members'],['awards','combat.awards'],['combat_records','combat.periods'],['reserve_training_records','service.reserve_training']])if(raw[key]!=null&&!Array.isArray(raw[key]))add(id,'Некоректний формат збережених записів: потрібна звірка.');
  if(blank(c.name_nominative||c.full_name)||String(c.name_nominative||c.full_name).trim().split(/\s+/).length<2)add('identity.name','Уточніть чинне ПІБ.');
