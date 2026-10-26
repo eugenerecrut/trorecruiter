@@ -1,7 +1,19 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const source=fs.readFileSync(require('node:path').join(__dirname,'../crm-dashboard.js'),'utf8');
+const script=fs.readFileSync(require('node:path').join(__dirname,'../script.js'),'utf8');
+const legacyUpdate=script.slice(script.indexOf('async function updateDashboard()'),script.indexOf('\nasync function getCandidates('));
 const c=vm.createContext({CRMWorkspace:{}});c.window=c;vm.runInContext(source,c);
 const status=extra=>c.CRMDashboard.documentStatus({errors:0,processing:0,review:0,unknown:0,total:5,verified:0,received:0,...extra});
+
+test('modern dashboard skips legacy counters without triggering a duplicate render',async()=>{
+ const context={CRMDashboard:{load:()=>{throw Error('Duplicate render')}},document:{querySelectorAll:()=>{throw Error('Legacy counters queried')}}};
+ const update=vm.runInNewContext('('+legacyUpdate+')',context);await update();
+});
+test('legacy counter rendering still works when the modern dashboard is absent',async()=>{
+ const cards=Array.from({length:3},()=>({isConnected:true,textContent:''})),tables=[];
+ const update=vm.runInNewContext('('+legacyUpdate+')',{document:{querySelectorAll:()=>cards},getCount:async table=>{tables.push(table);return tables.length}});
+ await update();assert.deepEqual(tables,['candidates','personal_files','documents']);assert.deepEqual(cards.map(c=>c.textContent),[1,2,3]);
+});
 test('dashboard describes document state rather than recruitment stage',()=>{
  assert.equal(status({}),'Очікуємо документи');
  assert.equal(status({received:2}),'Додати документи');
