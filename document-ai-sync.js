@@ -9,7 +9,7 @@
   const equal = (a,b) => typeof a==='object'||typeof b==='object'?stable(a)===stable(b):norm(a)===norm(b);
   function flatten(value) {
     const e=object(value), out={...e}, formatConflicts=[];
-    for(const section of ['personal','service'])for(const [k,v] of Object.entries(object(e[section]))){if(!empty(out[k])&&!empty(v)&&!equal(out[k],v))formatConflicts.push(k);if(empty(out[k]))out[k]=v;}
+    for(const section of ['personal','service'])for(const [k,v] of Object.entries(object(e[section]))){if(!empty(out[k])&&!empty(v)&&!equal(comparable(k,out[k]),comparable(k,v)))formatConflicts.push(k);if(empty(out[k]))out[k]=v;}
     out._sync_format_conflicts=formatConflicts;
     for(const [k,v] of Object.entries(object(e.name_cases))) {
       const key=k==='nominative'?'name_nominative':k==='gender'?'name_gender':'name_'+k;
@@ -19,6 +19,14 @@
     return out;
   }
   function service(v){const n=norm(v);return /мобілізац/.test(n)?'За мобілізацією':/контракт/.test(n)?'За контрактом':null;}
+  function normalizeSex(value){
+    if(typeof value!=='string')return null;
+    const maleAliases=new Set(['male','m','м','ч','чол','чоловіча','чоловічий']);
+    const femaleAliases=new Set(['female','f','ж','жін','жіноча','жіночий']);
+    value=norm(value);
+    return maleAliases.has(value)?'male':femaleAliases.has(value)?'female':null;
+  }
+  function comparable(key,value){return key==='sex'?(normalizeSex(value)??value):value;}
   function date(v,partial=false){
     const text=String(v??'').trim();if(!new RegExp(partial?'^\\d{4}(?:-\\d{2}(?:-\\d{2})?)?$':'^\\d{4}-\\d{2}-\\d{2}$').test(text))return false;
     const [y,m=1,d=1]=text.split('-').map(Number), dt=new Date(Date.UTC(y,m-1,d));
@@ -33,6 +41,7 @@
     if(key==='tariff_grade')return /^\d{1,2}$/.test(String(v))&&Number(v)>=1&&Number(v)<=99;
     if(key==='service_type')return !!service(v);
     if(key==='rnokpp')return /^\d{10}$/.test(String(v));
+    if(key==='sex')return !!normalizeSex(v);
     if(/full_name|name_nominative|name_genitive|recruiter_name|signatory/.test(key))return /^[А-ЯІЇЄҐа-яіїєґ\s.'’ʼ-]+$/u.test(String(v))&&String(v).trim().split(/\s+/).length>=2;
     if(key==='desired_position')return !(/[A-Za-z]/.test(String(v))&&/[А-Яа-яІіЇїЄє]/.test(String(v)));
     return String(v).length<=2000;
@@ -164,7 +173,7 @@
         if(e.field_evidence?.[key]?.requires_review||e.meta?.field_evidence?.[key]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[key]?.legibility||e.meta?.field_evidence?.[key]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
         else if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
         else if(!(['driver_license','ubd_certificate','registration_records','marriage_record','education_records','work_records','work_events'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
-        else if(!empty(protectedValue)&&typeof value!=='object'&&equal(key==='service_type'?service(protectedValue):protectedValue,value)){action='leave';reason=ownerIssue?'Значення збігається з карткою; документ потребує перевірки':'';}
+        else if(!empty(protectedValue)&&typeof value!=='object'&&equal(key==='service_type'?service(protectedValue):comparable(key,protectedValue),value)){action='leave';reason=ownerIssue?'Значення збігається з карткою; документ потребує перевірки':'';}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
         else if(target==='profile'&&['education_records','work_records','work_events'].includes(key)&&empty(legacy)){
           if(key!=='education_records'&&Array.isArray(value))value=value.filter(row=>{
@@ -191,7 +200,7 @@
       if(tax&&!['full_name','birth_date','rnokpp'].includes(key))continue;
       if(marriage&&!['full_name','birth_date','rnokpp'].includes(key))continue;
       if(ancillary||(militaryFacts&&!military&&!registry))continue;
-      let v=e[key];if(key==='phone'&&!empty(v)&&root.CRMPhone)v=root.CRMPhone.normalize(v);
+      let v=comparable(key,e[key]);if(key==='phone'&&!empty(v)&&root.CRMPhone)v=root.CRMPhone.normalize(v);
       propose('candidate',key,v);
     }
     if(recommendation){

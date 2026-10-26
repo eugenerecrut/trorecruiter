@@ -216,3 +216,23 @@ test('draft-registration rejects another card and unfinished OCR without proposi
   }
  }
 });
+
+test('OCR sex markers become canonical candidate values without changing source extraction',()=>{
+ for(const [sex,expected] of [['Ч','male'],[' M ','male'],['М','male'],['чоловіча','male'],['Ж','female'],[' F ','female'],['жіноча','female'],['female','female']]){
+  const c=candidate(),d=document({...personal(),sex},'Копія паспорта'),before=JSON.stringify({c,d}),r=sync.plan(d,c),row=r.rows.find(x=>x.key==='sex');
+  assert.equal(row.action,'fill');assert.equal(row.incoming,expected);assert.equal(r.selections.find(x=>x.key==='sex').incoming,expected);assert.equal(JSON.stringify({c,d}),before);
+ }
+});
+test('unknown OCR sex values conflict and manual values remain protected',()=>{
+ for(const sex of ['невідомо','male female',1,true,['male'],{value:'male'}]){
+  const r=sync.plan(document({...personal(),sex},'Копія паспорта'),candidate());assert.equal(r.rows.find(x=>x.key==='sex').action,'conflict');assert(!r.selections.some(x=>x.key==='sex'));
+ }
+ for(const [saved,incoming,action] of [['female','Ч','conflict'],['Ж','female','leave'],['Ч','male','leave']]){
+  const c=candidate();c.sex=saved;const before=JSON.stringify(c),r=sync.plan(document({...personal(),sex:incoming},'Копія паспорта'),c);
+  assert.equal(r.rows.find(x=>x.key==='sex').action,action);assert(!r.selections.some(x=>x.key==='sex'));assert.equal(JSON.stringify(c),before);
+ }
+});
+test('equivalent flat and nested sex markers do not create a format conflict',()=>{
+ const c=candidate(),d=document({...personal(),sex:'Ч',personal:{...personal(),sex:'male'}},'Копія паспорта'),before=JSON.stringify(d),r=sync.plan(d,c);
+ assert.equal(r.rows.find(x=>x.key==='sex').action,'fill');assert.equal(r.selections.find(x=>x.key==='sex').incoming,'male');assert.equal(JSON.stringify(d),before);
+});
