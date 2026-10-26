@@ -108,6 +108,8 @@
     const policy=root.CRMDocumentPolicy?.normalize(document),p=object(candidate.profile_data),e=flatten(policy?.extracted||document.ai_extracted),rows=[],selections=[];
     if(['AI обробка','AI помилка'].includes(document.processing_status))return {document,candidate,rows,selections,supported:false,blockedReason:'Розпізнавання не завершено; старі дані AI не переносяться.'};
     if(document.candidate_id&&candidate.id&&document.candidate_id!==candidate.id||p.merged_into||p.workflow?.archived_at)return {document,candidate,rows:[],selections:[],supported:false};
+    const childBirth=root.CRMDocumentPolicy?.isChildBirth?.(document)??[document.document_type,document.ai_document_type,document.requirement_type].some(t=>/народження.*(?:дитин|дітей)/iu.test(String(t||'')));
+    if(childBirth)return {document,candidate,rows,selections,supported:false,blockedReason:'Це свідоцтво дитини: особисті дані кандидата з нього не переносяться.'};
     const type=String(policy?.type||document.ai_document_type||document.document_type||'');
     const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
     const identity=/паспорт|ID[\s-]*карт/iu.test(type),military=!!root.CRMMilitary?.isDocument(type),work=!!root.CRMWork?.isDocument(type),vlk=!!root.CRMVLK?.isDocument(type);

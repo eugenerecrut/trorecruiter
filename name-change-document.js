@@ -10,7 +10,7 @@ function chain(c){
 }
 const matches=(name,c)=>!!norm(name)&&chain(c).names.has(norm(name));
 async function birthLinks(candidateId){
- const docs=CRMResponsibility.latest(await getCandidateDocuments(candidateId)).filter(d=>!d.deleted_at&&/свідоцтво про народження/iu.test(d.document_type||d.ai_document_type||'')&&!/дітей/iu.test(d.document_type||''));
+ const docs=CRMResponsibility.latest(await getCandidateDocuments(candidateId)).filter(d=>!d.deleted_at&&/свідоцтво про народження/iu.test(d.document_type||d.ai_document_type||'')&&!(root.CRMDocumentPolicy?.isChildBirth?.(d)??[d.document_type,d.ai_document_type,d.requirement_type].some(t=>/народження.*(?:дитин|дітей)/iu.test(String(t||'')))));
  const esc=CRMWorkspace.escape,dialog=document.createElement('dialog');dialog.className='crm-dialog';dialog.innerHTML='<h2>Свідоцтва про народження</h2><p>Перевірте дані за підтвердженою історією ПІБ. Чинне ПІБ залишиться без змін.</p>'+docs.map((d,i)=>'<p><button type="button" data-birth-link="'+i+'">'+esc(d.file_name||d.document_type)+'</button></p>').join('')+(!docs.length?'<p>Свідоцтво ще не завантажено.</p>':'')+'<button type="button" data-close>Закрити</button>';document.body.append(dialog);dialog.showModal();const close=()=>{dialog.close();dialog.remove()};dialog.querySelector('[data-close]').onclick=close;dialog.querySelectorAll('[data-birth-link]').forEach(b=>b.onclick=()=>{const d=docs[Number(b.dataset.birthLink)];close();CRMDocumentSync.showPreview(supabaseClient,d.id).catch(e=>alert(e.message));});
 }
 

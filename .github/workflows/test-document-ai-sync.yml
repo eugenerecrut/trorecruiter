@@ -23,6 +23,7 @@ jobs:
           node --test tests/qwen-collaborator.mjs
           node --test tests/qwen-exercises.mjs
           node --test tests/crm-name-change-validation.cjs
+          node --test tests/crm-child-birth-boundary.cjs
           node --test tests/splav-zone-worker.mjs
           node --test tests/crm-candidate-facts.cjs
           node --test tests/crm-candidate-case-view.cjs tests/crm-personal-file-cas.cjs

@@ -449,10 +449,11 @@ async function reviewDocumentData(id){
   const military=CRMMilitary.isDocument(d.document_type)||CRMMilitary.isDocument(d.ai_document_type),militaryCheck=military?CRMMilitary.review({...e,meta:d.ai_meta||e.meta},c,p,d.id):null;
   const nameChange=CRMNameHistory.isDocument(d.document_type)||CRMNameHistory.isDocument(d.ai_document_type),nameChangeCheck=nameChange?CRMNameHistory.review(e,c,d):null;
   const type=identityDocumentTypeValue(d.ai_document_type||d.document_type),changes=[];
+  const childBirth=window.CRMDocumentPolicy?.isChildBirth?.(d)??[d.document_type,d.ai_document_type,d.requirement_type].some(t=>/народження.*(?:дитин|дітей)/iu.test(String(t||'')));
   const idCheck=type==='ID'?(window.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:d.ai_candidate_name,confidence:d.ai_confidence},c)||{blocked:true,issues:['Перевірка ID-картки ще не завантажилась. Оновіть сторінку.']}):null;
   // Restrict editable mapping to candidate identity documents and the established
   // recommendation/autobiography flow. Other people's certificates stay in their container.
-  const ownIdentity=!idCheck?.blocked&&!biography&&!residence&&(type==='ID'||type==='passport'||type==='birth')&&!/дітей/i.test(d.document_type||'');
+  const ownIdentity=!childBirth&&!idCheck?.blocked&&!biography&&!residence&&(type==='ID'||type==='passport'||type==='birth');
   const personalSource=!biography&&!residence&&(ownIdentity||/рекомендац|ідентифікаційн/i.test(d.document_type||''));
   const add=(target,key,incoming,label)=>{
     if(key==='phone'||key==='phone_secondary')incoming=window.CRMPhone.normalize(incoming);
@@ -521,6 +522,7 @@ async function reviewDocumentData(id){
       for(const key of ['citizenship','unzr','registered_address'])add('profile',key,e[key]||e.meta?.[key]);
     }
   }
+  if(childBirth)changes.splice(0);
   if(nameChangeCheck?.blocked)changes.splice(0);
   if(idCheck?.blocked)changes.splice(0);
   if(militaryCheck?.blocked)changes.splice(0);
@@ -528,6 +530,7 @@ async function reviewDocumentData(id){
   const dialog=document.createElement('dialog');dialog.className='crm-dialog';
   dialog.innerHTML='<h2>Розпізнані дані документа</h2><p>'+esc(c.name_nominative||c.full_name)+' · '+esc(d.file_name)+'</p><div class="crm-actions"><button data-original>Відкрити оригінал</button><button data-close>Закрити</button></div>'+(changes.length?'<h3>Перенесення даних у картку</h3><p>Підтвердження документа фіксує перевірку файла. Щоб зберегти його дані в картці, позначте поля та натисніть «Перенести позначені поля». Непозначені значення залишаться без змін.</p><button type="button" data-select-empty>Позначити порожні поля картки</button><div class="crm-review-grid">'+changes.map((change,i)=>'<label class="crm-review-field"><input type="checkbox" data-change="'+i+'"> <strong>'+esc(change.label)+'</strong><div class="crm-review-values"><span>У картці:<br>'+esc(display(change.current))+'</span><span>З документа:<br>'+esc(display(change.incoming))+'</span></div></label>').join('')+'</div><div class="crm-actions"><button data-apply disabled>Перенести позначені поля (0)</button></div>':'<p>'+(archived?'Це архівна справа або попередня версія: дані доступні лише для перегляду.':Object.values(e).some(v=>v!==null&&v!==undefined&&v!=='')?'Доступні для перенесення дані вже збігаються з карткою або цей тип документа не підтримує перенесення.':'AI не повернув даних для перенесення. Повторіть розпізнавання або заповніть картку вручну.')+'</p>')+'<p role="status"></p><h3>Контейнер документа</h3><div class="crm-review-grid">'+Object.entries(e).map(([key,value])=>'<section class="crm-review-field"><strong>'+esc(labels[key]||key)+'</strong><div>'+renderValue(value)+'</div></section>').join('')+'</div>'+(d.ai_warnings?.length?'<h3>Попередження</h3><p>'+renderValue(d.ai_warnings)+'</p>':'');
   if(militaryCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=militaryCheck.issues.join(' ')||'Власника звірено. Порожня дата завершення не означає поточну службу. Звання, підготовка та сумнівні записи доступні в контейнері документа.';dialog.prepend(notice);}
+  if(childBirth){const notice=document.createElement('p');notice.textContent='Це свідоцтво дитини. Оригінал і розпізнані відомості доступні для перегляду; особисті дані кандидата з нього не переносяться.';dialog.prepend(notice);}
   if(nameChangeCheck){const n=document.createElement('p');n.textContent=nameChangeCheck.issues.join(' ')||'Чинне ПІБ не змінюється. Після перенесення попереднє ПІБ враховуватиметься для звірки документів.';dialog.prepend(n);}
   if(workCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=(workCheck.issues.length?workCheck.issues.join(' '):'Власника документа звірено.')+' Події служби й безробіття зберігаються окремо. Особисті реквізити не переносяться. Період без звільнення не підтверджує поточну роботу.';dialog.prepend(notice);}
   if(vlkCheck){const notice=document.createElement('p');notice.className='cc-hint';notice.textContent=vlkCheck.issues.length?vlkCheck.issues.join(' '):'Власника довідки звірено. Переносяться лише поля ВЛК; дані військового обліку й особисті реквізити не змінюються.';dialog.prepend(notice);}
