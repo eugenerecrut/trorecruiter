@@ -22,3 +22,16 @@ test('case report respects saved intake decisions and never offers stale pending
  w.CRMIntake={items:(_c,docs)=>docs.map(doc=>({doc,plan:doc.processing_status==='AI обробка'?null:{rows:doc.rows.map(r=>({...r,action:'leave'}))}}))};
  try{const r=build(candidate(),[],[d,pending]);assert.equal(r.issues.length,0);assert.equal(r.fills.length,0);}finally{delete w.CRMIntake;}
 });
+
+test('saved personal-file birthplace does not create a duplicate candidate question',()=>{
+ for(const current of [undefined,null,'','   ']){
+  const c=candidate();c.birth_place=current;const pf={birth_place:'Дніпро'},before=JSON.stringify({c,pf});
+  const r=build(c,[],[],pf);
+  assert(!r.questions.some(q=>q.key==='birth_place'));
+  assert(!r.missingData.some(q=>q.key==='birth_place'));
+  assert(!r.serviceRecord.issues.some(q=>q.fieldId==='identity.birth_place'));
+  assert.equal(JSON.stringify({c,pf}),before);
+ }
+ const c=candidate();delete c.birth_place;
+ for(const pf of [{},{birth_place:''},{birth_place:'   '}])assert(build(c,[],[],pf).questions.some(q=>q.key==='birth_place'));
+});
