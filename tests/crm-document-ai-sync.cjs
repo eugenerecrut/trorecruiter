@@ -167,3 +167,17 @@ test('document review is not eleven scalar conflicts when values match; new and 
  const unreadable=sync.plan({...d,ai_extracted:{...d.ai_extracted,field_evidence:{military_specialty:{legibility:'unreadable'}}}},c);
  assert.equal(unreadable.rows.find(r=>r.key==='military_specialty').action,'conflict');
 });
+
+
+test('Expected OCR revision mismatch returns superseded without writes or recruiter escalation',async()=>{
+ const d={...document({...personal(),...service()}),ai_processed_at:'2026-10-26T10:00:00Z',ai_confidence:0.99},m=memory(candidate(),d),before=structuredClone(m.state);
+ const result=await sync.automate(m.client,'d1',{expectedRevision:'2026-10-26T09:00:00Z'});
+ assert.equal(result.superseded,true);assert.equal(result.autoFilled,0);assert.equal(result.needsRecruiter,false);
+ assert.equal(m.state.rpcs,0);assert.equal(m.state.writes,0);assert.deepEqual(m.state.c,before.c);assert.deepEqual(m.state.d,before.d);
+ assert.equal(m.state.c.profile_data.service_type,'За мобілізацією');
+});
+test('Expected OCR revision match retains safe blank filling and manual fields',async()=>{
+ const c=candidate();c.military_specialty='manual-vos';const d={...document({...personal(),...service()}),ai_processed_at:'r1',ai_confidence:0.99},m=memory(c,d);
+ const result=await sync.automate(m.client,'d1',{expectedRevision:'r1'});
+ assert.notEqual(result.superseded,true);assert.equal(m.state.c.military_specialty,'manual-vos');assert.equal(m.state.c.profile_data.service_type,'За мобілізацією');
+});
