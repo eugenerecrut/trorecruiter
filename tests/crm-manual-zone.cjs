@@ -431,7 +431,7 @@ test('the real reader paints neutral loading, handles status failure, and guards
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');
  assert(code.includes("dialog.innerHTML='<h2>Документ · завантаження</h2>"));assert(code.includes("if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено'"));
  assert(code.includes("paintBackgroundSummary(job,job._detailed?'ready':'loading')"));
- assert(code.includes('await render();if(closed)return dialog;'));assert(code.indexOf('if(closed)return dialog;',code.indexOf('let backgroundJob=null'))<code.indexOf('if(autostart&&backgroundLookupError)'));   assert.match(code,/if\(closed\)return dialog;\s+const saved=doc.ai_extracted/);
+ assert(code.includes('await render();if(closed)return dialog;'));assert(code.indexOf('if(closed)return dialog;',code.indexOf('let backgroundJob=null'))<code.indexOf('if(autostart&&backgroundLookupError)'));   assert(code.includes("if(!sourceReady)throw Error('Не вдалося показати сторінку оригіналу."));
  assert(code.includes("readBackgroundStatus(supabaseClient,job.id,doc.id,backgroundReadScope).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}"));
  assert(code.includes(".catch(error=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,error?.code==='STATUS_READ_TIMEOUT'?'timeout':'unavailable');})"));
  const first=code.indexOf('if(!job._detailed){readBackgroundStatus'),end=code.indexOf("if(['queued','running'].includes(job.state))",first),body=code.slice(first,end);
@@ -575,4 +575,24 @@ test('opening source validation rejects changed identity before synchronization 
  assert.equal(JSON.stringify(source),before);
  const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.indexOf('const processed=await readOpeningDocument'),sync=code.indexOf('CRMDocumentSync.automate(supabaseClient,doc.id,{expectedRevision:processed.ai_processed_at??null})',start),last=code.indexOf('const fresh=await readOpeningDocument',sync);
  assert(start>0&&sync>start&&last>sync);
+});
+
+test('initial render failure cannot fall through to saved-report display or autopilot',async()=>{
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.lastIndexOf('await render();if(closed)return dialog;'),end=code.indexOf('const saved=doc.ai_extracted',start),body=code.slice(start,end);
+ assert(start>0&&end>start);
+ for(const sourceReady of [true,false]){
+  let rendered=0;const c={render:async()=>{rendered++},closed:false,sourceReady,dialog:{}};
+  const run=vm.runInNewContext('(async()=>{'+body+'return "ready";})()',c);
+  if(sourceReady)assert.equal(await run,'ready');else await assert.rejects(run,/Автопілот не продовжено/);
+  assert.equal(rendered,1);
+ }
+ const dialog={},c={render:async()=>{},closed:true,sourceReady:false,dialog};assert.equal(await vm.runInNewContext('(async()=>{'+body+'throw Error("must stop");})()',c),dialog);
+});
+test('failed opening keeps close available and existing AI entry guards reject an unrendered source',async()=>{
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.indexOf('function lock(value){'),end=code.indexOf('function paint(){',start),nodes=new Map();const get=s=>{if(!nodes.has(s))nodes.set(s,{disabled:true});return nodes.get(s)};
+ const c={busy:true,autoActive:false,dialog:{querySelectorAll:()=>[get('[data-close]'),get('[data-auto]')]},$:get,reports:[],page:1,total:1};vm.createContext(c);vm.runInContext(code.slice(start,end),c);c.lock(false);assert.equal(c.busy,false);assert.equal(get('[data-close]').disabled,false);
+ const autoStart=code.indexOf("$('[data-auto]').onclick=async()=>"),autoEnd=code.indexOf("dialog.querySelector('h2').textContent",autoStart),auto=code.slice(autoStart,autoEnd);
+ const guard={$:get,busy:false,autoActive:false,sourceReady:false};vm.createContext(guard);vm.runInContext(auto+'throw Error("must not dispatch");}',guard);await get('[data-auto]').onclick();
+ const readStart=code.indexOf('async function read(mode){'),readEnd=code.indexOf("if(mode!=='overview')setBox",readStart),statuses=[];
+ const r={canary:false,busy:false,full:{x:0,y:0,w:1,h:1},sourceReady:false,status:x=>statuses.push(x),selectedBox:()=>null,dialog:{querySelectorAll:()=>[]}};vm.createContext(r);vm.runInContext(code.slice(readStart,readEnd)+'throw Error("must not dispatch");}',r);await r.read('overview');assert.match(statuses[0],/AI не запускався/);
 });
