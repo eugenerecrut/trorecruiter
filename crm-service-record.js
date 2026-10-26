@@ -20,6 +20,7 @@ function model(c,pf={}){
  add('given_names','Ім’я та по батькові',0,[85,172,567,188],name.join(' '),'Основне',true);
  add('rank','Чинне військове звання',0,[85.4,262,156.2,309.7],String(c.military_rank||'').toLocaleLowerCase('uk-UA').replace(/^./u,ch=>ch.toLocaleUpperCase('uk-UA')));
  const printable=rows=>(Array.isArray(rows)?rows:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out);
+ const printableObject=value=>{const record=obj(value);return record&&typeof record==='object'&&!Array.isArray(record)&&!record.requires_review&&!record.crossed_out?record:{};};
  const normalize=v=>String(v||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
  const rankMatches=printable(p.military_rank_records).filter(r=>(r.confirmed_by_user===true||r.accepted_by_ai===true)&&!r.requires_review&&normalize(r.rank)===normalize(c.military_rank)&&normalize(c.military_rank));
  const rankOrders=[...new Map(rankMatches.map(r=>[JSON.stringify([r.order_issuer||'',r.order_number||'',r.order_date||'']),r])).values()];
@@ -36,7 +37,7 @@ function model(c,pf={}){
   const cols=[85.4,156.9,228.4,493.1,571.1],top=126.2+i*(573.8/Math.max(employment.length,1)),bottom=126.2+(i+1)*(573.8/Math.max(employment.length,1));
   [stacked(r.start_date),stacked(r.end_date),[r.employer,r.locality||r.location].filter(Boolean).join(', '),r.position].forEach((v,j)=>add('work_'+i+'_'+j,['Початок','Завершення','Підприємство та місцевість','Посада'][j]+' · '+(i+1),2,[cols[j],top,cols[j+1],bottom],v,'Трудова діяльність'));
  });
- const oath=obj(p.military_oath),discharge=obj(p.military_discharge);
+ const oath=printableObject(p.military_oath),discharge=printableObject(p.military_discharge);
  add('callup','Призов / початок служби',3,[222.6,39,510.3,70.7],served===false?'':p.service_start_date?words(p.service_start_date)+(p.previous_service_type?' '+p.previous_service_type:''):'','Військова служба');
  add('oath','Присяга',3,[312,75,510.3,105.9],served===false?'':[date(oath.date),oath.unit&&'в/ч '+oath.unit].filter(Boolean).join(', '),'Військова служба');
  const service=periods.filter(r=>['military_service','police_service'].includes(r.kind));
@@ -70,7 +71,7 @@ function model(c,pf={}){
  const relativeName=v=>window.CRMCandidateName?.proper(v)??v;
  const relatives=printable(p.relatives),parents=['Батько','Мати'].flatMap(role=>relatives.filter(r=>normalize(r.relationship||r.relation)===normalize(role)).map(r=>role+': '+relativeName(r.full_name)+(r.address?'. '+r.address:'')));
  add('parents','Батько та мати',9,[241.4,28.6,517.4,91.1],parents.join('\n'),'Родина');
- const spouses=relatives.filter(r=>['дружина','чоловік'].includes(normalize(r.relationship||r.relation))),m=obj(p.marriage_record),children=bool(c.has_children??p.has_children)===false?[]:relatives.filter(r=>/^(?:Син|Донька|Дочка|Дитина)$/iu.test(r.relationship||r.relation||''));
+ const spouses=relatives.filter(r=>['дружина','чоловік'].includes(normalize(r.relationship||r.relation))),m=printableObject(p.marriage_record),children=bool(c.has_children??p.has_children)===false?[]:relatives.filter(r=>/^(?:Син|Донька|Дочка|Дитина)$/iu.test(r.relationship||r.relation||''));
  const family=[c.marital_status||p.marital_status,...spouses.map(r=>[r.full_name,r.birth_date&&r.birth_date.slice(0,4)+' р.н.'].filter(Boolean).join(', ')),m.certificate_number&&'Свідоцтво '+m.certificate_number+(m.registration_date?' від '+date(m.registration_date):''),m.registration_authority,...children.map(r=>[r.full_name,date(r.birth_date)].filter(Boolean).join(', ')),p.dependants].filter(Boolean).join('\n');
  add('family','Сімейний стан, шлюб, діти, утриманці',9,[241.4,91.1,517.4,216.6],family,'Родина');
  add('family_address','Підтверджене місце проживання сім’ї',9,[241.4,216.6,517.4,242.7],p.family_residence_confirmed?p.family_residence_address:'','Родина');

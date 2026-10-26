@@ -39,7 +39,7 @@ function review(c,pf={},documents=[]){
   if(kind==='military_service'&&records.filter(r=>!r.requires_review&&!r.crossed_out).length>29)add(id,'У фіксованому бланку передбачено не більше 29 періодів служби.');
  }
  periods('employment',worked,'employment.records');periods('military_service',served,'service.records');
- if(served===true){for(const [key,id] of [['military_oath','service.oath'],['military_discharge','service.discharge']]){const r=p[key];if(r?.requires_review)add(id,'Відомості потребують перевірки.',r);for(const dateKey of ['date','order_date'])if(r?.[dateKey]&&!date(r[dateKey]))add(id,'Некоректна дата в документі.',r);}}
+ if(served===true){for(const [key,id] of [['military_oath','service.oath'],['military_discharge','service.discharge']]){const r=object(p[key]);if(r.requires_review||r.crossed_out){add(id,'Відомості потребують перевірки або закреслені й не використовуються у друці.',r);continue;}for(const dateKey of ['date','order_date'])if(r?.[dateKey]&&!date(r[dateKey]))add(id,'Некоректна дата в документі.',r);}}
  for(const r of list(p.military_rank_records))if(!r||((r.confirmed_by_user===true||r.accepted_by_ai===true)&&norm(r.rank)===norm(c.military_rank)&&norm(c.military_rank)&&(r.requires_review||r.crossed_out)))add('military.rank_order','Наказ про звання потребує звірки й не використовується у друці.',r);
  const rankOrders=list(p.military_rank_records).filter(r=>(r?.confirmed_by_user===true||r?.accepted_by_ai===true)&&!r.requires_review&&!r.crossed_out&&norm(r.rank)===norm(c.military_rank)&&norm(c.military_rank));
  if(new Set(rankOrders.map(r=>JSON.stringify([r.order_issuer||'',r.order_number||'',r.order_date||'']))).size>1)add('military.rank_order','До чинного звання є кілька різних наказів: виберіть підтверджений.');
@@ -48,6 +48,7 @@ function review(c,pf={},documents=[]){
   for(const k of ['start_date','end_date','order_date'])if(r[k]&&!date(r[k]))add(id,'Уточніть дату в записі.',r);
   if(date(r.start_date)&&date(r.end_date)&&r.end_date<r.start_date)add(id,'Завершення періоду раніше за початок.',r);
  }
+ const marriage=object(p.marriage_record);if(marriage.requires_review||marriage.crossed_out)add('family.members','Реквізити шлюбу потребують перевірки або закреслені й не використовуються у друці.',marriage);
  const relation=r=>norm(r?.relationship||r?.relation);
  for(const r of list(p.relatives))if(!r||r.requires_review||r.crossed_out)add(['мати','батько'].includes(relation(r))?'family.parents':'family.members','Запис родича потребує звірки або закреслений і не використовується у друці.',r);
  for(const role of ['мати','батько','дружина','чоловік']){const people=list(p.relatives).filter(r=>r&&!r.requires_review&&!r.crossed_out&&relation(r)===role);if(new Set(people.map(r=>norm(r.full_name))).size>1)add(role==='мати'||role==='батько'?'family.parents':'family.members','Кілька різних записів: '+role+'. Звірте їх актуальність.');}
