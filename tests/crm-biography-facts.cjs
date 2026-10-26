@@ -51,3 +51,22 @@ test('service record and readiness use the same autobiography periods and partia
 });
 
 test('distinct biography education survives a different complete diploma without duplicates',()=>{const p={education_records:[{institution:'Університет',degree:'бакалавр',graduation_year:'2023'}],bio_education_claims:[{institution:'Школа',degree:'середня',end_date:'2019',source_document_id:'bio'}]};const out=facts.profile(p);assert.equal(out.education_records.length,2);assert.deepEqual(facts.profile(out),out)});
+
+test('crossed-out education is never ready or printed; null rows preserve the preview fallback',()=>{
+ const c={URL,structuredClone};c.window=c;vm.createContext(c);for(const f of ['biography-facts.js','candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),c);
+ const candidate={full_name:'Тестенко Іван Петрович',birth_date:'1990-01-01',rnokpp:'1234567890',birth_place:'Дніпро',worked_before:false,served_before:false,profile_data:{education_institution:'Збережений заклад',education_records:[{institution:'Закреслений заклад',crossed_out:true,source_document_id:'education'}]}};
+ const before=JSON.stringify(candidate),r=c.CRMServiceReadiness.review(candidate,{},[{id:'education',file_name:'Освіта.pdf'}]);
+ assert.equal(r.ready,false);assert(r.issues.some(i=>i.fieldId==='education.civil'&&i.documents.some(d=>d.id==='education')));
+ const value=()=>c.CRMServiceRecord.model(candidate).fields.find(f=>f.key==='education_civil').value;
+ assert.equal(value(),'Збережений заклад');assert.equal(JSON.stringify(candidate),before);
+ for(const records of [[null],{institution:'Некоректний формат'}]){
+  candidate.profile_data.education_records=records;
+  assert.equal(value(),'Збережений заклад');assert.equal(c.CRMServiceReadiness.review(candidate).ready,false);
+ }
+ candidate.profile_data.education_records=[null,{institution:'Чинний заклад',graduation_year:'2020'}];
+ assert.equal(value(),'Чинний заклад, 2020 р.');
+ delete c.CRMBiographyFacts;
+ for(const records of [[null],{institution:'Некоректний формат'},[{institution:'Закреслений заклад',crossed_out:true}]]){
+  candidate.profile_data.education_records=records;assert.equal(value(),'Збережений заклад');assert.equal(c.CRMServiceReadiness.review(candidate).ready,false);
+ }
+});
