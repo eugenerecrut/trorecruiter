@@ -18,6 +18,23 @@ function evidenceValueHTML(evidence,source){
  const details=Object.entries(fields).filter(([key])=>{const v=source.display_fields?.[key];return typeof v==='string'&&v.trim()||typeof v==='number'&&Number.isFinite(v);}).map(([key,label])=>'<strong>'+esc(label)+':</strong> '+esc(source.display_fields[key]));
  return details.length?details.join('<br>'):esc(source.value);
 }
+function evidenceCardHTML(e,ei){
+ const labels={needs_review:'Ймовірний зв’язок — перевірити',conflict:'Розбіжність',corroborated:'Збігається в кількох документах',single_source:'Одне джерело',missing:'Немає придатних джерел'};
+ const status=Object.hasOwn(labels,e.status)?labels[e.status]:'Статус не визначено — звірте';
+ return '<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc(status)+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+evidenceReviewHTML(e)+e.sources.map((v,si)=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'" data-evidence-entry="'+ei+'" data-evidence-source="'+si+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('');
+}
+function crosscheckHTML(evidence){
+ const entries=(Array.isArray(evidence)?evidence:[]).map((e,ei)=>({e,ei}));
+ if(!entries.length)return '<p>Немає придатних відомостей для зіставлення. Це не підтвердження готовності справи.</p>';
+ const priority={conflict:0,needs_review:1,missing:2},rank=status=>Object.hasOwn(priority,status)?priority[status]:3;
+ // Only known non-conflicting statuses may be folded. Unknown states remain visible.
+ const other=entries.filter(({e})=>['corroborated','single_source'].includes(e.status));
+ const review=entries.filter(({e})=>!['corroborated','single_source'].includes(e.status)).sort((a,b)=>rank(a.e.status)-rank(b.e.status)||a.ei-b.ei);
+ const cards=list=>list.map(({e,ei})=>evidenceCardHTML(e,ei)).join('');
+ return '<p><strong>Для звірки: '+review.length+'. Інших пунктів: '+other.length+'.</strong> Це пункти зіставлення, а не кількість документів чи підтверджених полів.</p>'+
+ (review.length?'<h3>Спочатку перевірте</h3>'+cards(review):'<p>Розбіжностей у придатних для цього зіставлення даних не знайдено. Це не ручне підтвердження документів.</p>')+
+ (other.length?'<details data-crosscheck-other><summary>Інші відомості та джерела ('+other.length+')</summary><p>Збіги та одне джерело показані окремо. Вони не підтверджують якість непевного зонального читання.</p>'+cards(other)+'</details>':'');
+}
 function evidenceTarget(source,current,candidateId){
  const n=source?.navigation;
  if(!n||!candidateId||n.candidate_id!==candidateId||current?.candidate_id!==candidateId||current.id!==n.document_id||source.document_id!==n.document_id||current.deleted_at||!current.storage_path||current.storage_path!==n.storage_path||(current.file_hash||current.storage_path)!==n.fingerprint||(current.ai_processed_at??null)!==n.revision||(current.version_group_id??null)!==n.version_group_id)throw Error('Джерело видалено, замінено або оновлено. Закрийте результат і відкрийте його знову для актуального зіставлення.');
@@ -386,7 +403,7 @@ async function open(doc,{autostart=false}={}){
   const context={document_id:doc.id,file_sha256:originalDigest,pages:total,revision:doc.ai_processed_at||''},binding=reportBinding||coordinatorSession?.source;
   const evidence=await CRMDocumentCrosscheck.load(supabaseClient,c.data,{reports:reports.filter(r=>sourceTarget(r,context,binding)),context,binding});if(closed||version!==crosscheckVersion)return;
   const section=document.createElement('details');section.dataset.crosscheck='';
-  section.innerHTML='<summary>Зіставлення з іншими документами</summary><p>Звірка збережених даних без AI. Картка не змінюється.</p>'+(reports.length&&!evidence.some(e=>e.zone_crosscheck)?'<p>Для зонального зіставлення придатних відомостей про особу або батьків немає.</p>':'')+evidence.map((e,ei)=>'<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc({needs_review:'Ймовірний зв’язок — перевірити',conflict:'Розбіжність',corroborated:'Збігається в кількох документах',single_source:'Одне джерело',missing:'Немає придатних джерел'}[e.status])+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+evidenceReviewHTML(e)+e.sources.map((v,si)=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'" data-evidence-entry="'+ei+'" data-evidence-source="'+si+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('')).join('');
+  section.innerHTML='<summary>Зіставлення з іншими документами</summary><p>Звірка збережених даних без AI. Картка не змінюється.</p>'+(reports.length&&!evidence.some(e=>e.zone_crosscheck)?'<p>Для зонального зіставлення придатних відомостей про особу або батьків немає.</p>':'')+crosscheckHTML(evidence);
   section.onclick=async event=>{const b=event.target.closest('[data-evidence-document]');if(!b||closed)return;try{
    const entry=Number(b.dataset.evidenceEntry),index=Number(b.dataset.evidenceSource);
    if(!Number.isInteger(entry)||!Number.isInteger(index)||entry<0||index<0)throw Error('Не визначено джерело. Оновіть зіставлення.');
@@ -445,5 +462,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML};
 })();
