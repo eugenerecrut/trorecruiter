@@ -305,3 +305,11 @@ Read-only compareZoneParents застосовує чинний parentNameReview 
 readBackgroundStatus перевіряє job id, document id, kind=zone та допустимий стан перед позначкою _detailed. Помилка RPC, порожня/чужа/некоректна відповідь або мережевий збій показують недоступність стану, а не помилку AI. Немає нового повтору чи fallback до AI; лишається чинний read-only poll для активних jobs. Обробники зберігають closed/viewVersion guards; початкова відповідь після закриття також не відкриває звіт і не переходить до autostart.
 
 Початковий заголовок — завантаження; справжній автоетап називається опрацюванням після входу в чинний обробник. Saved fallback явно позначений результатом. Детальні saved-with-gaps, provider failure, native-only, uncertain та source-changed пояснення залишені. Зміна frontend-only, без AI, запису даних, нових RPC чи міграцій.
+
+## 1.2.78 — обмеження очікування та спільне читання стану
+
+Read-only crm_splav_job_status має 20-секундний timeout. Паралельні initial lookup/poll одного job/document у тому самому reader scope й SDK client отримують один Promise. Scope окремий для кожного open; клієнти й вікна не ділять незавершений запит.
+
+Для builder з підтримкою abortSignal передається AbortController; після дедлайну викликається abort. Офіційний контракт: [abortSignal](https://supabase.com/docs/reference/javascript/using-modifiers-abortsignal). Якщо SDK/transport не підтримує або ігнорує скасування, слот зберігається до фактичного завершення запиту: poll не створює паралельних копій. При такому зависанні користувач може оновити сторінку CRM. Мережеве скасування не є скасуванням job на сервері.
+
+Після timeout пізня відповідь не застосовується. Нове читання можливе після завершення transport; чинний poll активних jobs лишається, автоматичного AI або нового queue job немає. При успіху/помилці timer очищується, записи лише в пам’яті. Source-changed і closed/view-version guards збережені.

@@ -410,12 +410,12 @@ test('pending status details are loading, unavailable is not processing failure,
   assert.equal(describe(job,{detailState:'loading'}).title,'Завантажуємо збережений результат');
   const unavailable=describe(job,{detailState:'unavailable'});assert.equal(unavailable.title,'Не вдалося отримати стан результату');assert.match(unavailable.notes.join(' '),/а не підтвердження помилки опрацювання/);assert.equal(JSON.stringify(job),before);
  }
- for(const detailState of ['loading','unavailable'])for(const job of [{state:'superseded'},{state:'needs_review',zone_summary:{source_changed:true}}])assert.equal(describe(job,{detailState}).title,'Джерело документа змінилося');
+ for(const detailState of ['loading','unavailable','timeout'])for(const job of [{state:'superseded'},{state:'needs_review',zone_summary:{source_changed:true}}])assert.equal(describe(job,{detailState}).title,'Джерело документа змінилося');
  assert.equal(describe({state:'needs_review'}).title,'Опрацювання зупинено');
  assert.equal(describe({state:'needs_review',result:{status:'complete_with_gaps'},zone_summary:{pending_steps:0}}).title,'Звіт збережено з прогалинами');
 });
 test('detailed status reads bind job and document, await the response and never dispatch AI or retry',async()=>{
- const ctx={window:{}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const ctx={window:{},setTimeout,clearTimeout,AbortController};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
  const read=ctx.window.CRMMilitaryZoneReview.readBackgroundStatus,calls=[];let resolve;
  const client={rpc:(name,args)=>{calls.push({name,args});return new Promise(r=>{resolve=r;});}};
  let finished=false;const pending=read(client,'j','d').then(value=>{finished=true;return value;});await Promise.resolve();assert.equal(finished,false);
@@ -432,9 +432,32 @@ test('the real reader paints neutral loading, handles status failure, and guards
  assert(code.includes("dialog.innerHTML='<h2>Документ · завантаження</h2>"));assert(code.includes("if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено'"));
  assert(code.includes("paintBackgroundSummary(job,job._detailed?'ready':'loading')"));
  assert(code.includes('await render();if(closed)return dialog;let backgroundJob=null;'));assert.match(code,/if\(closed\)return dialog;\s+const saved=doc.ai_extracted/);
- assert(code.includes("readBackgroundStatus(supabaseClient,job.id,doc.id).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}"));
- assert(code.includes(".catch(()=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,'unavailable');})"));
+ assert(code.includes("readBackgroundStatus(supabaseClient,job.id,doc.id,backgroundReadScope).then(result=>{if(!closed&&viewVersion===backgroundViewVersion)showBackground(result);}"));
+ assert(code.includes(".catch(error=>{if(!closed&&viewVersion===backgroundViewVersion)paintBackgroundSummary(job,error?.code==='STATUS_READ_TIMEOUT'?'timeout':'unavailable');})"));
  const first=code.indexOf('if(!job._detailed){readBackgroundStatus'),end=code.indexOf("if(['queued','running'].includes(job.state))",first),body=code.slice(first,end);
  assert(first>0&&end>first);assert.doesNotMatch(body,/functions.invoke|enqueue|\.update\(|\.insert\(/);
- assert.match(code,/detailState==='unavailable'\?'Документ · стан недоступний'/);
+ assert(code.includes("['unavailable','timeout'].includes(detailState)?'Документ · стан недоступний'"));
+});
+
+test('status reads share one in-flight request and abort supported transports after twenty seconds',async()=>{
+ const timers=new Map();let next=0;const ctx={window:{},AbortController,setTimeout:(fn,ms)=>{timers.set(++next,{fn,ms});return next;},clearTimeout:id=>timers.delete(id)};
+ vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const read=ctx.window.CRMMilitaryZoneReview.readBackgroundStatus;let count=0,aborted=false;
+ const client={rpc:()=>{count++;let reject;const pending=new Promise((_,r)=>{reject=r;});pending.abortSignal=signal=>{signal.addEventListener('abort',()=>{aborted=true;reject(Error('aborted'));},{once:true});return pending;};return pending;}};
+ const first=read(client,'j','d'),second=read(client,'j','d');assert.equal(first,second);assert.equal(count,1);assert.equal(timers.size,1);
+ const timer=[...timers.values()][0];assert.equal(timer.ms,20000);timer.fn();await assert.rejects(first,e=>e.code==='STATUS_READ_TIMEOUT');assert.equal(aborted,true);assert.equal(timers.size,0);
+});
+test('unabortable timed-out status reads cannot spawn more requests until the original transport settles',async()=>{
+ const timers=new Map();let next=0;const ctx={window:{},setTimeout:(fn,ms)=>{timers.set(++next,{fn,ms});return next;},clearTimeout:id=>timers.delete(id)};
+ vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const read=ctx.window.CRMMilitaryZoneReview.readBackgroundStatus;let calls=0,resolve;
+ const job={id:'j',document_id:'d',kind:'zone',state:'completed'};
+ const client={rpc:()=>{calls++;return calls===1?new Promise(r=>{resolve=r;}):Promise.resolve({data:job});}};
+ const first=read(client,'j','d');[...timers.values()][0].fn();await assert.rejects(first,e=>e.code==='STATUS_READ_TIMEOUT');
+ const repeated=read(client,'j','d');assert.equal(repeated,first);await assert.rejects(repeated);assert.equal(calls,1);
+ resolve({data:job});await Promise.resolve();await Promise.resolve();
+ const fresh=await read(client,'j','d');assert.equal(fresh._detailed,true);assert.equal(calls,2);assert.equal(timers.size,0);
+ const otherClient={rpc:async()=>({data:job})};assert.equal((await read(otherClient,'j','d')).id,'j');
+ const beforeScope=calls,p=read(client,'j','d',{}),q=read(client,'j','d',{});assert.notEqual(p,q);await Promise.all([p,q]);assert.equal(calls,beforeScope+2);
+ const missing=ctx.window.CRMMilitaryZoneReview.backgroundSummary({state:'needs_review'},{detailState:'timeout'});assert.equal(missing.title,'Час очікування стану минув');assert.match(missing.notes.join(' '),/20 секунд/);assert.match(missing.notes.join(' '),/не означає помилку опрацювання/);
 });
