@@ -19,8 +19,9 @@ function model(c,pf={}){
  add('surname','Прізвище',0,[85,141,567,157],name.shift()?.toLocaleUpperCase('uk-UA'),'Основне',true);
  add('given_names','Ім’я та по батькові',0,[85,172,567,188],name.join(' '),'Основне',true);
  add('rank','Чинне військове звання',0,[85.4,262,156.2,309.7],String(c.military_rank||'').toLocaleLowerCase('uk-UA').replace(/^./u,ch=>ch.toLocaleUpperCase('uk-UA')));
+ const printable=rows=>(Array.isArray(rows)?rows:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out);
  const normalize=v=>String(v||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
- const rankMatches=(p.military_rank_records||[]).filter(r=>(r.confirmed_by_user===true||r.accepted_by_ai===true)&&!r.requires_review&&normalize(r.rank)===normalize(c.military_rank)&&normalize(c.military_rank));
+ const rankMatches=printable(p.military_rank_records).filter(r=>(r.confirmed_by_user===true||r.accepted_by_ai===true)&&!r.requires_review&&normalize(r.rank)===normalize(c.military_rank)&&normalize(c.military_rank));
  const rankOrders=[...new Map(rankMatches.map(r=>[JSON.stringify([r.order_issuer||'',r.order_number||'',r.order_date||'']),r])).values()];
  const rank=rankOrders.length===1?rankOrders[0]:null;
  add('rank_order','Наказ про присвоєння звання',0,[156.3,262,326.5,309.7],rank?[rank.order_issuer,rank.order_number&&'№'+rank.order_number,date(rank.order_date)].filter(Boolean).join(' '):'');
@@ -52,12 +53,12 @@ function model(c,pf={}){
   [stacked(r.start_date),stacked(r.end_date),[r.position,!police&&r.military_specialty&&'ВОС '+r.military_specialty].filter(Boolean).join(', '),unit&&(police?unit:'в/ч '+unit),order].forEach((v,j)=>add('service_'+i+'_'+j,['Початок','Завершення','Посада та ВОС','Частина','Наказ'][j]+' · '+(i+1),page,[cols[j],top,cols[j+1],end],v,'Військова служба',j!==2));
  });
  if(served!==false)add('discharge','Звільнення в запас',3,[28.6,607.8,510.1,660.9],discharge.order_number?'Звільнений у запас '+(discharge.basis?'за '+discharge.basis+', ':'')+'наказ командира в/ч '+(discharge.unit||'')+' №'+discharge.order_number+' від '+date(discharge.order_date):'','Військова служба');
- (p.combat_records||[]).filter(r=>!r.requires_review).forEach((r,i,rows)=>{
+ printable(p.combat_records).forEach((r,i,rows)=>{
   const top=99.5+i*283.6/rows.length,end=99.5+(i+1)*283.6/rows.length,cols=[28.6,330,420.1,510.1];
   [r.location,date(r.start_date),date(r.end_date)].forEach((v,j)=>add('combat_'+i+'_'+j,['Місце','Початок','Завершення'][j]+' · '+(i+1),7,[cols[j],top,cols[j+1],end],v,'Бойові дії та нагороди'));
  });
  add('injuries','Поранення, травми, контузії',7,[28.6,412,510.1,796.3],p.injuries||'','Бойові дії та нагороди');
- (Array.isArray(p.awards)?p.awards:[]).filter(r=>!r.requires_review).forEach((r,i,rows)=>{
+ printable(p.awards).forEach((r,i,rows)=>{
   const top=104.6+i*198.5/rows.length,end=104.6+(i+1)*198.5/rows.length,cols=[85.4,245.8,405.9,566.9];
   [r.name,r.reason,[r.order_issuer,r.order_number&&'№'+r.order_number,date(r.order_date)].filter(Boolean).join(' ')].forEach((v,j)=>add('award_'+i+'_'+j,['Нагорода','Підстава','Наказ'][j]+' · '+(i+1),8,[cols[j],top,cols[j+1],end],v,'Бойові дії та нагороди'));
  });
@@ -73,7 +74,7 @@ function model(c,pf={}){
  const family=[c.marital_status||p.marital_status,...spouses.map(r=>[r.full_name,r.birth_date&&r.birth_date.slice(0,4)+' р.н.'].filter(Boolean).join(', ')),m.certificate_number&&'Свідоцтво '+m.certificate_number+(m.registration_date?' від '+date(m.registration_date):''),m.registration_authority,...children.map(r=>[r.full_name,date(r.birth_date)].filter(Boolean).join(', ')),p.dependants].filter(Boolean).join('\n');
  add('family','Сімейний стан, шлюб, діти, утриманці',9,[241.4,91.1,517.4,216.6],family,'Родина');
  add('family_address','Підтверджене місце проживання сім’ї',9,[241.4,216.6,517.4,242.7],p.family_residence_confirmed?p.family_residence_address:'','Родина');
- (p.reserve_training_records||[]).filter(r=>!r.requires_review).forEach((r,i,rows)=>{
+ printable(p.reserve_training_records).forEach((r,i,rows)=>{
   const cols=[28.6,99.5,170.3,266.1,432.8,517.4],top=389+i*145.3/rows.length,end=389+(i+1)*145.3/rows.length;
   [stacked(r.start_date),stacked(r.end_date),[r.position,r.military_specialty].filter(Boolean).join(', '),r.unit,[r.order_issuer,r.order_number,date(r.order_date)].filter(Boolean).join(' ')].forEach((v,j)=>add('training_'+i+'_'+j,['Початок','Завершення','Посада та ВОС','Частина','Наказ'][j]+' зборів · '+(i+1),9,[cols[j],top,cols[j+1],end],v,'Збори в запасі'));
  });
