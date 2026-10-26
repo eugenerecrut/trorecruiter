@@ -343,3 +343,30 @@ test('parent review explains exact checks without unsafe HTML, extra controls or
  assert.equal(render({...evidence,zone_crosscheck:false}),'');assert.equal(render({...evidence,key:'birth_date'}),'');assert.equal(render({...evidence,review_details:[]}), '');
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(source,/evidenceReviewHTML\(e\)/);
 });
+
+test('evidence navigation rejects changed ownership, revision, storage and malformed zone pages',()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const target=context.window.CRMMilitaryZoneReview.evidenceTarget;
+ const row={id:'d',candidate_id:'c',storage_path:'c/a.pdf',file_hash:'abc',ai_processed_at:'r',version_group_id:'g'};
+ const source={document_id:'d',kind:'zone_reading',page:3,navigation:{document_id:'d',candidate_id:'c',storage_path:row.storage_path,fingerprint:'abc',revision:'r',version_group_id:'g'}};
+ const before=JSON.stringify([row,source]);assert.equal(target(source,row,'c').page,3);assert.equal(target(source,row,'c').path,row.storage_path);
+ for(const patch of [{id:'new-version'},{candidate_id:'other'},{storage_path:'c/new.pdf'},{file_hash:'changed'},{ai_processed_at:'new'},{deleted_at:'now'},{version_group_id:'other'}])assert.throws(()=>target(source,{...row,...patch},'c'));
+ for(const page of [null,undefined,0,-1,201,1.5,'3'])assert.throws(()=>target({...source,page},row,'c'));
+ assert.throws(()=>target({...source,navigation:null},row,'c'));assert.throws(()=>target(source,row,'other'));
+ assert.equal(target({...source,kind:null,page:[3]},row,'c').page,null);assert.equal(JSON.stringify([row,source]),before);
+});
+test('source opening checks current version before signing and preserves the signed query with a local page fragment',async()=>{
+ const context={window:{}};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),context);
+ const open=context.window.CRMMilitaryZoneReview.evidenceURL;
+ const row={id:'d',candidate_id:'c',storage_path:'c/a.pdf',file_hash:'abc',ai_processed_at:'r',version_group_id:'g'};
+ const source={document_id:'d',kind:'zone_reading',page:2,navigation:{document_id:'d',candidate_id:'c',storage_path:row.storage_path,fingerprint:'abc',revision:'r',version_group_id:'g'}};
+ const calls=[];let current=row,readError=null;
+ const query={};for(const method of ['select','eq','is','order','limit'])query[method]=(...args)=>{calls.push([method,...args]);return query;};
+ query.single=async()=>({data:current,error:readError});
+ const client={from:name=>{calls.push(['from',name]);return query;},storage:{from:name=>({createSignedUrl:async(path,ttl)=>{calls.push(['sign',name,path,ttl]);return {data:{signedUrl:'https://example.test/original.pdf?token=a%2Bb#old'},error:null};}})}};
+ assert.equal(await open(client,source,'c'),'https://example.test/original.pdf?token=a%2Bb#page=2');
+ assert(calls.some(a=>a[0]==='eq'&&a[1]==='candidate_id'&&a[2]==='c'));assert(calls.some(a=>a[0]==='eq'&&a[1]==='version_group_id'&&a[2]==='g'));assert(calls.some(a=>a[0]==='order'&&a[1]==='version_number'));assert(calls.some(a=>a[0]==='is'&&a[1]==='deleted_at'));assert.equal(calls.filter(a=>a[0]==='sign').length,1);
+ for(const changed of [{...row,id:'new'},{...row,deleted_at:'now'},{...row,ai_processed_at:'new'}]){calls.length=0;current=changed;await assert.rejects(open(client,source,'c'));assert.equal(calls.filter(a=>a[0]==='sign').length,0);}
+ calls.length=0;current=row;readError={message:'blocked'};await assert.rejects(open(client,source,'c'));assert.equal(calls.filter(a=>a[0]==='sign').length,0);
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');assert.match(code,/evidenceURL\(supabaseClient,source,doc.candidate_id\)/);assert.match(code,/!closed&&version===crosscheckVersion/);
+});

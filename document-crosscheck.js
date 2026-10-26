@@ -242,7 +242,10 @@ function compareZoneParents(documents,candidate,{reports=[],context,binding}={})
   return group;
  });
 }
-async function load(client,candidate,options){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return [...compare(r.data,candidate),...compareZones(r.data,candidate,options),...compareZoneParents(r.data,candidate,options)];}
+async function load(client,candidate,options){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return [...compare(r.data,candidate),...compareZones(r.data,candidate,options),...compareZoneParents(r.data,candidate,options)].map(entry=>({...entry,sources:entry.sources.map(source=>{
+ const document=r.data.find(d=>d.id===source.document_id);
+ return {...source,navigation:document?{document_id:document.id,candidate_id:candidate.id,storage_path:document.storage_path,fingerprint:document.file_hash||document.storage_path,revision:document.ai_processed_at??null,version_group_id:document.version_group_id??null}:null};
+ })}));}
 function guard(report,evidence){report.crosscheck=evidence;const conflicts=evidence.filter(e=>['conflict','needs_review'].includes(e.status));
  // Block proposed writes, retaining the original reason for existing conflicts.
  // An unchanged/absent value in an unrelated document is not another conflicting fact.

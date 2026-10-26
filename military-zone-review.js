@@ -18,6 +18,24 @@ function evidenceValueHTML(evidence,source){
  const details=Object.entries(fields).filter(([key])=>{const v=source.display_fields?.[key];return typeof v==='string'&&v.trim()||typeof v==='number'&&Number.isFinite(v);}).map(([key,label])=>'<strong>'+esc(label)+':</strong> '+esc(source.display_fields[key]));
  return details.length?details.join('<br>'):esc(source.value);
 }
+function evidenceTarget(source,current,candidateId){
+ const n=source?.navigation;
+ if(!n||!candidateId||n.candidate_id!==candidateId||current?.candidate_id!==candidateId||current.id!==n.document_id||source.document_id!==n.document_id||current.deleted_at||!current.storage_path||current.storage_path!==n.storage_path||(current.file_hash||current.storage_path)!==n.fingerprint||(current.ai_processed_at??null)!==n.revision||(current.version_group_id??null)!==n.version_group_id)throw Error('Джерело видалено, замінено або оновлено. Закрийте результат і відкрийте його знову для актуального зіставлення.');
+ const page=source.kind==='zone_reading'?source.page:null;
+ if(source.kind==='zone_reading'&&(!Number.isInteger(page)||page<1||page>200))throw Error('Не визначено сторінку зонального джерела. Оновіть зіставлення.');
+ return {path:current.storage_path,page};
+}
+async function evidenceURL(client,source,candidateId){
+ const n=source?.navigation;if(!n||n.candidate_id!==candidateId)throw Error('Не вдалося звірити джерело. Оновіть зіставлення.');
+ let query=client.from('documents').select('id,candidate_id,storage_path,file_hash,ai_processed_at,version_group_id,version_number,created_at,deleted_at').eq('candidate_id',candidateId).is('deleted_at',null);
+ query=n.version_group_id?query.eq('version_group_id',n.version_group_id).order('version_number',{ascending:false}).order('created_at',{ascending:false}).limit(1):query.eq('id',n.document_id);
+ const result=await query.single();if(result.error)throw Error('Джерело недоступне або більше не є чинним. Оновіть зіставлення.');
+ const target=evidenceTarget(source,result.data,candidateId);
+ const link=await client.storage.from('candidate-documents').createSignedUrl(target.path,300);
+ if(link.error||!link.data?.signedUrl)throw Error('Не вдалося відкрити оригінал. Спробуйте ще раз.');
+ // A fragment is local PDF navigation; the signed query string is preserved.
+ return target.page?link.data.signedUrl.split('#')[0]+'#page='+target.page:link.data.signedUrl;
+}
 function selectedBox(inputs){
  const values={};for(const el of inputs){if(!['x','y','w','h'].includes(el.dataset.box)||String(el.value).trim()==='')return null;values[el.dataset.box]=Number(el.value)/100;}
  return CRMMilitaryZoneContract.box(values);
@@ -368,8 +386,14 @@ async function open(doc,{autostart=false}={}){
   const context={document_id:doc.id,file_sha256:originalDigest,pages:total,revision:doc.ai_processed_at||''},binding=reportBinding||coordinatorSession?.source;
   const evidence=await CRMDocumentCrosscheck.load(supabaseClient,c.data,{reports:reports.filter(r=>sourceTarget(r,context,binding)),context,binding});if(closed||version!==crosscheckVersion)return;
   const section=document.createElement('details');section.dataset.crosscheck='';
-  section.innerHTML='<summary>Зіставлення з іншими документами</summary><p>Звірка збережених даних без AI. Картка не змінюється.</p>'+(reports.length&&!evidence.some(e=>e.zone_crosscheck)?'<p>Для зонального зіставлення придатних відомостей про особу або батьків немає.</p>':'')+evidence.map(e=>'<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc({needs_review:'Ймовірний зв’язок — перевірити',conflict:'Розбіжність',corroborated:'Збігається в кількох документах',single_source:'Одне джерело',missing:'Немає придатних джерел'}[e.status])+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+evidenceReviewHTML(e)+e.sources.map(v=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('')).join('');
-  section.onclick=async event=>{const b=event.target.closest('[data-evidence-document]');if(!b)return;try{const r=await supabaseClient.from('documents').select('storage_path').eq('id',b.dataset.evidenceDocument).single();if(r.error)throw r.error;const link=await supabaseClient.storage.from('candidate-documents').createSignedUrl(r.data.storage_path,300);if(link.error)throw link.error;window.open(link.data.signedUrl,'_blank','noopener');}catch(e){status(e.message)}};
+  section.innerHTML='<summary>Зіставлення з іншими документами</summary><p>Звірка збережених даних без AI. Картка не змінюється.</p>'+(reports.length&&!evidence.some(e=>e.zone_crosscheck)?'<p>Для зонального зіставлення придатних відомостей про особу або батьків немає.</p>':'')+evidence.map((e,ei)=>'<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc({needs_review:'Ймовірний зв’язок — перевірити',conflict:'Розбіжність',corroborated:'Збігається в кількох документах',single_source:'Одне джерело',missing:'Немає придатних джерел'}[e.status])+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+evidenceReviewHTML(e)+e.sources.map((v,si)=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'" data-evidence-entry="'+ei+'" data-evidence-source="'+si+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('')).join('');
+  section.onclick=async event=>{const b=event.target.closest('[data-evidence-document]');if(!b||closed)return;try{
+   const entry=Number(b.dataset.evidenceEntry),index=Number(b.dataset.evidenceSource);
+   if(!Number.isInteger(entry)||!Number.isInteger(index)||entry<0||index<0)throw Error('Не визначено джерело. Оновіть зіставлення.');
+   const source=evidence[entry]?.sources[index];if(!source||source.document_id!==b.dataset.evidenceDocument)throw Error('Не визначено джерело. Оновіть зіставлення.');
+   b.disabled=true;const url=await evidenceURL(supabaseClient,source,doc.candidate_id);
+   if(!closed&&version===crosscheckVersion)window.open(url,'_blank','noopener');
+  }catch(e){status(e.message)}finally{b.disabled=false}};
   $('[data-result]').querySelector('[data-crosscheck]')?.remove();$('[data-result]').append(section);
  }
  async function saveFinal(){
@@ -421,5 +445,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL};
 })();
