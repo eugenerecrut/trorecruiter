@@ -545,7 +545,7 @@ async function open(doc,options={}){
    await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';pdf=await pdfjsLib.getDocument({data:new Uint8Array(originalBytes)}).promise;total=pdf.numPages;if(total>200)throw Error('Поглиблене читання підтримує до 200 сторінок на файл.');
   }else if(blob.type.startsWith('image/'))bitmap=await createImageBitmap(blob);else throw Error('Потрібен PDF або зображення');
   await render();if(closed)return dialog;
-  if(closed)return dialog;
+  if(!sourceReady)throw Error('Не вдалося показати сторінку оригіналу. Закрийте вікно та відкрийте документ повторно. Автопілот не продовжено.');
   const saved=doc.ai_extracted?._military_zone_report;if(backgroundJob)showBackground(backgroundJob);else if(saved){
    dialog.querySelector('h2').textContent='Документ · результат СПЛАВ';dialog.querySelectorAll('p')[1].textContent='Перегляд збереженого звіту без нового AI.';
    const view=savedReportView(saved,doc.id,{context:{document_id:doc.id,file_sha256:originalDigest,pages:total,revision:doc.ai_processed_at||''},binding:reportBinding||coordinatorSession?.source});reports.push(...view.reports);
