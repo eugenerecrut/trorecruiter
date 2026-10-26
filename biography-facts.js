@@ -14,7 +14,7 @@ function profile(input={}){
  const usable=r=>r&&!r.requires_review&&!r.crossed_out&&r.source_document_id;
  for(const r of list(p.bio_work_claims)){
   const start=partial(r?.start_date),end=partial(r?.end_date);if(!usable(r)||!r.employer||!start||(r.end_date&&!end)||(end&&end.max<start.min))continue;
-  const existing=work.some(old=>old.kind==='employment'&&norm(old.employer)===norm(r.employer)&&partial(old.start_date)?.min<=(end?.max||'9999')&&(!partial(old.end_date)||partial(old.end_date).max>=start.min));
+  const existing=work.some(old=>old&&old.kind==='employment'&&norm(old.employer)===norm(r.employer)&&partial(old.start_date)?.min<=(end?.max||'9999')&&(!partial(old.end_date)||partial(old.end_date).max>=start.min));
   if(existing)continue;
   work.push({...r,kind:'employment',start_date:start.value,end_date:end?.value||null,source_type:'autobiography',date_precision:{start:start.value.length===4?'year':start.value.length===7?'month':'day',end:!end?null:end.value.length===4?'year':end.value.length===7?'month':'day'}});
  }
