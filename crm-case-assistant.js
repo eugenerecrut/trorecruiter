@@ -13,8 +13,11 @@ function build(candidate,requirements,documents,personalFile={}){
  const state=root.CRMDocumentState.summary(candidate,requirements,documents),pack=root.CRMDocumentState.packageState(candidate,documents);
  const missingDocuments=state.rows.filter(r=>r.r.is_required&&r.condition===true&&!r.received).filter((r,i,a)=>a.findIndex(x=>x.group===r.group&&x.childIndex===r.childIndex)===i);
  for(const [key,text] of [['full_name','Як зазначено ваше повне ПІБ у чинному документі?'],['birth_date','Укажіть дату народження.'],['birth_place','Укажіть місце народження.'],['phone','Укажіть контактний номер телефону.'],['service_type','Ви оформлюєтесь за контрактом чи за мобілізацією?'],['education_level','Яку освіту ви здобули?'],['worked_before','Чи працювали ви раніше?'],['served_before','Чи проходили ви військову службу?']])if(blank(value(key))){missingData.push({key,label:label(key)});add(key,text);}
- if(value('worked_before')===true||value('worked_before')==='true')if(blank(p.work_records)&&blank(value('work_history')))add('work_history','Уточніть періоди роботи: початок і завершення, підприємство та посада.');
- if(value('served_before')===true||value('served_before')==='true')if(blank(p.work_records)&&blank(value('military_service_history')))add('military_service_history','Уточніть періоди військової служби та додайте підтвердні документи.');
+ const projected=root.CRMBiographyFacts?root.CRMBiographyFacts.profile(p):p;
+ const periods=Array.isArray(projected.work_records)?projected.work_records:[];
+ const hasPeriod=kinds=>periods.some(r=>r&&!r.requires_review&&!r.crossed_out&&kinds.includes(r.kind));
+ if(value('worked_before')===true||value('worked_before')==='true')if(!hasPeriod(['employment'])&&blank(value('work_history')))add('work_history','Уточніть періоди роботи: початок і завершення, підприємство та посада.');
+ if(value('served_before')===true||value('served_before')==='true')if(!hasPeriod(['military_service','police_service'])&&blank(value('military_service_history')))add('military_service_history','Уточніть періоди військової служби та додайте підтвердні документи.');
  if(!blank(value('education_level'))&&blank(p.education_records)&&blank(value('education_institution')))add('education_institution','Уточніть назву закладу освіти й рік завершення навчання.');
  const intake=root.CRMIntake?.items(candidate,documents);
  for(const doc of root.CRMResponsibility.latest(documents)){
