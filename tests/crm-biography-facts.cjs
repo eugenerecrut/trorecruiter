@@ -112,3 +112,19 @@ test('optional service sections exclude crossed-out records while retaining sour
  person.profile_data.military_rank_records=[{rank:'Солдат',order_number:'UNCONFIRMED'}];assert.equal(values().rank_order,'');
  person.profile_data.military_rank_records=[{rank:'Солдат',accepted_by_ai:true,requires_review:true,order_number:'HELD'}];assert.equal(values().rank_order,'');
 });
+
+test('held single source details never print or overwrite independent marital status',()=>{
+ const c={URL,structuredClone};c.window=c;vm.createContext(c);for(const f of ['candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),c);
+ for(const flag of ['requires_review','crossed_out'])for(const serialize of [r=>r,JSON.stringify]){
+  const person={id:'synthetic',full_name:'Тестовий Іван Петрович',marital_status:'Одружений',rnokpp:'1234567890',birth_date:'1990-01-01',birth_place:'Дніпро',worked_before:false,served_before:true,profile_data:{education_institution:'Школа',work_records:[{kind:'military_service',start_date:'2020-01-01',unit:'А0000',position:'Солдат'}],
+   military_oath:serialize({date:'2020-01-02',unit:'А0000',confirmed_by_user:true,[flag]:true,source_document_id:'oath'}),
+   military_discharge:serialize({order_number:'TEST-D',order_date:'2021-01-01',unit:'А0000',[flag]:true,source_document_id:'discharge'}),
+   marriage_record:serialize({certificate_number:'TEST-M',registration_date:'2019-01-01',[flag]:true,source_document_id:'marriage'})}};
+  const before=JSON.stringify(person),values=Object.fromEntries(c.CRMServiceRecord.model(person).fields.map(f=>[f.key,f.value]));
+  assert.equal(values.oath,'');assert.equal(values.discharge,'');assert.equal(values.family,'Одружений');assert.equal(JSON.stringify(person),before);
+  const report=c.CRMServiceReadiness.review(person,{},['oath','discharge','marriage'].map(id=>({id,file_name:id+'.pdf'})));
+  assert.equal(report.ready,false);for(const id of ['oath','discharge','marriage'])assert(report.issues.some(i=>i.documents.some(d=>d.id===id)),id);
+  for(const key of ['military_oath','military_discharge','marriage_record']){const r=typeof person.profile_data[key]==='string'?JSON.parse(person.profile_data[key]):person.profile_data[key];delete r[flag];person.profile_data[key]=serialize(r);}
+  const valid=Object.fromEntries(c.CRMServiceRecord.model(person).fields.map(f=>[f.key,f.value]));assert(valid.oath.includes('02.01.2020'));assert(valid.discharge.includes('TEST-D'));assert(valid.family.includes('TEST-M'));assert.equal(c.CRMServiceReadiness.review(person).ready,true);
+ }
+});
