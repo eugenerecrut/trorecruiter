@@ -56,7 +56,7 @@ function documentProcessingMetricsHtml(d,esc=docEscape){
 function documentFileHtml(d,r,allDocs,esc=docEscape,compact=false){
   const verified=d.verification_status==='Підтверджено';
   const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
-  const zoneAction=r.ai_enabled!==false&&window.CRMMilitaryZoneReview&&window.CRMMilitaryZoneContract?.family(d.document_type,d.ai_document_type)?'<button type="button" class="crm-button" data-doc-zone="'+esc(d.id)+'">' +(d.ai_extracted?._military_zone_report?'Результат AI':'Опрацювати AI · автопілот')+'</button>':'';
+  const zoneAction=r.ai_enabled!==false&&window.CRMMilitaryZoneReview&&window.CRMMilitaryZoneContract?.family(d.document_type,d.ai_document_type)?'<button type="button" class="crm-button" data-doc-zone="'+esc(d.id)+'" data-doc-zone-view="'+(d.ai_extracted?._military_zone_report?'1':'0')+'">' +(d.ai_extracted?._military_zone_report?'Результат AI':'Опрацювати AI · автопілот')+'</button>':'';
   const actions=CRMResponsibility.documentInfo(d)+documentProcessingMetricsHtml(d,esc)+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>'+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+savedReviewButtonHtml(d,esc)+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
   if(zoneAction)return '<div class="crm-document-file">'+info+zoneAction+'<details class="crm-document-more"><summary>Додатково</summary><div class="crm-document-details">'+manualZoneButtonHtml(d,r,esc)+actions+'</div></details></div>';
   if(compact){
@@ -171,7 +171,7 @@ async function showDocuments(id,options={}){
     if(b.hasAttribute('data-doc-add'))return openAddDocumentModal(id,b.dataset.docAdd);
     if(b.dataset.docOpen)return openDocument(b.dataset.docOpen);
     if(b.dataset.docZoneManual)return openManualZoneDocument(b.dataset.docZoneManual,allDocs,async()=>true).catch(error=>alert(error.message));
-    if(b.dataset.docZone)return CRMMilitaryZoneReview.open(allDocs.find(d=>d.id===b.dataset.docZone),{autostart:true}).catch(error=>alert(error.message));
+    if(b.dataset.docZone)return CRMMilitaryZoneReview.open(allDocs.find(d=>d.id===b.dataset.docZone),{autostart:b.dataset.docZoneView!=='1',viewOnly:b.dataset.docZoneView==='1'}).catch(error=>alert(error.message));
     if(b.dataset.docSync)return CRMDocumentSync.showPreview(supabaseClient,b.dataset.docSync).catch(error=>alert(error.message));
     if(b.dataset.docData)return reviewDocumentData(b.dataset.docData).catch(error=>alert(error.message));
     if(b.dataset.docEditAi)return editDocumentExtraction(b.dataset.docEditAi).catch(error=>alert(error.message));
