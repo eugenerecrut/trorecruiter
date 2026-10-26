@@ -18,7 +18,9 @@ function build(candidate,requirements,documents,personalFile={}){
  const hasPeriod=kinds=>periods.some(r=>r&&!r.requires_review&&!r.crossed_out&&kinds.includes(r.kind));
  if(value('worked_before')===true||value('worked_before')==='true')if(!hasPeriod(['employment'])&&blank(value('work_history')))add('work_history','Уточніть періоди роботи: початок і завершення, підприємство та посада.');
  if(value('served_before')===true||value('served_before')==='true')if(!hasPeriod(['military_service','police_service'])&&blank(value('military_service_history')))add('military_service_history','Уточніть періоди військової служби та додайте підтвердні документи.');
- if(!blank(value('education_level'))&&blank(p.education_records)&&blank(value('education_institution')))add('education_institution','Уточніть назву закладу освіти й рік завершення навчання.');
+ const education=Array.isArray(projected.education_records)?projected.education_records:[];
+ const hasInstitution=education.some(r=>r&&!r.requires_review&&!r.crossed_out&&!blank(r.institution));
+ if(!blank(value('education_level'))&&!hasInstitution&&blank(value('education_institution')))add('education_institution','Уточніть назву закладу освіти й рік завершення навчання.');
  const intake=root.CRMIntake?.items(candidate,documents);
  for(const doc of root.CRMResponsibility.latest(documents)){
   if(doc.processing_status==='AI помилка')issues.push({kind:'error',document:doc,text:'Не вдалося розпізнати документ. Потрібна повторна обробка або ручна перевірка.'});

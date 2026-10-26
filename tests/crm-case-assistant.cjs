@@ -61,3 +61,27 @@ test('accepted biography work facts satisfy work questions without mutating the 
   c.profile_data.bio_work_claims[0].requires_review=true;assert(build(c,[],[]).questions.some(q=>q.key==='work_history'));
  }finally{delete w.CRMBiographyFacts;}
 });
+
+test('accepted biography education satisfies institution question without changing saved card',()=>{
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../biography-facts.js'),'utf8'),ctx);
+ try{
+  const c=candidate();delete c.profile_data.education_institution;
+  c.profile_data.bio_education_claims=[{source_document_id:'bio',institution:'Ліцей',end_date:'2020'}];
+  const before=JSON.stringify(c),r=build(c,[],[]);
+  assert(!r.questions.some(q=>q.key==='education_institution'));
+  assert.equal(JSON.stringify(c),before);
+  for(const flag of ['requires_review','crossed_out']){
+   c.profile_data.bio_education_claims[0][flag]=true;
+   assert(build(c,[],[]).questions.some(q=>q.key==='education_institution'));
+   delete c.profile_data.bio_education_claims[0][flag];
+  }
+ }finally{delete w.CRMBiographyFacts;}
+});
+test('unusable education records do not suppress institution questions',()=>{
+ for(const records of [[null],[{institution:'Ліцей',requires_review:true}],[{institution:'Ліцей',crossed_out:true}],[{institution:'   '}],{institution:'Ліцей'}]){
+  const c=candidate();delete c.profile_data.education_institution;c.profile_data.education_records=records;
+  assert(build(c,[],[]).questions.some(q=>q.key==='education_institution'));
+ }
+ const c=candidate();delete c.profile_data.education_institution;c.profile_data.education_records=[{institution:'Ліцей'}];
+ assert(!build(c,[],[]).questions.some(q=>q.key==='education_institution'));
+});
