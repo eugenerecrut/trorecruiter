@@ -2,7 +2,11 @@
 (function (root) {
   'use strict';
   const norm = v => String(v ?? '').normalize('NFKC').replace(/[’ʼ]/g, "'").replace(/\s+/g, ' ').trim().toLocaleLowerCase('uk-UA');
+  function isChildBirth(doc, requirement = '') {
+    return [requirement,doc?.requirement_type,doc?.document_type,doc?.ai_document_type].some(value=>/народження/iu.test(String(value??''))&&/дитин|дітей/iu.test(String(value??'')));
+  }
   function kind(doc, requirement = '') {
+    if (isChildBirth(doc, requirement)) return 'child_birth';
     const hint = norm(requirement || doc.requirement_type);
     const type = norm(doc.ai_document_type || doc.document_type);
     if (/убд|учасника бойових дій/.test(hint + ' ' + type)) return 'ubd';
@@ -104,5 +108,5 @@
     const content = groups.map(([title,value]) => '<div style="padding:8px 0;border-top:1px solid #e1e7e9"><strong>'+escape(title)+'</strong><div>'+Object.entries(value).filter(([key,v])=>v!=null&&v!==''&&key!=='source_document_id').map(([key,v])=>escape(labels[key]||'Відомості')+': '+escape(Array.isArray(v)?v.join(', '):v)).join(' · ')+'</div>'+(/^[0-9a-f-]{36}$/i.test(value.source_document_id||'')?'<button type="button" data-extra-document="'+escape(value.source_document_id)+'">✦ Джерело</button>':'')+'</div>').join('');
     return '<details class="cc-wide"><summary>Інші реквізити документів</summary>'+content+'</details>';
   }
-  root.CRMDocumentPolicy = { kind, normalize, savedReview, marriage, serviceSummary, cardExtras };
+  root.CRMDocumentPolicy = { kind, normalize, savedReview, marriage, serviceSummary, cardExtras, isChildBirth };
 })(globalThis);
