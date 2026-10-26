@@ -1,4 +1,4 @@
-# Verified CRM examples — version 2
+# Verified CRM examples — version 3
 
 These examples describe existing tested rules. They are not instructions to update production records. References name executable repository tests.
 
@@ -57,3 +57,10 @@ Reference: tests/crm-period-links.cjs.
 `/паспорт/iu.test('Копія паспорта/ID Картки')` is true.
 `/шлюб/iu.test('Копія свідоцтва про шлюб')` is true.
 A document failing to match an unrelated module is not automatically a routing bug. Check the complete routing path.
+
+## 10. Work periods and service periods answer different questions
+
+Wrong: any nonempty work_records suppresses both employment and service questions.
+Correct: usable employment records satisfy employment; military_service or police_service records satisfy service. requires_review or crossed_out records do not satisfy either. Keep legacy narrative behavior; reuse CRMBiographyFacts.profile for accepted biography work facts without writing or duplicating them.
+Synthetic case: worked_before=true, served_before=true, one usable police_service record, no narratives. Ask about employment, not service. A crossed_out employment record cannot satisfy employment.
+Reference: tests/crm-case-assistant.cjs, “work and service questions require a usable record of the corresponding kind” and “accepted biography work facts satisfy work questions without mutating the card”. CRM PR #170.

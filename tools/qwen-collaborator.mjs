@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const MODEL='qwen2.5-coder:7b';
-export const KNOWLEDGE_VERSION='2';
+export const KNOWLEDGE_VERSION='3';
 export const ENDPOINT='http://127.0.0.1:11434/api/chat';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const LIMIT=16000;
