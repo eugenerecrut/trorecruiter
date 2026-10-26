@@ -29,3 +29,21 @@ test('existing owner, document-confirmation and review requirements remain in fo
   const c=candidate(),e=extracted(),d=document();change(e,c,d);const review=names.review(e,c,d);assert.equal(review.blocked,true);assert.deepEqual(review.history,c.profile_data.name_history);
  }
 });
+
+test('draft upgrade preserves an unrelated manual name record and remains idempotent',()=>{
+ const c=candidate(),d=document(),e=extracted();
+ const manual={previous_full_name:'Давній Іван Петрович',new_full_name:c.full_name,verified:true,confirmed_by_user:true,notes:'Зберегти вручну'};
+ const draft={previous_full_name:e.name_change.previous_full_name,new_full_name:e.name_change.new_full_name,verified:false};
+ c.profile_data.name_history=[manual,draft];
+ const before=JSON.stringify({c,d,e,manual}),review=names.review(e,c,d);
+ assert.equal(review.blocked,false);assert.equal(review.history.length,2);
+ assert.deepEqual(review.history.find(r=>r.previous_full_name===manual.previous_full_name),manual);
+ const upgraded=review.history.filter(r=>r.previous_full_name===e.name_change.previous_full_name);
+ assert.equal(upgraded.length,1);assert.equal(upgraded[0].verified,true);assert.equal(upgraded[0].source_document_id,d.id);
+ assert.equal(upgraded[0].new_full_name,e.name_change.new_full_name);assert.equal(upgraded[0].change_date,e.name_change.change_date);
+ assert.equal(JSON.stringify({c,d,e,manual}),before);assert.equal(c.full_name,'Новий Іван Петрович');
+ const clone=structuredClone(c);clone.profile_data.name_history=structuredClone(review.history);
+ const reviewedBefore=JSON.stringify({clone,history:review.history});
+ assert.deepEqual(names.review(e,clone,d).history,review.history);
+ assert.equal(JSON.stringify({clone,history:review.history}),reviewedBefore);
+});
