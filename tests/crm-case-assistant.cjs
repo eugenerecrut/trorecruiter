@@ -104,3 +104,20 @@ test('case report scopes candidate sources before latest versions, counts and pl
   const onlyForeign=build(c,reqs,docs.slice(1));assert.equal(onlyForeign.fills.length,0);assert.equal(onlyForeign.issues.length,0);assert.equal(onlyForeign.state.verified,0);assert.equal(onlyForeign.missingDocuments.length,1);
  }finally{w.CRMResponsibility=savedResponsibility;w.CRMDocumentSync.plan=savedPlan;}
 });
+
+test('birthplace fallback belongs to candidate and agrees across report readiness and model',()=>{
+ ctx.URL=URL;vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-service-record.js'),'utf8'),ctx);
+ for(const birth_place of [undefined,'','   ']){
+  const c=candidate();c.rnokpp='1234567890';c.birth_place=birth_place;
+  const foreign={candidate_id:'other',birth_place:'Чуже місце'},before=JSON.stringify({c,foreign});
+  const field=pf=>w.CRMServiceRecord.model(c,pf).fields.find(f=>f.key==='birth_place').value;
+  const report=build(c,[],[],foreign);
+  assert(report.questions.some(q=>q.key==='birth_place'));assert(report.serviceRecord.issues.some(i=>i.fieldId==='identity.birth_place'));assert.equal(field(foreign),'');
+  assert.equal(JSON.stringify({c,foreign}),before);
+  for(const pf of [{candidate_id:c.id,birth_place:'Власне місце'},{birth_place:'Власне місце'}]){
+   const ownBefore=JSON.stringify({c,pf}),own=build(c,[],[],pf);
+   assert(!own.questions.some(q=>q.key==='birth_place'));assert.equal(own.serviceRecord.ready,true);assert.equal(field(pf),'Власне місце');assert.equal(JSON.stringify({c,pf}),ownBefore);
+  }
+  c.birth_place='Ручне місце';assert.equal(field(foreign),'Ручне місце');assert(!build(c,[],[],foreign).questions.some(q=>q.key==='birth_place'));
+ }
+});

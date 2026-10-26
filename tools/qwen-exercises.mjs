@@ -5,6 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {MODEL,KNOWLEDGE_VERSION,loadKnowledge,makeRequest,requestProposal} from './qwen-collaborator.mjs';
 
 export const exercises=Object.freeze([
+ {id:'version_scope_order',question:'Mixed documents include owned version 1 and foreign candidate version 2 of the same group. Which order preserves the owned file: filter-before-latest or latest-before-filter? Return that exact string.',expected:'filter-before-latest'},
+ {id:'foreign_personal_file',question:'Candidate id=A has blank birthplace. personalFile candidate_id=B has birthplace. May its value fill this candidate output? Boolean.',expected:false},
  {id:'police_service_question',question:'worked_before=true, served_before=true. Only work_records entry is a usable police_service record; no legacy narratives. Must the military_service_history clarification question be asked? Boolean.',expected:false},
  {id:'selection_property',question:'What exact selection property identifies a field in CRMDocumentSync.plan?',expected:'key'},
  {id:'target_conflict',question:'Rows: phone=conflict, military_registry_number=leave. Does this prove a conflict of military_registry_number? Boolean.',expected:false},

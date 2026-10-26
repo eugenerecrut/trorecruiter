@@ -1,4 +1,4 @@
-# Verified CRM examples — version 3
+# Verified CRM examples — version 4
 
 These examples describe existing tested rules. They are not instructions to update production records. References name executable repository tests.
 
@@ -64,3 +64,12 @@ Wrong: any nonempty work_records suppresses both employment and service question
 Correct: usable employment records satisfy employment; military_service or police_service records satisfy service. requires_review or crossed_out records do not satisfy either. Keep legacy narrative behavior; reuse CRMBiographyFacts.profile for accepted biography work facts without writing or duplicating them.
 Synthetic case: worked_before=true, served_before=true, one usable police_service record, no narratives. Ask about employment, not service. A crossed_out employment record cannot satisfy employment.
 Reference: tests/crm-case-assistant.cjs, “work and service questions require a usable record of the corresponding kind” and “accepted biography work facts satisfy work questions without mutating the card”. CRM PR #170.
+
+## 11. Scope sources before choosing versions or fallback values
+
+Wrong: choose latest() across mixed candidates, then filter the current candidate. A higher foreign version can hide an owned source.
+Correct: reject explicitly foreign candidate_id first, then call latest(), count and plan. Foreign-only files cannot satisfy an owned requirement.
+Reference: tests/crm-case-assistant.cjs, “case report scopes candidate sources before latest versions, counts and planning” (CRM PR #178).
+
+A personal_files fallback with a different explicit candidate_id cannot supply birthplace. Blank or whitespace-only candidate birthplace may use the matching personal-file value for output; an existing nonblank candidate value retains priority. Read-only fallback does not write to the candidate. Preserve existing compatibility for legacy inputs without candidate_id.
+Reference: tests/crm-case-assistant.cjs, “birthplace fallback belongs to candidate and agrees across report readiness and model”.

@@ -18,7 +18,7 @@ test('exercise prompts do not contain the answer key; actual regex expectations 
  assert.equal(exercises.find(e=>e.id==='marriage_regex').expected,/шлюб/iu.test('Копія свідоцтва про шлюб'));
 });
 test('both curated memory files fit the diagnostic request and are loaded automatically',async()=>{
- assert.equal(KNOWLEDGE_VERSION,'3');const knowledge=await loadKnowledge();
+ assert.equal(KNOWLEDGE_VERSION,'4');const knowledge=await loadKnowledge();
  assert.match(knowledge,/Verified CRM examples/);assert.match(knowledge,/selection\.key/);
  assert.doesNotThrow(()=>makeRequest(exerciseTask(),knowledge));
 });
