@@ -181,3 +181,18 @@ test('Expected OCR revision match retains safe blank filling and manual fields',
  const result=await sync.automate(m.client,'d1',{expectedRevision:'r1'});
  assert.notEqual(result.superseded,true);assert.equal(m.state.c.military_specialty,'manual-vos');assert.equal(m.state.c.profile_data.service_type,'За мобілізацією');
 });
+
+
+test('explicit draft-registration certificate names use registry planning without changing document types',()=>{
+ const source={...personal(),military_rank:'Солдат',military_registry_number:'123456789'};
+ for(const type of ['Посвідчення про приписку до призовної дільниці','Копія Посвідчення про приписку до призовної дільниці','  ПОСВІДЧЕННЯ ПРО ПРИПИСКУ ДО ПРИЗОВНОЇ ДІЛЬНИЦІ  ']){
+  const d=document(source,type),c=candidate(),before=JSON.stringify({d,c}),p=sync.plan(d,c);
+  assert.equal(p.supported,true,type);assert(p.selections.some(s=>s.key==='military_registry_number'),type);assert.equal(p.document.document_type,type);assert.equal(JSON.stringify({d,c}),before);
+ }
+ for(const type of ['Посвідчення водія','Копія УБД','Паспорт громадянина України','Посвідчення про нагороду','Довідка про приписку до роботи','Посвідчення про приписку до призовної дільниці іншої особи']){
+  const p=sync.plan(document(source,type),candidate());
+  assert(!p.selections.some(s=>s.key==='military_registry_number'),type);
+ }
+ const wrong=sync.plan({...document({...source,full_name:'Інший Петро Іванович',birth_date:'1980-01-01',rnokpp:'9999999999'},'Посвідчення про приписку до призовної дільниці'),verification_status:'Не перевірено',ai_confidence:0.2},candidate());
+ assert.equal(wrong.selections.length,0);assert(wrong.rows.some(r=>r.action==='conflict'));
+});

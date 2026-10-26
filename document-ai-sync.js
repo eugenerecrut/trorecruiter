@@ -111,7 +111,7 @@
     const type=String(policy?.type||document.ai_document_type||document.document_type||'');
     const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
     const identity=/паспорт|ID[\s-]*карт/iu.test(type),military=!!root.CRMMilitary?.isDocument(type),work=!!root.CRMWork?.isDocument(type),vlk=!!root.CRMVLK?.isDocument(type);
-    const registry=/Резерв\s*\+|приписн|військовий облік/iu.test(type);
+    const registry=/Резерв\s*\+|приписн|військовий облік/iu.test(type)||/^(?:копія\s+)?посвідчення\s+про\s+приписку\s+до\s+призовної\s+дільниці$/iu.test(String(type||'').trim());
     const militaryFacts=!!root.CRMMilitaryFacts?.isDocument(type);
     const biography=/автобіограф/iu.test(type);
     const ancillary=['education','residence','driver','ubd'].includes(policy?.category)||/довідка.*МВС|несудиміст/i.test(type);
