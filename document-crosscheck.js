@@ -151,14 +151,23 @@ function periodLinks(documents){
  }
  return links;
 }
+// Shared source validation for read-only zonal comparisons.
+function zoneSource(documents,candidate,context){
+ if(!context||typeof context.revision!=='string'||!context.revision||!/^[a-f0-9]{64}$/.test(context.file_sha256||'')||!Number.isInteger(context.pages)||context.pages<1||context.pages>200)return null;
+ const document=eligibleDocuments(documents,candidate).find(d=>d.id===context.document_id);
+ return document&&document.ai_processed_at===context.revision&&(!document.file_hash||document.file_hash===context.file_sha256)?document:null;
+}
+function boundZone(report,document,context,binding){
+ const s=report?.source,b=s?.box;
+ if(report?.review_only!==true||report.mode!=='zone'||s?.document_id!==document.id||!Number.isInteger(s.page)||s.page<1||s.page>context.pages||!b||!['x','y','w','h'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<=1)||b.w<=0||b.h<=0||b.x+b.w>1.000001||b.y+b.h>1.000001)return false;
+ return s.file_sha256!==undefined?s.file_sha256===context.file_sha256:!!binding&&binding.document_id===document.id&&binding.file_sha256===context.file_sha256&&binding.revision===context.revision;
+}
 function compareZones(documents,candidate,{reports=[],context,binding}={}){
- if(!context||typeof context.revision!=='string'||!context.revision||!/^[a-f0-9]{64}$/.test(context.file_sha256||'')||!Number.isInteger(context.pages)||context.pages<1||context.pages>200)return [];
- const document=eligibleDocuments(documents,candidate).find(d=>d.id===context.document_id);if(!document||document.ai_processed_at!==context.revision||document.file_hash&&document.file_hash!==context.file_sha256)return [];
+ const document=zoneSource(documents,candidate,context);if(!document)return [];
  const base=compare(documents,candidate),groups=new Map(),seen=new Set();
- const validBox=b=>b&&['x','y','w','h'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<=1)&&b.w>0&&b.h>0&&b.x+b.w<=1.000001&&b.y+b.h<=1.000001;
  for(const report of Array.isArray(reports)?reports:[]){
-  const s=report?.source;if(report?.review_only!==true||report.mode!=='zone'||s?.document_id!==document.id||!Number.isInteger(s.page)||s.page<1||s.page>context.pages||!validBox(s.box))continue;
-  if(s.file_sha256!==undefined?s.file_sha256!==context.file_sha256:!binding||binding.document_id!==document.id||binding.file_sha256!==context.file_sha256||binding.revision!==context.revision)continue;
+  if(!boundZone(report,document,context,binding))continue;
+  const s=report.source;
   const rows=Array.isArray(report.rows)?report.rows:[];
   // Generic birth fields in a family/mixed-person region must never become candidate identity facts.
   if(rows.some(row=>(Array.isArray(row?.fields)?row.fields:[]).some(f=>['relative_name','relationship'].includes(f?.key)||f?.key==='full_name'&&norm(f.value)!==norm(candidate.full_name)&&!root.CRMNameHistory?.matches(f.value,candidate))))continue;
@@ -183,12 +192,54 @@ function compareZones(documents,candidate,{reports=[],context,binding}={}){
   delete group.uncertain;return group;
  });
 }
-async function load(client,candidate,options){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return [...compare(r.data,candidate),...compareZones(r.data,candidate,options)];}
+// A row-level parent claim is review evidence, never a confirmed identity or a write.
+function compareZoneParents(documents,candidate,{reports=[],context,binding}={}){
+ if(obj(candidate.profile_data).merged_into||obj(obj(candidate.profile_data).workflow).archived_at||candidate.archived_at||candidate.deleted_at||candidate.merged_into||candidate.merged_into_id||candidate.merged_into_candidate_id||['archived','merged'].includes(candidate.status))return [];
+ const document=zoneSource(documents,candidate,context);if(!document)return [];
+ const role=v=>['мати','mother'].includes(norm(v))?'мати':['батько','father'].includes(norm(v))?'батько':null;
+ const clear=f=>f&&f.legibility==='clear'&&typeof f.value==='string'&&f.value.trim()&&(f.alternatives==null||Array.isArray(f.alternatives)&&!f.alternatives.length);
+ const base=compare(documents,candidate),groups=new Map(),seen=new Set();
+ for(const report of Array.isArray(reports)?reports:[]){
+  if(!boundZone(report,document,context,binding))continue;
+  const s=report.source;
+  for(const row of Array.isArray(report.rows)?report.rows:[]){
+   const fields=Array.isArray(row?.fields)?row.fields:[],names=fields.filter(f=>f?.key==='relative_name'),roles=fields.filter(f=>f?.key==='relationship');
+   if(names.length!==1||roles.length!==1||fields.some(f=>f?.key==='full_name'))continue;
+   const name=names[0],relation=roles[0],subject=role(relation.raw_text),parsed=parentNameParts(name.value);
+   if(!subject||!clear(name)||!parsed?.patronymic||relation.alternatives!=null&&(!Array.isArray(relation.alternatives)||relation.alternatives.length))continue;
+   // A qualified or contradictory role must not be relabelled as the candidate's parent.
+   if(relation.value!=null&&(!role(relation.value)||role(relation.value)!==subject))continue;
+   const dates=fields.filter(f=>f?.key==='birth_date'),date=dates.length===1&&clear(dates[0])&&dates[0].value.length===10&&dateRange(dates[0].value)?dates[0].value:null;
+   const signature=JSON.stringify([subject,norm(name.value),date,s.page,s.box.x,s.box.y,s.box.w,s.box.h]);if(seen.has(signature))continue;seen.add(signature);
+   const group=groups.get(subject)||{key:'relatives',subject,current:null,current_birth_date:null,sources:[],status:'needs_review',zone_crosscheck:true,learning_eligible:false};
+   group.sources.push({document_id:document.id,document_type:document.document_type,file_name:document.file_name,value:name.value,raw_text:name.raw_text||null,birth_date:date,page:s.page,box:{...s.box},fingerprint:context.file_sha256,verified:false,kind:'zone_reading'});
+   groups.set(subject,group);
+  }
+ }
+ return [...groups.values()].map(group=>{
+  const stored=Array.isArray(obj(candidate.profile_data).relatives)?obj(candidate.profile_data).relatives.filter(r=>role(r.relationship||r.relation)===group.subject):[];
+  group.current=stored[0]?.full_name||stored[0]?.name||null;group.current_birth_date=stored[0]?.birth_date??null;
+  const other=base.find(e=>e.key==='relatives'&&e.subject===group.subject);
+  for(const source of other?.sources||[]){
+   const original=documents.find(d=>d.id===source.document_id);
+   if(!source.verified||source.document_id===document.id||source.fingerprint===context.file_sha256||original?.storage_path===document.storage_path)continue;
+   if(!group.sources.some(v=>v.fingerprint===source.fingerprint&&norm(v.value)===norm(source.value)&&v.birth_date===source.birth_date))group.sources.push({...source});
+  }
+  const values=[...group.sources.map(v=>v.value),...stored.map(v=>v.full_name||v.name)].filter(Boolean);
+  const dates=[...group.sources.map(v=>v.birth_date),...stored.map(v=>v.birth_date)].filter(Boolean);
+  const compatible=new Set(values.map(norm)).size<=1||group.subject==='мати'&&maidenNameMatch(values)||emptyParentNameNotation(values);
+  const conflict=stored.length>1||new Set(dates.map(norm)).size>1||!compatible;
+  group.status=conflict?'conflict':'needs_review';
+  group.reason=conflict?'ПІБ, дата народження або записи родича відрізняються. Звірте оригінали; картка не змінена.':group.sources.some(s=>s.kind!=='zone_reading'&&s.verified)?'Знайдено відповідні відомості про родича в іншому перевіреному документі. Спорідненість у зональному читанні потребує підтвердження; картка не змінена.':'Збережено ймовірний зв’язок із рядка документа. Незалежного перевіреного джерела немає; спорідненість потрібно підтвердити.';
+  return group;
+ });
+}
+async function load(client,candidate,options){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return [...compare(r.data,candidate),...compareZones(r.data,candidate,options),...compareZoneParents(r.data,candidate,options)];}
 function guard(report,evidence){report.crosscheck=evidence;const conflicts=evidence.filter(e=>['conflict','needs_review'].includes(e.status));
  // Block proposed writes, retaining the original reason for existing conflicts.
  // An unchanged/absent value in an unrelated document is not another conflicting fact.
  for(const row of report.rows){if(row.action!=='fill'||!conflicts.some(e=>e.key===row.key)||!['candidate','profile'].includes(row.target))continue;row.action='conflict';row.reason='Розбіжність між документами кандидата';}
  report.selections=report.selections.filter(s=>!(['candidate','profile'].includes(s.target)&&conflicts.some(e=>e.key===s.key)));return report;
 }
-const api={compare,load,guard,dateRange,periodLinks,compareZones,maidenNameMatch};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={compare,load,guard,dateRange,periodLinks,compareZones,compareZoneParents,maidenNameMatch};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
