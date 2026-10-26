@@ -210,8 +210,11 @@ function compareZoneParents(documents,candidate,{reports=[],context,binding}={})
    // A qualified or contradictory role must not be relabelled as the candidate's parent.
    if(relation.value!=null&&(!role(relation.value)||role(relation.value)!==subject))continue;
    const dates=fields.filter(f=>f?.key==='birth_date'),date=dates.length===1&&clear(dates[0])&&dates[0].value.length===10&&dateRange(dates[0].value)?dates[0].value:null;
-   const signature=JSON.stringify([subject,norm(name.value),date,s.page,s.box.x,s.box.y,s.box.w,s.box.h]);if(seen.has(signature))continue;seen.add(signature);
-   const group=groups.get(subject)||{key:'relatives',subject,current:null,current_birth_date:null,sources:[],status:'needs_review',zone_crosscheck:true,learning_eligible:false};
+   const signature=JSON.stringify([subject,norm(name.value),date,s.page,s.box.x,s.box.y,s.box.w,s.box.h,relation.value,relation.legibility,name.raw_text]);if(seen.has(signature))continue;seen.add(signature);
+   const group=groups.get(subject)||{key:'relatives',subject,current:null,current_birth_date:null,sources:[],status:'needs_review',zone_crosscheck:true,learning_eligible:false,review_details:[]};
+   const detail=relation.value==null||relation.legibility!=='clear'?'Ступінь споріднення «'+subject+'» прочитано непевно. Звірте цей підпис у рядку оригіналу.':'Підпис «'+subject+'» прочитано, але зональне читання ще не підтверджене.';
+   if(!group.review_details.includes(detail))group.review_details.push(detail);
+   if(/\(\s*\)/u.test(name.raw_text||''))group.review_details.push('Біля ПІБ є порожні дужки. Дівоче прізвище в них не прочитане; не дописуйте його без джерела.');
    group.sources.push({document_id:document.id,document_type:document.document_type,file_name:document.file_name,value:name.value,raw_text:name.raw_text||null,birth_date:date,page:s.page,box:{...s.box},fingerprint:context.file_sha256,verified:false,kind:'zone_reading'});
    groups.set(subject,group);
   }
@@ -230,6 +233,11 @@ function compareZoneParents(documents,candidate,{reports=[],context,binding}={})
   const compatible=new Set(values.map(norm)).size<=1||group.subject==='мати'&&maidenNameMatch(values)||emptyParentNameNotation(values);
   const conflict=stored.length>1||new Set(dates.map(norm)).size>1||!compatible;
   group.status=conflict?'conflict':'needs_review';
+  if(stored.length>1)group.review_details.push('У картці кілька записів цієї спорідненості. Визначте, до кого належить рядок документа.');
+  if(new Set(dates.map(norm)).size>1)group.review_details.push('Дати народження родича відрізняються. Звірте повні дати в оригіналах.');
+  if(!compatible)group.review_details.push('ПІБ родича відрізняються. Звірте прізвище, ім’я та по батькові; зміну прізвища не припускаємо.');
+  group.review_details=[...new Set(group.review_details)];
+
   group.reason=conflict?'ПІБ, дата народження або записи родича відрізняються. Звірте оригінали; картка не змінена.':group.sources.some(s=>s.kind!=='zone_reading'&&s.verified)?'Знайдено відповідні відомості про родича в іншому перевіреному документі. Спорідненість у зональному читанні потребує підтвердження; картка не змінена.':'Збережено ймовірний зв’язок із рядка документа. Незалежного перевіреного джерела немає; спорідненість потрібно підтвердити.';
   return group;
  });
