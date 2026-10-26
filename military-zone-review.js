@@ -531,7 +531,10 @@ async function open(doc,options={}){
    const initial=await supabaseClient.functions.invoke('process-id-document',{body:{document_id:doc.id}});
    if(initial.error||(!initial.data?.ok&&!initial.data?.extracted))throw Error('Основне розпізнавання не завершено. '+(initial.error?.message||initial.data?.error||''));
    const processed=await readOpeningDocument(supabaseClient,openingSource);
-   if(window.CRMDocumentSync?.automate)await CRMDocumentSync.automate(supabaseClient,doc.id,{expectedRevision:processed.ai_processed_at??null});
+   if(window.CRMDocumentSync?.automate){
+    const synced=await CRMDocumentSync.automate(supabaseClient,doc.id,{expectedRevision:processed.ai_processed_at??null});
+    if(synced?.superseded)throw Error('Редакція AI змінилася під час перевірки. Автоматичне продовження зупинено. Оновіть список документів і відкрийте актуальний результат.');
+   }
    const fresh=await readOpeningDocument(supabaseClient,openingSource);Object.assign(doc,fresh);
   }
   const originalBytes=await blob.arrayBuffer(),originalHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',originalBytes)),b=>b.toString(16).padStart(2,'0')).join('');
