@@ -461,3 +461,23 @@ test('unabortable timed-out status reads cannot spawn more requests until the or
  const beforeScope=calls,p=read(client,'j','d',{}),q=read(client,'j','d',{});assert.notEqual(p,q);await Promise.all([p,q]);assert.equal(calls,beforeScope+2);
  const missing=ctx.window.CRMMilitaryZoneReview.backgroundSummary({state:'needs_review'},{detailState:'timeout'});assert.equal(missing.title,'Час очікування стану минув');assert.match(missing.notes.join(' '),/20 секунд/);assert.match(missing.notes.join(' '),/не означає помилку опрацювання/);
 });
+
+test('saved-result opening suppresses autostart even with stale primary errors or missing report',()=>{
+ const context={window:{}};vm.createContext(context);const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8');vm.runInContext(source,context);
+ const policy=context.window.CRMMilitaryZoneReview.openingPolicy;
+ for(const processing_status of ['AI помилка','Розпізнано',null]){
+  const doc={processing_status,ai_extracted:{_military_zone_report:{status:'complete'}}};
+  assert.equal(policy(doc,{autostart:true}).autostart,false);
+  assert.equal(policy(doc,{autostart:true}).viewOnly,true);
+ }
+ for(const ai_extracted of [null,{}, {_military_zone_report:null}]){
+  assert.equal(policy({ai_extracted,processing_status:'AI помилка'},{autostart:true,viewOnly:true}).autostart,false);
+ }
+ assert.equal(policy({},{autostart:true}).autostart,true);
+ assert.equal(policy({},{autostart:false}).autostart,false);
+ assert(source.includes('const {autostart,viewOnly}=openingPolicy(doc,options)'));
+ assert(source.includes('else if(viewOnly)'));
+ const entry=fs.readFileSync(require.resolve('../documents.js'),'utf8');
+ assert(entry.includes('data-doc-zone-view="'));
+ assert(entry.includes("autostart:b.dataset.docZoneView!=='1',viewOnly:b.dataset.docZoneView==='1'"));
+});

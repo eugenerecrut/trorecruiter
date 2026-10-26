@@ -247,7 +247,12 @@ function pageRerunEligible(job,doc,pages){
   &&job.zone_summary?.pages===1&&job.zone_summary?.budget===13&&!job.zone_summary?.source_changed
   &&job.zone_binding?.document_id===doc.id&&!!job.zone_run;
 }
-async function open(doc,{autostart=false}={}){
+function openingPolicy(doc,{autostart=false,viewOnly=false}={}){
+ const saved=!!doc?.ai_extracted?._military_zone_report;
+ return {autostart:autostart===true&&!viewOnly&&!saved,viewOnly:viewOnly===true||saved};
+}
+async function open(doc,options={}){
+ const {autostart,viewOnly}=openingPolicy(doc,options);
  if(!doc?.storage_path)throw Error('Документ не має файла');
  const dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';dialog.style.width='min(1100px,96vw)';
  dialog.innerHTML='<h2>Документ · завантаження</h2><p>'+esc(doc.file_name)+'</p><p>Відкриваємо оригінал і перевіряємо збережений стан. Зачекайте завершення завантаження.</p><div class="crm-actions"><button data-auto>Опрацювати автоматично</button><button data-stop disabled>Зупинити</button></div><p data-auto-progress role="status"></p><details data-manual><summary>Додатково: оригінал і ручне читання</summary><div class="crm-actions"><button data-prev>←</button><span data-page></span><button data-next>→</button><button data-overview>Оглянути сторінку</button></div><div data-quality></div><div data-zones class="crm-actions"></div><div style="max-height:55vh;overflow:auto;border:1px solid #ccd"><canvas data-source style="display:block;max-width:100%;height:auto;touch-action:none" aria-label="Сторінка документа, виділіть зону мишею"></canvas></div><fieldset><legend>Зона читання, % від сторінки</legend><div style="display:flex;gap:10px;flex-wrap:wrap">'+[['x','Ліворуч'],['y','Згори'],['w','Ширина'],['h','Висота']].map(([k,l])=>'<label>'+l+'<input data-box="'+k+'" aria-label="'+l+'" type="number" min="0" max="100" step="0.1" value="'+(k==='w'||k==='h'?100:0)+'" style="width:80px;display:block"></label>').join('')+'</div><button data-read>Перечитати зону</button><button data-full>Уся сторінка</button></fieldset></details><p role="status" data-status></p><section data-result></section><div class="crm-actions"><button data-export disabled>Завантажити звіт JSON</button><button data-close>Закрити</button></div>';
@@ -506,9 +511,10 @@ async function open(doc,{autostart=false}={}){
    $('[data-auto]').textContent='Опрацювати заново';$('[data-manual]').append($('[data-auto]'));
    if(view.reports.length)try{await crosscheck()}catch(e){status('Зіставлення не завершено: '+e.message)}
   }else if(autostart&&!canary&&sourceReady)$('[data-auto]').onclick();
+  else if(viewOnly){dialog.querySelector('h2').textContent='Документ · збережений результат недоступний';dialog.querySelectorAll('p')[1].textContent='Не знайдено збереженого звіту або доручення. Нове розпізнавання не запускалося. Закрийте вікно та оновіть список документів.';}
   else if(!autostart){dialog.querySelector('h2').textContent='Документ · оригінал і ручне читання';dialog.querySelectorAll('p')[1].textContent='Оригінал відкрито. Нове читання можна запустити окремою кнопкою; сам перегляд не запускає AI.';}
  }catch(e){if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено';dialog.querySelectorAll('p')[1].textContent='Не вдалося завершити відкриття документа. Перевірте повідомлення нижче.';status(e.message);lock(false)}}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
+window.CRMMilitaryZoneReview={open,openingPolicy,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
 })();
