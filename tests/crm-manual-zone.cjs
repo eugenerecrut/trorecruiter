@@ -503,12 +503,12 @@ test('actual opening preflight blocks primary OCR on unavailable queue or existi
  const source=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),api={window:{},setTimeout,clearTimeout,AbortController};vm.createContext(api);vm.runInContext(source,api);
  const start=source.indexOf('let backgroundJob=null,backgroundLookupError=null;'),end=source.indexOf("const originalBytes=",start),body=source.slice(start,end);
  for(const mode of ['error','running','completed','empty','file_error','changed_source']){
-  let invokes=0,syncs=0;const doc={id:'d',candidate_id:'c',processing_status:'AI помилка'};
-  const client={rpc:async()=>mode==='error'?{error:{message:'offline'}}:{data:['empty','file_error','changed_source'].includes(mode)?[]:[{id:'j',document_id:'d',kind:'zone',state:mode}]},functions:{invoke:async()=>{invokes++;return {data:{ok:true}}}},from:()=>({select(){return this},eq(){return this},single:async()=>({data:{ai_extracted:{},...(mode==='changed_source'?{storage_path:'new.pdf'}:{})}})})};
-  const sync={automate:async()=>{syncs++}},context={loadOriginalFile:async()=>{if(mode==='file_error')throw Error('original unavailable');return {}},existingBackgroundJob:api.window.CRMMilitaryZoneReview.existingBackgroundJob,supabaseClient:client,doc,closed:false,autostart:true,canary:false,queueChecking:false,$:()=>({}),status:()=>{},window:{CRMDocumentSync:sync},CRMDocumentSync:sync};
+  let invokes=0,syncs=0;const doc={id:'d',candidate_id:'c',storage_path:'original.pdf',processing_status:'AI помилка'};
+  const client={rpc:async()=>mode==='error'?{error:{message:'offline'}}:{data:['empty','file_error','changed_source'].includes(mode)?[]:[{id:'j',document_id:'d',kind:'zone',state:mode}]},functions:{invoke:async()=>{invokes++;return {data:{ok:true}}}},from:()=>({select(){return this},eq(){return this},single:async()=>({data:{id:'d',candidate_id:'c',storage_path:'original.pdf',ai_processed_at:'r1',ai_extracted:{},...(mode==='changed_source'?{storage_path:'new.pdf'}:{})}})})};
+  const sync={automate:async(_client,_id,options)=>{assert.equal(options.expectedRevision,'r1');syncs++}},context={readOpeningDocument:api.window.CRMMilitaryZoneReview.readOpeningDocument,loadOriginalFile:async()=>{if(mode==='file_error')throw Error('original unavailable');return {}},existingBackgroundJob:api.window.CRMMilitaryZoneReview.existingBackgroundJob,supabaseClient:client,doc,closed:false,autostart:true,canary:false,queueChecking:false,$:()=>({}),status:()=>{},window:{CRMDocumentSync:sync},CRMDocumentSync:sync};
   const run=vm.runInNewContext('(async()=>{'+body+'return backgroundJob;})()',context);
   if(mode==='error')await assert.rejects(run,/чергу СПЛАВ/);else if(mode==='file_error')await assert.rejects(run,/original unavailable/);else if(mode==='changed_source')await assert.rejects(run,/Версія оригіналу змінилася/);else await run;
-  assert.equal(invokes,['empty','changed_source'].includes(mode)?1:0,mode);assert.equal(syncs,['empty','changed_source'].includes(mode)?1:0,mode);
+  assert.equal(invokes,['empty','changed_source'].includes(mode)?1:0,mode);assert.equal(syncs,mode==='empty'?1:0,mode);
  }
 });
 
@@ -562,4 +562,17 @@ test('original deadline covers signing, download and body without late fetch or 
   resolve(stage==='sign'?{data:{signedUrl:'https://example.test/file'}}:stage==='fetch'?{ok:true,blob:async()=>({size:1})}:{size:1});
   await new Promise(r=>setImmediate(r));assert.equal(fetches,stage==='sign'?0:1);
  }
+});
+
+test('opening source validation rejects changed identity before synchronization without mutating source',async()=>{
+ const c={window:{}};vm.createContext(c);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),c);const read=c.window.CRMMilitaryZoneReview.readOpeningDocument;
+ const source={id:'d',candidate_id:'c',storage_path:'f.pdf',version_group_id:'g',version_number:1,file_hash:'hash'},before=JSON.stringify(source),row={...source,ai_processed_at:'new-revision',ai_extracted:{full_name:'Source name'}};
+ const client=result=>({from:name=>{assert.equal(name,'documents');return {select(){return this},eq(key,value){assert.equal(key,'id');assert.equal(value,'d');return this},single:async()=>result}}});
+ assert.equal(await read(client({data:row}),source),row);
+ for(const patch of [{id:'other'},{candidate_id:'other'},{storage_path:'other.pdf'},{storage_path:null},{deleted_at:'now'},{version_group_id:'new'},{version_number:2},{file_hash:'new-hash'}])await assert.rejects(read(client({data:{...row,...patch}}),source),/Версія оригіналу змінилася/);
+ await assert.rejects(read(client({data:null}),source),/Версія оригіналу змінилася/);
+ await assert.rejects(read(client({error:{message:'private detail'}}),source),/Автоматичне перенесення зупинено/);
+ assert.equal(JSON.stringify(source),before);
+ const code=fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),start=code.indexOf('const processed=await readOpeningDocument'),sync=code.indexOf('CRMDocumentSync.automate(supabaseClient,doc.id,{expectedRevision:processed.ai_processed_at??null})',start),last=code.indexOf('const fresh=await readOpeningDocument',sync);
+ assert(start>0&&sync>start&&last>sync);
 });

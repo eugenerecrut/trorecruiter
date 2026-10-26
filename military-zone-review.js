@@ -279,6 +279,13 @@ async function loadOriginalFile(client,doc,fetcher=fetch){
  };
  try{return await Promise.race([read(),timeout]);}finally{clearTimeout(timer);}
 }
+async function readOpeningDocument(client,source){
+ const result=await client.from('documents').select('*').eq('id',source.id).single();
+ if(!result||result.error)throw Error('Не вдалося перевірити чинну версію документа. Автоматичне перенесення зупинено.');
+ const current=result.data;
+ if(!current||current.id!==source.id||current.candidate_id!==source.candidate_id||current.deleted_at||!current.storage_path||current.storage_path!==source.storage_path||(current.version_group_id??null)!==(source.version_group_id??null)||(current.version_number??null)!==(source.version_number??null)||(source.file_hash&&current.file_hash!==source.file_hash))throw Error('Версія оригіналу змінилася. Оновіть список документів і відкрийте чинний файл.');
+ return current;
+}
 async function open(doc,options={}){
  const {autostart,viewOnly}=openingPolicy(doc,options);
  if(!doc?.storage_path)throw Error('Документ не має файла');
@@ -517,15 +524,15 @@ async function open(doc,options={}){
   if(closed)return dialog;
   $('[data-close]').disabled=true;
   if(autostart&&backgroundLookupError)throw backgroundLookupError;
-  const originalPath=doc.storage_path,blob=await loadOriginalFile(supabaseClient,doc);
+  const openingSource={id:doc.id,candidate_id:doc.candidate_id,storage_path:doc.storage_path,version_group_id:doc.version_group_id,version_number:doc.version_number,file_hash:doc.file_hash},blob=await loadOriginalFile(supabaseClient,doc);
   if(closed)return dialog;
   if(autostart&&!backgroundJob&&!canary&&(!doc.ai_extracted||doc.processing_status==='AI помилка')){
    status('Виконуємо основне розпізнавання документа…');
    const initial=await supabaseClient.functions.invoke('process-id-document',{body:{document_id:doc.id}});
    if(initial.error||(!initial.data?.ok&&!initial.data?.extracted))throw Error('Основне розпізнавання не завершено. '+(initial.error?.message||initial.data?.error||''));
-   if(window.CRMDocumentSync?.automate)await CRMDocumentSync.automate(supabaseClient,doc.id);
-   const fresh=await supabaseClient.from('documents').select('*').eq('id',doc.id).single();if(fresh.error)throw fresh.error;Object.assign(doc,fresh.data);
-   if(doc.storage_path!==originalPath)throw Error('Версія оригіналу змінилася. Оновіть список документів і відкрийте чинний файл.');
+   const processed=await readOpeningDocument(supabaseClient,openingSource);
+   if(window.CRMDocumentSync?.automate)await CRMDocumentSync.automate(supabaseClient,doc.id,{expectedRevision:processed.ai_processed_at??null});
+   const fresh=await readOpeningDocument(supabaseClient,openingSource);Object.assign(doc,fresh);
   }
   const originalBytes=await blob.arrayBuffer(),originalHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',originalBytes)),b=>b.toString(16).padStart(2,'0')).join('');
   originalDigest=originalHash;
@@ -550,5 +557,5 @@ async function open(doc,options={}){
  }catch(e){if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено';dialog.querySelectorAll('p')[1].textContent='Не вдалося завершити відкриття документа. Перевірте повідомлення нижче.';status(e.message);lock(false)}}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,loadOriginalFile,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
+window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,loadOriginalFile,readOpeningDocument,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
 })();
