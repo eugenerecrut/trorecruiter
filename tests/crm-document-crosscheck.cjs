@@ -159,6 +159,19 @@ test('zonal parents remain row-bound review evidence, with verified independent 
  const before=JSON.stringify([source,report,c]);
  let e=run()[0];assert.equal(e.status,'needs_review');assert.equal(e.sources.length,2);assert.equal(e.learning_eligible,false);assert.equal(e.sources[0].verified,false);assert.equal(e.sources[0].birth_date,'1970-01-01');assert.equal(e.subject,'мати');assert.match(e.review_details.join(' '),/Ступінь споріднення «мати» прочитано непевно/);
  assert.equal(JSON.stringify([source,report,c]),before);
+ const fullCard={...c,profile_data:{relatives:[{relationship:'мати',full_name:name,birth_date:'1970-01-01'}]}};
+ let supported=run(undefined,undefined,fullCard)[0];assert.equal(supported.status,'needs_review');assert.equal(supported.card_evidence.state,'matched');assert.deepEqual(supported.card_evidence.source_ids,['b']);
+ assert.equal(run([source],undefined,fullCard)[0].card_evidence.state,'no_other_source');
+ assert.equal(run([source,parent('b',name,{file_hash:context.file_sha256})],undefined,fullCard)[0].card_evidence.state,'no_other_source');
+ assert.equal(run([source,parent('b',name,{verification_status:null})],undefined,fullCard)[0].card_evidence.state,'no_other_source');
+ const partialCard={...c,profile_data:{relatives:[{relationship:'мати',full_name:'Тестенко Олена'}]}},partialBefore=JSON.stringify(partialCard);
+ const completion=run(undefined,undefined,partialCard)[0];assert.equal(completion.status,'needs_review');assert.equal(completion.card_evidence.state,'incomplete');assert.match(completion.review_details.join(' '),/відрізняється повнотою/);assert.equal(JSON.stringify(partialCard),partialBefore);
+ const wrongCard={...c,profile_data:{relatives:[{relationship:'мати',full_name:'Тестенко Інна'}]}};
+ assert.equal(run(undefined,undefined,wrongCard)[0].status,'conflict');assert.equal(run(undefined,undefined,wrongCard)[0].card_evidence.state,'conflict');
+ assert.equal(run()[0].card_evidence.state,'missing');
+ const badDate={...fullCard,profile_data:{relatives:[{relationship:'мати',full_name:name,birth_date:'1971-01-01'}]}};
+ assert.equal(run(undefined,undefined,badDate)[0].card_evidence.state,'conflict');assert.deepEqual(run(undefined,undefined,badDate)[0].card_evidence.source_ids,[]);
+
  assert.equal(run([source,parent('b',name,{verification_status:null})])[0].sources.length,1);
  assert.equal(run([source,parent('b',name,{file_hash:context.file_sha256})])[0].sources.length,1);
  assert.equal(run([source,parent('b',name,{storage_path:source.storage_path})])[0].sources.length,1);

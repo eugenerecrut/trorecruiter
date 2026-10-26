@@ -8,6 +8,18 @@ function cardValueHTML(evidence){
  const value=evidence.current,display=typeof value==='string'&&value.trim()?value:typeof value==='number'&&Number.isFinite(value)?String(value):'Не заповнено';
  return '<p><strong>У картці зараз:</strong> '+esc(display)+(evidence.key==='relatives'&&typeof evidence.current_birth_date==='string'&&evidence.current_birth_date.trim()?' · дата народження: '+esc(evidence.current_birth_date):'')+'</p>';
 }
+function parentCardEvidenceHTML(evidence){
+ if(evidence.key!=='relatives'||!evidence.zone_crosscheck)return '';
+ const labels={
+  matched:'ПІБ у картці збігається з іншим перевіреним документом.',
+  incomplete:'ПІБ у картці неповне або потребує уточнення оформлення. Звірте повний запис у джерелах; автоматичного доповнення немає.',
+  conflict:'У відомостях про цього родича є суперечність. Перевірте ПІБ, дати й належність записів.',
+  missing:'У картці немає запису цього родича. Звірте джерела перед додаванням.',
+  no_other_source:'У цьому зіставленні немає іншого перевіреного документа, що підтверджує повне ПІБ картки.'
+ };
+ const state=evidence.card_evidence?.state;if(!Object.hasOwn(labels,state))return '';
+ return '<p><strong>Дані картки:</strong> '+esc(labels[state])+'</p><p><strong>Якість зонального читання:</strong> потребує звірки з оригіналом. Збіг даних не підтверджує це читання.</p>';
+}
 function evidenceReviewHTML(evidence){
  if(evidence.key!=='relatives'||!evidence.zone_crosscheck||!Array.isArray(evidence.review_details))return '';
  const details=evidence.review_details.filter(v=>typeof v==='string'&&v.trim());
@@ -21,7 +33,7 @@ function evidenceValueHTML(evidence,source){
 function evidenceCardHTML(e,ei){
  const labels={needs_review:'Ймовірний зв’язок — перевірити',conflict:'Розбіжність',corroborated:'Збігається в кількох документах',single_source:'Одне джерело',missing:'Немає придатних джерел'};
  const status=Object.hasOwn(labels,e.status)?labels[e.status]:'Статус не визначено — звірте';
- return '<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc(status)+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+evidenceReviewHTML(e)+e.sources.map((v,si)=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'" data-evidence-entry="'+ei+'" data-evidence-source="'+si+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('');
+ return '<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc(status)+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+parentCardEvidenceHTML(e)+evidenceReviewHTML(e)+e.sources.map((v,si)=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'" data-evidence-entry="'+ei+'" data-evidence-source="'+si+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('');
 }
 function crosscheckHTML(evidence){
  const entries=(Array.isArray(evidence)?evidence:[]).map((e,ei)=>({e,ei}));
@@ -462,5 +474,5 @@ async function open(doc,{autostart=false}={}){
  }catch(e){status(e.message);lock(false)}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML};
+window.CRMMilitaryZoneReview={open,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML};
 })();

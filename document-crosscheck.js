@@ -231,11 +231,16 @@ function compareZoneParents(documents,candidate,{reports=[],context,binding}={})
   const values=[...group.sources.map(v=>v.value),...stored.map(v=>v.full_name||v.name)].filter(Boolean);
   const dates=[...group.sources.map(v=>v.birth_date),...stored.map(v=>v.birth_date)].filter(Boolean);
   const compatible=new Set(values.map(norm)).size<=1||group.subject==='мати'&&maidenNameMatch(values)||emptyParentNameNotation(values);
-  const conflict=stored.length>1||new Set(dates.map(norm)).size>1||!compatible;
+  const incomplete=parentNameReview(group.sources,group.current);
+  const conflict=stored.length>1||new Set(dates.map(norm)).size>1||!compatible&&!incomplete;
   group.status=conflict?'conflict':'needs_review';
   if(stored.length>1)group.review_details.push('У картці кілька записів цієї спорідненості. Визначте, до кого належить рядок документа.');
   if(new Set(dates.map(norm)).size>1)group.review_details.push('Дати народження родича відрізняються. Звірте повні дати в оригіналах.');
-  if(!compatible)group.review_details.push('ПІБ родича відрізняються. Звірте прізвище, ім’я та по батькові; зміну прізвища не припускаємо.');
+  if(!compatible&&!incomplete)group.review_details.push('ПІБ родича відрізняються. Звірте прізвище, ім’я та по батькові; зміну прізвища не припускаємо.');
+  if(!compatible&&incomplete)group.review_details.push('ПІБ родича відрізняється повнотою. Звірте повний запис; по батькові не доповнюється автоматично.');
+  const currentName=parentNameParts(group.current);
+  const matchingSources=group.sources.filter(s=>s.kind!=='zone_reading'&&s.verified&&parentNameParts(s.value)?.patronymic&&(norm(s.value)===norm(group.current)||group.subject==='мати'&&maidenNameMatch([s.value,group.current])));
+  group.card_evidence={state:conflict?'conflict':!stored.length?'missing':!currentName?.patronymic?'incomplete':matchingSources.length?'matched':'no_other_source',source_ids:conflict?[]:[...new Set(matchingSources.map(s=>s.document_id))]};
   group.review_details=[...new Set(group.review_details)];
 
   group.reason=conflict?'ПІБ, дата народження або записи родича відрізняються. Звірте оригінали; картка не змінена.':group.sources.some(s=>s.kind!=='zone_reading'&&s.verified)?'Знайдено відповідні відомості про родича в іншому перевіреному документі. Спорідненість у зональному читанні потребує підтвердження; картка не змінена.':'Збережено ймовірний зв’язок із рядка документа. Незалежного перевіреного джерела немає; спорідненість потрібно підтвердити.';
