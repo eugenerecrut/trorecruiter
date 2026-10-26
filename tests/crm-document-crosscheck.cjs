@@ -190,3 +190,11 @@ test('zonal parents remain row-bound review evidence, with verified independent 
  const client={from:()=>({select:()=>({eq:async()=>({data:[source,parent('b')],error:null})})})};
  assert.equal((await x.load(client,c,{reports:[report],context,binding})).filter(e=>e.zone_crosscheck&&e.key==='relatives').length,1);
 });
+
+test('load attaches navigation from the same document snapshot without changing evidence inputs',async()=>{
+ const doc=d('a','2000-01-01',{file_hash:'h',ai_processed_at:'r',version_group_id:'g'}),before=JSON.stringify(doc);
+ const client={from:()=>({select:()=>({eq:async()=>({data:[doc],error:null})})})};
+ const result=await x.load(client,c),source=result.find(e=>e.key==='birth_date').sources[0];
+ assert.deepEqual(source.navigation,{document_id:'a',candidate_id:'c',storage_path:'a',fingerprint:'h',revision:'r',version_group_id:'g'});assert.equal(JSON.stringify(doc),before);
+ assert.equal(x.compare([doc],c).find(e=>e.key==='birth_date').sources[0].navigation,undefined);
+});
