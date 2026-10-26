@@ -15,7 +15,7 @@ function review(c,pf={},documents=[]){
  if(blank(c.name_nominative||c.full_name)||String(c.name_nominative||c.full_name).trim().split(/\s+/).length<2)add('identity.name','Уточніть чинне ПІБ.');
  if(!/^\d{10}$/.test(String(c.rnokpp||'')))add('identity.tax_number','Потрібен РНОКПП із 10 цифр або ручна звірка підстави його відсутності.');
  if(!date(c.birth_date)||c.birth_date>new Date().toISOString().slice(0,10))add('identity.birth_date','Уточніть повну дату народження.');
- if(blank(c.birth_place||pf.birth_place))add('identity.birth_place','Укажіть місце народження з документа.');
+ if(blank(c.birth_place)&&blank(pf.birth_place))add('identity.birth_place','Укажіть місце народження з документа.');
  const worked=bool(c.worked_before??p.worked_before),served=bool(c.served_before??p.served_before);
  if(worked===null)add('employment.absence','Уточніть, чи працював кандидат.');
  if(served===null)add('service.absence','Уточніть, чи проходив кандидат військову службу.');
