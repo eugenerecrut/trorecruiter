@@ -92,3 +92,23 @@ test('service model excludes crossed-out work and service and tolerates null per
  delete c.CRMBiographyFacts;person.profile_data.work_records={kind:'employment'};
  assert.doesNotThrow(()=>c.CRMServiceRecord.model(person));assert.equal(c.CRMServiceReadiness.review(person).ready,false);
 });
+
+test('optional service sections exclude crossed-out records while retaining source-linked blockers',()=>{
+ const c={URL,structuredClone};c.window=c;vm.createContext(c);for(const f of ['candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),c);
+ const person={full_name:'Тестенко Іван Петрович',military_rank:'Солдат',birth_date:'1990-01-01',rnokpp:'1234567890',birth_place:'Дніпро',worked_before:false,served_before:false,profile_data:{education_institution:'Школа',
+ combat_records:[{location:'Закреслений район',crossed_out:true,source_document_id:'combat'},{location:'Чинний район'}],
+ awards:[{name:'Закреслена нагорода',crossed_out:true,source_document_id:'award'},{name:'Чинна нагорода'}],
+ reserve_training_records:[{unit:'Закреслені збори',crossed_out:true,source_document_id:'training'},{unit:'Чинні збори'}],
+ military_rank_records:[{rank:'Солдат',confirmed_by_user:true,crossed_out:true,order_number:'CROSSED',source_document_id:'rank'},{rank:'Солдат',confirmed_by_user:true,order_number:'VALID'}]}};
+ const before=JSON.stringify(person),values=()=>Object.fromEntries(c.CRMServiceRecord.model(person).fields.map(f=>[f.key,f.value])),v=values();
+ assert.equal(v.combat_0_0,'Чинний район');assert.equal(v.award_0_0,'Чинна нагорода');assert.equal(v.training_0_3,'Чинні збори');assert(v.rank_order.includes('VALID'));
+ assert(!JSON.stringify(v).includes('Закреслен'));assert(!JSON.stringify(v).includes('CROSSED'));assert.equal(JSON.stringify(person),before);
+ const report=c.CRMServiceReadiness.review(person,{},['combat','award','training','rank'].map(id=>({id,file_name:id+'.pdf'})));
+ assert.equal(report.ready,false);for(const id of ['combat','award','training','rank'])assert(report.issues.some(i=>i.documents.some(d=>d.id===id)),id);
+ for(const key of ['combat_records','awards','reserve_training_records','military_rank_records']){
+  person.profile_data[key].unshift(null);assert.doesNotThrow(values);
+  person.profile_data[key]={invalid:true};assert.doesNotThrow(values);assert.equal(c.CRMServiceReadiness.review(person).ready,false);
+ }
+ person.profile_data.military_rank_records=[{rank:'Солдат',order_number:'UNCONFIRMED'}];assert.equal(values().rank_order,'');
+ person.profile_data.military_rank_records=[{rank:'Солдат',accepted_by_ai:true,requires_review:true,order_number:'HELD'}];assert.equal(values().rank_order,'');
+});
