@@ -70,3 +70,25 @@ test('crossed-out education is never ready or printed; null rows preserve the pr
   candidate.profile_data.education_records=records;assert.equal(value(),'Збережений заклад');assert.equal(c.CRMServiceReadiness.review(candidate).ready,false);
  }
 });
+
+test('service model excludes crossed-out work and service and tolerates null periods',()=>{
+ const c={URL,structuredClone};c.window=c;vm.createContext(c);for(const f of ['biography-facts.js','candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),c);
+ const person={full_name:'Тестенко Іван Петрович',birth_date:'1990-01-01',rnokpp:'1234567890',birth_place:'Дніпро',worked_before:true,served_before:true,profile_data:{education_institution:'Школа',work_records:[
+ {kind:'employment',employer:'Неперевірена робота',requires_review:true},
+ {kind:'military_service',unit:'Неперевірена частина',requires_review:true},
+ {kind:'employment',employer:'Закреслена робота',crossed_out:true,source_document_id:'work'},
+ {kind:'military_service',unit:'Закреслена частина',crossed_out:true,source_document_id:'service'},
+ {kind:'employment',employer:'Чинна робота',position:'Фахівець',start_date:'2020-01-01'},
+ {kind:'police_service',employer:'Поліція',position:'Поліцейський',start_date:'2021-01-01'}]}};
+ const before=JSON.stringify(person),model=c.CRMServiceRecord.model(person),values=Object.fromEntries(model.fields.map(f=>[f.key,f.value]));
+ assert.equal(values.work_0_2,'Чинна робота');assert.equal(values.service_0_3,'Поліція');assert(!JSON.stringify(values).includes('Закреслена'));assert(!JSON.stringify(values).includes('Неперевірена'));
+ assert.equal(JSON.stringify(person),before);
+ const report=c.CRMServiceReadiness.review(person,{},[{id:'work',file_name:'Робота.pdf'},{id:'service',file_name:'Служба.pdf'}]);
+ assert.equal(report.ready,false);assert(report.issues.some(i=>i.documents.some(d=>d.id==='work')));assert(report.issues.some(i=>i.documents.some(d=>d.id==='service')));
+ person.profile_data.work_records.unshift(null);
+ assert.doesNotThrow(()=>c.CRMServiceRecord.model(person));
+ person.profile_data.bio_work_claims=[{source_document_id:'bio',employer:'Інша робота',start_date:'2018'}];
+ assert.doesNotThrow(()=>c.CRMServiceRecord.model(person));assert.doesNotThrow(()=>c.CRMServiceReadiness.review(person));
+ delete c.CRMBiographyFacts;person.profile_data.work_records={kind:'employment'};
+ assert.doesNotThrow(()=>c.CRMServiceRecord.model(person));assert.equal(c.CRMServiceReadiness.review(person).ready,false);
+});

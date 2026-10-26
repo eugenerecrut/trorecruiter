@@ -28,7 +28,8 @@ function model(c,pf={}){
  const personal=[['birth_date','Дата народження',words(c.birth_date)],['birth_place','Місце народження',c.birth_place||pf.birth_place],['education_civil','Цивільна освіта',(Array.isArray(p.education_records)?p.education_records:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out).slice().sort((a,b)=>Number(a.graduation_year||0)-Number(b.graduation_year||0)).map(e=>[e.institution,e.degree==='середня'?null:e.specialty,e.degree==='середня'?null:e.qualification,e.graduation_year&&e.graduation_year+' р.'].filter(Boolean).join(', ')).join('\n')||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ')],['education_military','Військова освіта',p.military_education||''],['languages','Іноземні мови',p.foreign_languages||p.languages||''],['scientific_degree','Науковий ступінь і вчене звання',p.scientific_degree||''],['scientific_works','Наукові праці й винаходи',p.scientific_works||'']];
  personal.forEach(([k,l,v],i)=>add(k,l,1,[238,y[i],510,y[i+1]],v,'Освіта та особисті відомості'));
  const worked=bool(c.worked_before??p.worked_before),served=bool(c.served_before??p.served_before);
- const employment=(p.work_records||[]).filter(r=>r.kind==='employment'&&!r.requires_review);
+ const periods=(Array.isArray(p.work_records)?p.work_records:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out);
+ const employment=periods.filter(r=>r.kind==='employment');
  if(worked===false)add('not_worked','Відомості про роботу',2,[85.4,126.2,571.1,152.5],c.sex==='female'?'Не працювала':'Не працював','Трудова діяльність',true);
  else employment.forEach((r,i)=>{
   const cols=[85.4,156.9,228.4,493.1,571.1],top=126.2+i*(573.8/Math.max(employment.length,1)),bottom=126.2+(i+1)*(573.8/Math.max(employment.length,1));
@@ -37,7 +38,7 @@ function model(c,pf={}){
  const oath=obj(p.military_oath),discharge=obj(p.military_discharge);
  add('callup','Призов / початок служби',3,[222.6,39,510.3,70.7],served===false?'':p.service_start_date?words(p.service_start_date)+(p.previous_service_type?' '+p.previous_service_type:''):'','Військова служба');
  add('oath','Присяга',3,[312,75,510.3,105.9],served===false?'':[date(oath.date),oath.unit&&'в/ч '+oath.unit].filter(Boolean).join(', '),'Військова служба');
- const service=(p.work_records||[]).filter(r=>['military_service','police_service'].includes(r.kind)&&!r.requires_review);
+ const service=periods.filter(r=>['military_service','police_service'].includes(r.kind));
  if(served===false)add('not_served','Відомості про службу',3,[28.6,262.3,510.1,289.3],c.sex==='female'?'Військову службу не проходила':'Військову службу не проходив','Військова служба',true);
  else service.forEach((r,i)=>{
   // First page plus the original three continuation pages; never add pages.
