@@ -22,3 +22,15 @@ test('ambiguous parent review identifies saved alternatives and all owned curren
  const foreign=docs.map(d=>d.id==='bio'?{...d,candidate_id:'other'}:d);
  assert.deepEqual(review(c,{},foreign).issues.find(i=>i.text.includes('Кілька різних')).documents.map(d=>d.id),['birth']);
 });
+
+test('parent name review follows field provenance and respects manual source markers',()=>{
+ const c=base();c.profile_data.relatives=[
+  {relationship:'Мати',full_name:'Тестова Олена Петрівна',source_document_id:'old',field_sources:{full_name:'name',address:'address'}},
+  {relationship:'Мати',full_name:'Прикладова Олена Петрівна',source_document_id:'legacy'}];
+ const docs=['old','name','address','legacy'].map(id=>({id,candidate_id:'c1',file_name:id+'.pdf'}));
+ const before=JSON.stringify({c,docs}),issue=()=>review(c,{},docs).issues.find(i=>i.text.includes('Кілька різних'));
+ assert.deepEqual(issue().documents.map(d=>d.id),['name','legacy']);
+ assert.equal(JSON.stringify({c,docs}),before);
+ c.profile_data.relatives[0].field_sources.full_name=null;
+ assert.deepEqual(issue().documents.map(d=>d.id),['legacy'],'Manual name must not inherit an unrelated original');
+});
