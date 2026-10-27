@@ -6,10 +6,10 @@
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   const parse = v => { if (typeof v === 'string') { try { return JSON.parse(v) || {}; } catch { return {}; } } return v || {}; };
   const activeTabs=new Map();
-  function readinessDetails(view) {
+  function readinessDetails(view,expanded=false) {
     const state=view?.readiness?.serviceRecord;
     if(!state||!Array.isArray(state.missing)||state.ready==null)return '<p class="muted">Дані послужного: перевірка недоступна.</p>';
-    if(state.missing.length)return '<details data-case-data-review><summary>Дані послужного: уточнень '+state.missing.length+'</summary><ul>'+state.missing.map(issue=>'<li><strong>'+esc(issue.label||issue.fieldId||'Уточнення')+'</strong>: '+esc(issue.text||'Потрібна перевірка.')+'</li>').join('')+'</ul><p>Виправте відомості у картці та збережіть зміни. Верстка PDF перевіряється під час формування.</p></details>';
+    if(state.missing.length)return '<details data-case-data-review'+(expanded?' open':'')+'><summary>Дані послужного: уточнень '+state.missing.length+'</summary><ul>'+state.missing.map(issue=>'<li><strong>'+esc(issue.label||issue.fieldId||'Уточнення')+'</strong>: '+esc(issue.text||'Потрібна перевірка.')+'</li>').join('')+'</ul><p>Виправте відомості у картці та збережіть зміни. Верстка PDF перевіряється під час формування.</p></details>';
     return '<p class="muted">Дані послужного: '+(state.ready===true?'основні дані заповнені. Верстка PDF перевіряється під час формування.':'потрібна перевірка.')+'</p>';
   }
   let opening = false, fieldSequence = 0;
@@ -279,7 +279,7 @@
         try{
           const view=window.CRMCandidateCaseView.build(candidate,CRMWorkspace.card.personalFile||{},documents,CRMWorkspace.card.requirements||[]);
           const text=CRMWorkspace.card.dirty?'Є незбережені зміни. Показники нижче — за збереженими даними.':view.nextAction.text;
-          const markup='<strong>'+esc(text)+'</strong><p>Перевірено документів: '+view.completeness.verified+' / '+view.completeness.total+' · Питань у документах: '+view.issues.length+' · У роботі AI: '+view.completeness.processing+'</p><small>Паперові позначки: '+view.completeness.paper+'. Електронних копій: '+view.completeness.copies+'. Готовність верстки перевіряється під час формування PDF.</small>'+readinessDetails(view)+(view.nextAction.kind==='wait'?'':'<p><button type="button" data-case-next="'+view.nextAction.kind+'">'+esc(view.nextAction.kind==='case'?'Перейти до формування':'Переглянути питання і дані')+'</button></p>');
+          const markup='<strong>'+esc(text)+'</strong><p>Перевірено документів: '+view.completeness.verified+' / '+view.completeness.total+' · Питань у документах: '+view.issues.length+' · У роботі AI: '+view.completeness.processing+'</p><small>Паперові позначки: '+view.completeness.paper+'. Електронних копій: '+view.completeness.copies+'. Готовність верстки перевіряється під час формування PDF.</small>'+readinessDetails(view,caseSummary.querySelector('[data-case-data-review]')?.open===true)+(view.nextAction.kind==='wait'?'':'<p><button type="button" data-case-next="'+view.nextAction.kind+'">'+esc(view.nextAction.kind==='case'?'Перейти до формування':'Переглянути питання і дані')+'</button></p>');
           if(caseSummary.innerHTML!==markup)caseSummary.innerHTML=markup;
           caseSummary.onclick=event=>{const button=event.target.closest('[data-case-next]');if(button)select(button.dataset.caseNext==='case'?'case':'review',true);};
           for(const [tab,label] of [['documents','Додати документи'],['review','Перевірити питання'+(view.issues.length?' · '+view.issues.length:'')],['case','Сформувати справу']])nav.querySelector('[data-v3-tab="'+tab+'"]').textContent=label;
