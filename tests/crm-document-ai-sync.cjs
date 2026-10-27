@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
+const read=file=>fs.readFileSync(path.join(__dirname,'..',file),'utf8');
 const root=path.resolve(__dirname,'..');
 require('../supabase/functions/_shared/document-data-policy.js');
 const sync=require('../document-ai-sync.js');
@@ -92,6 +93,39 @@ test('RPC preserves authorization/RLS/audit, whitelist and atomic compare-and-se
   const sql=fs.readFileSync(path.join(root,'supabase/migrations/20261009155939_safe_document_ai_sync.sql'),'utf8');
   for(const fragment of ["public.crm_staff","auth.uid()","for update","expected_current","expected_ai","fill_only","Не можна змінювати збережені дані родича","crm.source_document_id","'shpk','tariff_grade','recruiter_name'","[CRM AI sync]"])assert(sql.includes(fragment),fragment);
   assert(!/security definer/i.test(sql));assert(!/create table|alter table|disable.*row level/i.test(sql));
+});
+
+test('recommendation refreshes 401 once and never duplicates non-auth provider failures',async()=>{
+ for(const status of [401,503]){
+  let calls=0,refreshes=0;const headers=[];
+  const ctx={CRMUploadPDF:uploadPDF,window:{CRMDocumentSync:sync,supabaseClient:{auth:{getSession:async()=>({data:{session:{access_token:'old'}}}),refreshSession:async()=>{refreshes++;return {data:{session:{access_token:'fresh'}}}}},functions:{invoke:async(_name,options)=>{calls++;headers.push(options.headers.Authorization);return calls===1||status!==401?{error:{message:'failed',context:{status,json:async()=>({error:'server failed'})}}}:{data:{extracted:{...personal(),...service()}}};}}}},document:{getElementById:()=>null,querySelectorAll:()=>[]},structuredClone,console};
+  vm.createContext(ctx);vm.runInContext(read('recommendation-upload-fix.js'),ctx);
+  if(status===401){await ctx.window.aiExtractRecommendation('text');assert.equal(calls,2);assert.equal(refreshes,1);assert.deepEqual(headers,['Bearer old','Bearer fresh']);}
+  else{await assert.rejects(ctx.window.aiExtractRecommendation('text'),/тимчасово недоступний/);assert.equal(calls,1);assert.equal(refreshes,0);}
+ }
+});
+
+test('recommendation form tries original after OCR failure and hides empty extraction',async()=>{
+ const source=read('script.js'),code=source.slice(source.indexOf('function recommendationHasData('),source.indexOf('function safeFileName('));
+ for(const mode of ['empty','vision','auth']){
+  const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',value:'',hidden:false,classList:{add(){},remove(){}}});return nodes.get(id);};
+  let invoked=0,rendered=0,filled=0,parsed=0;
+  const ctx={pendingRecommendationFile:null,pendingRecommendationText:'',CRMUploadPDF:uploadPDF,document:{getElementById:node},extractPdfText:async()=>{throw Error('OCR failed')},normalizeDocumentText:v=>v,aiExtractRecommendation:async()=>{invoked++;if(mode==='auth'){const e=Error('Сесія CRM завершилась');e.status=401;throw e;}return mode==='vision'?{full_name:candidate().full_name}:{full_name:''};},parseRecommendation:()=>{parsed++;return{}},renderExtraction:()=>rendered++,fillCandidateForm:()=>filled++,console:{warn(){},error(){}}};
+  vm.createContext(ctx);vm.runInContext(code,ctx);
+  await ctx.handleRecommendationFile({name:'test.pdf',type:'application/pdf',size:100});
+  assert.equal(invoked,1);assert.equal(rendered,mode==='vision'?1:0);assert.equal(filled,mode==='vision'?1:0);assert.equal(parsed,0);
+  if(mode==='auth')assert.match(node('ocrStatus').textContent,/Сесія CRM/);
+  if(mode==='empty')assert.match(node('ocrStatus').textContent,/не знайшов придатних/);
+ }
+});
+
+test('local fallback recognizes citizen/vacant-position RL punctuation without inventing rank',()=>{
+ const s=read('script.js'),ctx={};vm.createContext(ctx);vm.runInContext(s.slice(s.indexOf('function normalizeLine('),s.indexOf('function renderExtraction(')),ctx);
+ const text='ВІЙСЬКОВА ЧАСТИНА А0001. До командування військової частини А0001 звернувся громадянка ТЕСТОВА Олена Петрівна, з проханням проходження військової служби за контрактом. Тел. +380000000000. Вивчено 12.04.2000 р. н., ІПН 1234567890, яка мешкає за адресою: м. Приклад, вул. Тестова, 1. У військовій частині А0001 є потреба на вакантну посаду: ОПЕРАТОР ТЕСТОВОГО ПІДРОЗДІЛУ, ВОС 123456А, ШПК «СОЛДАТ», ТАРИФНИЙ РОЗРЯД 4.';
+ const p=ctx.parseRecommendation(text);
+ assert.equal(p.full_name,'ТЕСТОВА Олена Петрівна');assert.equal(p.birth_date,'2000-04-12');assert.equal(p.phone,'+380000000000');assert.equal(p.rnokpp,'1234567890');
+ assert.equal(p.address,'м. Приклад, вул. Тестова, 1');assert.equal(p.military_unit,'А0001');assert.equal(p.desired_position,'ОПЕРАТОР ТЕСТОВОГО ПІДРОЗДІЛУ');assert.equal(p.shpk,'СОЛДАТ');assert.equal(p.military_specialty,'123456А');assert.equal(p.tariff_grade,'4');assert.equal(p.military_rank,'');
+ assert.equal(ctx.parseRecommendation('Військова частина А0001 та військової частини А0002').military_unit,'','Ambiguous units are not guessed');
 });
 
 test('Contradictory flat/nested OCR and malformed relative entries become conflicts',()=>{
