@@ -139,6 +139,22 @@ test('late preparation of an older recommendation cannot replace the selected fi
  assert.equal(ctx.pendingRecommendationFile,b);assert.deepEqual(rendered,['Новий результат']);assert.equal(invoked.length,1);assert.match(invoked[0],/b.pdf/);
 });
 
+test('late AI response cannot overwrite the newer recommendation receipt',async()=>{
+ let inserted;const pending=[];
+ const a={name:'older.pdf',size:100,type:'application/pdf'},b={name:'newer.pdf',size:100,type:'application/pdf'};
+ const client={auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},functions:{invoke:()=>new Promise(resolve=>pending.push(resolve))},storage:{from:()=>({upload:async()=>({}),remove:async()=>({})})},from:()=>{const q={select(){return q},eq(){return q},limit(){return q},maybeSingle:async()=>({data:null}),insert:data=>{inserted=data;return q},single:async()=>({data:{id:'d'}})};return q;}};
+ const ctx={pendingRecommendationFile:a,CRMUploadPDF:uploadPDF,window:{supabaseClient:client,CRMDocumentSync:{flatten:x=>({...x,warnings:[]}),valid:()=>true,sync:async()=>{}}},document:{getElementById:()=>null,querySelectorAll:()=>[]},FileReader:class{readAsDataURL(){this.result='data:application/pdf;base64,JVBERi0=';this.onload()}},structuredClone,console};
+ vm.createContext(ctx);vm.runInContext(read('recommendation-upload-fix.js'),ctx);
+ const older=ctx.window.aiExtractRecommendation('older');const rejected=assert.rejects(older,/замінено/);
+ while(pending.length<1)await new Promise(resolve=>setImmediate(resolve));
+ ctx.pendingRecommendationFile=b;const newer=ctx.window.aiExtractRecommendation('newer');
+ while(pending.length<2)await new Promise(resolve=>setImmediate(resolve));
+ pending[1]({data:{extracted:{full_name:'New result'},model:'synthetic'}});await newer;
+ pending[0]({data:{extracted:{full_name:'Old result'},model:'synthetic'}});await rejected;
+ assert.equal((await ctx.window.uploadRecommendation('c',{id:'u'})).ok,true);
+ assert.equal(inserted.file_name,'newer.pdf');assert.equal(inserted.ai_extracted.full_name,'New result');
+});
+
 test('failed flattening cannot leave an AI receipt for recommendation upload',async()=>{
  let inserted;const file={name:'synthetic.pdf',size:100,type:'application/pdf'};
  const client={auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},functions:{invoke:async()=>({data:{extracted:{full_name:'Тестова Олена'}}})},storage:{from:()=>({upload:async()=>({}),remove:async()=>({})})},from:table=>{
