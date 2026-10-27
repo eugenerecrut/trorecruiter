@@ -47,3 +47,8 @@ test('human explanation distinguishes OCR disagreement from proven foreign owner
  assert.equal(f.c.CRMIntake.reasonText({reason:'custom'}),'custom');
  assert(f.c.CRMIntake.reasonText(null).includes('Потрібно порівняти'));
 });
+
+test('intake script cache key follows the current published release',()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8'),release=fs.readFileSync(path.join(__dirname,'../crm-release.js'),'utf8').match(/version:\s*['"]([^'"]+)['"]/)[1];
+ assert(html.includes('crm-intake.js?v='+release+'"'));
+});
