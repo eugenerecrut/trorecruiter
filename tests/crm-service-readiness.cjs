@@ -34,3 +34,14 @@ test('parent name review follows field provenance and respects manual source mar
  c.profile_data.relatives[0].field_sources.full_name=null;
  assert.deepEqual(issue().documents.map(d=>d.id),['legacy'],'Manual name must not inherit an unrelated original');
 });
+
+test('service order dates are validated for military and police without requiring an end date',()=>{
+ for(const kind of ['military_service','police_service']){
+  const c=base();c.served_before=true;c.profile_data.work_records=[{kind,start_date:'2022-01-01',unit:'Тестовий підрозділ',position:'Тестова посада',order_date:'2024-02-30',source_document_id:'period',field_sources:{order_date:'order'}}];
+  const docs=[{id:'period',candidate_id:c.id,file_name:'Період.pdf'},{id:'order',candidate_id:c.id,file_name:'Наказ.pdf'}],before=JSON.stringify({c,docs});
+  const r=review(c,{},docs),issue=r.issues.find(i=>i.text.includes('дату наказу'));
+  assert(issue,kind);assert.equal(r.ready,false);assert.deepEqual(issue.documents.map(d=>d.id),['order']);assert.equal(JSON.stringify({c,docs}),before);
+  c.profile_data.work_records[0].order_date='2024-02-29';assert.equal(review(c).ready,true);
+  delete c.profile_data.work_records[0].order_date;assert.equal(review(c).ready,true,'Missing optional order date is not invented or required');
+ }
+});
