@@ -6,6 +6,12 @@
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   const parse = v => { if (typeof v === 'string') { try { return JSON.parse(v) || {}; } catch { return {}; } } return v || {}; };
   const activeTabs=new Map();
+  function readinessDetails(view) {
+    const state=view?.readiness?.serviceRecord;
+    if(!state||!Array.isArray(state.missing)||state.ready==null)return '<p class="muted">Дані послужного: перевірка недоступна.</p>';
+    if(state.missing.length)return '<details data-case-data-review><summary>Дані послужного: уточнень '+state.missing.length+'</summary><ul>'+state.missing.map(issue=>'<li><strong>'+esc(issue.label||issue.fieldId||'Уточнення')+'</strong>: '+esc(issue.text||'Потрібна перевірка.')+'</li>').join('')+'</ul><p>Виправте відомості у картці та збережіть зміни. Верстка PDF перевіряється під час формування.</p></details>';
+    return '<p class="muted">Дані послужного: '+(state.ready===true?'основні дані заповнені. Верстка PDF перевіряється під час формування.':'потрібна перевірка.')+'</p>';
+  }
   let opening = false, fieldSequence = 0;
   const tabs = [['documents','ДОДАТИ ДОКУМЕНТИ',[14]],['review','ВИРІШИТИ ПИТАННЯ',[1,2,3,4,5,6,7,8,9,10,11,12,13,16]],['case','СФОРМУВАТИ СПРАВУ',[]]];
   const advanced = new Set(('name_genitive unzr birth_certificate shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status candidate_source recruiter_name recruitment_notes psychiatric_record_info work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
@@ -273,7 +279,7 @@
         try{
           const view=window.CRMCandidateCaseView.build(candidate,CRMWorkspace.card.personalFile||{},documents,CRMWorkspace.card.requirements||[]);
           const text=CRMWorkspace.card.dirty?'Є незбережені зміни. Показники нижче — за збереженими даними.':view.nextAction.text;
-          const markup='<strong>'+esc(text)+'</strong><p>Перевірено документів: '+view.completeness.verified+' / '+view.completeness.total+' · Питань: '+view.issues.length+' · У роботі AI: '+view.completeness.processing+'</p><small>Паперові позначки: '+view.completeness.paper+'. Електронних копій: '+view.completeness.copies+'. Готовність верстки перевіряється під час формування PDF.</small>'+(view.nextAction.kind==='wait'?'':'<p><button type="button" data-case-next="'+view.nextAction.kind+'">'+esc(view.nextAction.kind==='case'?'Перейти до формування':'Переглянути питання і дані')+'</button></p>');
+          const markup='<strong>'+esc(text)+'</strong><p>Перевірено документів: '+view.completeness.verified+' / '+view.completeness.total+' · Питань у документах: '+view.issues.length+' · У роботі AI: '+view.completeness.processing+'</p><small>Паперові позначки: '+view.completeness.paper+'. Електронних копій: '+view.completeness.copies+'. Готовність верстки перевіряється під час формування PDF.</small>'+readinessDetails(view)+(view.nextAction.kind==='wait'?'':'<p><button type="button" data-case-next="'+view.nextAction.kind+'">'+esc(view.nextAction.kind==='case'?'Перейти до формування':'Переглянути питання і дані')+'</button></p>');
           if(caseSummary.innerHTML!==markup)caseSummary.innerHTML=markup;
           caseSummary.onclick=event=>{const button=event.target.closest('[data-case-next]');if(button)select(button.dataset.caseNext==='case'?'case':'review',true);};
           for(const [tab,label] of [['documents','Додати документи'],['review','Перевірити питання'+(view.issues.length?' · '+view.issues.length:'')],['case','Сформувати справу']])nav.querySelector('[data-v3-tab="'+tab+'"]').textContent=label;
@@ -365,6 +371,6 @@
       }
     } finally { opening = false; }
   }
-  window.CRMCandidateCardV3 = {open,provenance,changedFields,tabs,advanced};
+  window.CRMCandidateCardV3 = {open,provenance,changedFields,tabs,advanced,readinessDetails};
   window.openCandidateCard = open;
 })();
