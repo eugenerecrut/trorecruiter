@@ -3,6 +3,7 @@ import '../_shared/document-data-policy.js';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { reconcileDocument } from '../_shared/sync-runtime.js';
 import {finishQueueWithContinuation,continuationPDFMetadata} from '../_shared/splav-continuation.mjs';
+import {AUTO_ZONE_ROLLOUT_APPROVED} from '../_shared/splav-continuation-rollout.js';
 import {getLibrary} from '../_shared/pdfium-library.mjs';
 import '../_shared/military-zone.js';
 const cors={'Access-Control-Allow-Origin':'https://eugenerecrut.github.io','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
@@ -46,7 +47,7 @@ async function processDocument(req:Request){
       reconciliation=await reconcileDocument(sb,id,revision,queue);
       if(queue&&['completed','needs_review'].includes(reconciliation.state)){
         reconciliation=await finishQueueWithContinuation({client:sb,queue,outcome:reconciliation,
-          enabled:Deno.env.get('SPLAV_ROOT_ZONE_CONTINUATION_V1')==='true',metadata:async()=>{
+          enabled:AUTO_ZONE_ROLLOUT_APPROVED && Deno.env.get('SPLAV_ROOT_ZONE_CONTINUATION_V1')==='true',metadata:async()=>{
             const fresh=await sb.from('documents').select('*').eq('id',id).single();if(fresh.error||!fresh.data)throw Error('Continuation source unavailable');
             const d=fresh.data;
             if(!(globalThis as any).CRMMilitaryZoneContract?.family(d.document_type,d.ai_document_type)||!(d.mime_type==='application/pdf'||/\.pdf$/i.test(d.storage_path||'')))return null;

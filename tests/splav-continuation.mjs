@@ -1,3 +1,4 @@
+import {AUTO_ZONE_ROLLOUT_APPROVED} from '../supabase/functions/_shared/splav-continuation-rollout.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {finishQueueWithContinuation,continuationPDFMetadata} from '../supabase/functions/_shared/splav-continuation.mjs';
@@ -18,3 +19,5 @@ test('metadata reads bounded original, counts every page and destroys parser wit
  const r=await run();assert.equal(r.pages,4);assert.match(r.digest,/^[a-f0-9]{64}$/);assert.equal(destroyed,1);
  await assert.rejects(run({file_hash:'b'.repeat(64)}),/original changed/);assert.equal(loads,1);
 });
+
+test('staged production package cannot activate automatically',()=>assert.equal(AUTO_ZONE_ROLLOUT_APPROVED,false));
