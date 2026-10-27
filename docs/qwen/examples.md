@@ -91,3 +91,9 @@ Reference: tests/crm-review-source.cjs, “intake script cache key follows the c
 Wrong: value.trim().toLowerCase() before checking input type.
 Correct: if typeof value is not string, return null; normalize only recognized aliases. Unknown values require review; manual values remain protected.
 Reference: tests/crm-document-ai-sync.cjs (sex alias normalization).
+
+## 15. Token-limit termination cannot be inferred from punctuation
+
+Wrong Qwen proposal: reject proposals ending with punctuation and accept other endings. It also replaced the async fetch helper with an incompatible boolean function.
+Correct: reject result.done_reason==='length' before accepting the text, regardless of its apparent grammatical or JSON completeness. Preserve the fixed local endpoint, request signature, error behavior and no-retry rule. Existing done=true nonempty proposals with stop or absent done_reason still work.
+Reference: tests/qwen-collaborator.mjs, “token-limit termination is rejected even when done and the text looks complete” and “normal and legacy completions do not depend on punctuation”. Ollama source: https://github.com/ollama/ollama/blob/main/llm/server.go (DoneReasonLength).
