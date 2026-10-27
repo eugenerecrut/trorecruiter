@@ -14,6 +14,7 @@ assert.equal(v3.tabs.length,3);
  assert(v3.readinessDetails(view,true).includes('<details data-case-data-review open>'));
  assert(!html.includes('<details data-case-data-review open>'));
  assert(read('candidate-card-v3.js').includes("caseSummary.querySelector('[data-case-data-review]')?.open===true"));
+ assert(read('candidate-card-v3.js').includes("if(event.target.closest('[data-case-data-review]'))return;queueMicrotask(refresh)"),'Read-only detail clicks must not rerender before the native disclosure toggle');
  assert(html.includes('ПІБ &lt;тест&gt;'));
  assert(html.includes('Уточніть &amp; збережіть'));
  assert(!html.includes('<тест>'));assert.equal(JSON.stringify(view),before);

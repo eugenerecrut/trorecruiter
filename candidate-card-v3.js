@@ -299,7 +299,7 @@
       refresh();
     });
     form.addEventListener('change',() => queueMicrotask(refresh));
-    form.addEventListener('click',() => queueMicrotask(refresh));
+    form.addEventListener('click',event => {if(event.target.closest('[data-case-data-review]'))return;queueMicrotask(refresh);});
     form.addEventListener('invalid',event => {
       if(event.target.closest('.cc-v3-modes')){header.classList.add('cc-v3-header-expanded');extra.setAttribute('aria-expanded','true');}
       manualEditing=true;manual.setAttribute('aria-expanded','true');const section = event.target.closest('[data-section]');
