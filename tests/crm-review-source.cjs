@@ -35,3 +35,15 @@ test('identity review requires explicit confirmation before the existing guarded
  assert(source.includes("keepKind(row)==='identity-field'&&!window.confirm("));
  assert(source.indexOf("keepKind(row)==='identity-field'&&!window.confirm(")<source.indexOf("rpc('crm_keep_document_value'"));
 });
+
+test('human explanation distinguishes OCR disagreement from proven foreign ownership without changing evidence',()=>{
+ const f=fixture();
+ for(const reason of ['Дата народження іншої особи','РНОКПП іншої особи','Некоректне OCR-значення; РНОКПП іншої особи','ПІБ не збігається']){
+  const row={...f.row,reason},before=JSON.stringify(row),text=f.c.CRMIntake.reasonText(row);
+  assert(text.includes('може бути помилка AI'));assert(text.includes('документ іншої людини'));assert(text.includes('Порівняйте оригінал'));assert(text.includes('заблоковане'));assert.equal(JSON.stringify(row),before);
+ }
+ assert(f.c.CRMIntake.reasonText({reason:'Некоректне OCR-значення'}).includes('не зміг'));
+ assert(f.c.CRMIntake.reasonText({reason:'Збережене значення має пріоритет'}).includes('звірки з оригіналом'));
+ assert.equal(f.c.CRMIntake.reasonText({reason:'custom'}),'custom');
+ assert(f.c.CRMIntake.reasonText(null).includes('Потрібно порівняти'));
+});
