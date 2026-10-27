@@ -159,3 +159,15 @@ test('single-field click transfers only the displayed field and rejects changed 
   assert.equal(applied.length,stale?0:1);if(!stale){assert.deepEqual(Array.from(applied[0].selections,s=>s.key),['phone']);assert.deepEqual(Array.from(applied[0].rows,r=>r.key),['phone']);}
  }
 });
+
+test('held fill explains source review and conflict headings receive candidate context',async()=>{
+ const f=fixture();vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-case-assistant.js'),'utf8'),f.c);
+ const held={action:'fill',target:'profile',key:'relatives.0.birth_date',current:null,incoming:'1981'},plan={supported:true,rows:[held],selections:[]};
+ assert.equal(f.c.CRMIntake.questionTitle({plan,conflicts:[],fills:[held]}),'Знайдені дані потребують звірки');
+ assert(f.c.CRMIntake.fieldHint(plan,held).includes('Потрібна звірка джерел'));assert(!f.c.CRMIntake.canFillField(plan,held));
+ const conflict={...held,action:'conflict',reason:'Збережене значення має пріоритет'};f.candidate.profile_data={relatives:[{full_name:'Тестова Олена'}]};
+ assert.equal(f.c.CRMIntake.questionTitle({plan,conflicts:[{...conflict,key:'tcc'}],fills:[]}),'Потрібно уточнити: ТЦК та СП');
+ f.c.CRMWorkspace={escape:v=>String(v??'')};f.c.CRMDocumentSync.plan=()=>({supported:true,rows:[conflict],selections:[]});
+ const controls=new Map(),host={innerHTML:'',querySelector(key){if(!controls.has(key))controls.set(key,{});return controls.get(key);},querySelectorAll(){return []}};
+ await f.c.CRMIntake.review(host,f.candidate,[f.doc]);assert(host.innerHTML.includes('Потрібно уточнити: Тестова Олена · Дата народження'));
+});
