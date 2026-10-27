@@ -107,6 +107,15 @@ test('archived, merged and legacy-locked cards are read-only; active cards remai
  c.CRMWorkflow.protectCard(form,{profile_data:{workflow:{archived_at:'date'}}});assert.equal(notices.length,1,'No repeated notice after tab refresh');
  assert(notices[0].textContent.includes('перегляд'));
 });
+test('archive protection includes unnamed relative fields and alternate add button',()=>{
+ const selectors=[];const api=runtime({document:{createElement:()=>({dataset:{}})}}).CRMWorkflow;
+ const form={dataset:{},querySelectorAll:selector=>{selectors.push(selector);return[]},querySelector:()=>true};
+ for(const profile_data of [{workflow:{archived_at:'date'}},{workflow:{archive_lock:'lock'}},{merged_into:'other'}])api.protectCard(form,{profile_data});
+ assert.equal(selectors.length,3);
+ for(const selector of selectors){assert(selector.includes('[data-relative-field]'));assert(selector.includes('#pskAddRelative'));assert(!selector.includes('button,'),'Read-only navigation is not blanket-disabled');}
+ selectors.length=0;assert.equal(api.protectCard(form,candidate()),false);assert.equal(selectors.length,0);
+});
+
 test('archived core save returns before validation, serialization or any database write',async()=>{
  const s=read('candidate-form-core.js'),start=s.indexOf('    const saveCard=async function'),end=s.indexOf('    cardState.save=',start);
  const factory=new Function('context','with(context){return '+s.slice(start,end).trim().replace(/^const saveCard=/,'').replace(/;$/,'')+';}');
