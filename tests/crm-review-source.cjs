@@ -93,3 +93,29 @@ test('unsupported-plan UI escapes its reason, offers original and does not expos
  assert(host.innerHTML.includes('data-intake-open="d"'));assert(!host.innerHTML.includes('data-intake-retry='));
  assert(!host.innerHTML.includes('повторіть розпізнавання'));assert.equal(JSON.stringify(f.doc),before);
 });
+
+test('confirmation snapshot rejects changed evidence, in-flight OCR and wrong ownership',()=>{
+ const f=fixture(),fresh=structuredClone(f.doc);assert.equal(f.c.CRMIntake.confirmationMatches(f.doc,fresh,f.candidate),true);
+ for(const change of [d=>d.ai_extracted.phone='333',d=>d.ai_processed_at='new',d=>d.storage_path='c/new.pdf',d=>d.file_hash='changed',d=>d.version_number=2,d=>d.candidate_id='other',d=>d.deleted_at='now',d=>d.processing_status='AI обробка',d=>d.processing_status='AI помилка']){
+  const changed=structuredClone(f.doc);change(changed);assert.equal(f.c.CRMIntake.confirmationMatches(f.doc,changed,f.candidate),false);
+ }
+ assert.equal(f.c.CRMIntake.confirmationMatches(f.doc,null,f.candidate),false);
+ assert.equal(f.c.CRMIntake.confirmationMatches(f.doc,fresh,{id:'other'}),false);
+});
+
+test('confirmation handler uses snapshot guards and never applies after stale evidence or a lost update',async()=>{
+ for(const mode of ['stale','lost-update','changed-after-confirm','success']){
+  const f=fixture();Object.assign(f.doc,{verification_status:'Не перевірено',verified_at:null,ai_processed_at:'2026-01-01T00:00:00Z'});
+  const fresh=structuredClone(f.doc);if(mode==='stale')fresh.ai_extracted.phone='changed';
+  const controls=new Map(),host={innerHTML:'',querySelector(key){if(!controls.has(key))controls.set(key,{});return controls.get(key);},querySelectorAll(){return []}};
+  const calls={updates:0,applies:0,previews:0,filters:[]};
+  f.c.CRMWorkspace={escape:v=>String(v??''),guard:async()=>true};f.c.getCandidateDocuments=async()=>[fresh];f.c.getCurrentUser=async()=>({id:'worker'});f.c.openCandidateCard=async()=>{};
+  f.c.CRMDocumentSync={plan:()=>({supported:true,rows:[{target:'candidate',key:'phone',current:'',incoming:'222',action:'fill'}],selections:[]}),preview:async()=>{calls.previews++;const document={...structuredClone(fresh),verification_status:'Підтверджено'};if(mode==='changed-after-confirm')document.ai_extracted.phone='new';return {supported:true,document}},apply:async()=>{calls.applies++}};
+  const query={eq(key,value){calls.filters.push([key,value]);return this;},is(key,value){calls.filters.push([key,value]);return this;},select:async()=>({data:mode==='lost-update'?[]:[{id:'d'}]})};
+  f.c.supabaseClient={from:table=>table==='documents'?{update(){calls.updates++;return query;}}:{select:()=>({eq:()=>({single:async()=>({data:f.candidate})})})}};
+  await f.c.CRMIntake.review(host,f.candidate,[f.doc]);assert(host.innerHTML.includes('Підтвердити файл і заповнити порожні поля'));
+  await host.onclick({target:{closest:()=>({dataset:{intakeConfirm:'d'}})}});
+  if(mode==='stale'){assert.equal(calls.updates,0);assert.equal(calls.applies,0);assert(controls.get('[data-intake-status]').textContent.includes('змінився'));}
+  else{assert(calls.filters.some(([k,v])=>k==='ai_processed_at'&&v===f.doc.ai_processed_at));assert(calls.filters.some(([k,v])=>k==='processing_status'&&v===f.doc.processing_status));assert(calls.filters.some(([k,v])=>k==='verified_at'&&v===null));assert.equal(calls.applies,mode==='success'?1:0);assert.equal(calls.previews,mode==='lost-update'?0:1);}
+ }
+});
