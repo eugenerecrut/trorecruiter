@@ -18,6 +18,24 @@ test('relative labels identify the saved person without altering the field key o
  assert.equal(JSON.stringify(c),before);
 });
 const candidate=()=>({id:'c1',full_name:'Тестенко Іван',birth_date:'1990-01-01',birth_place:'Дніпро',phone:'+380000000000',worked_before:false,served_before:false,profile_data:{service_type:'За мобілізацією',education_level:'Середня',education_institution:'Школа'}});
+test('report describes found values without promising transfer and opens their source',async()=>{
+ const c=candidate();c.profile_data.relatives=[{full_name:'Тестова Олена'}];
+ const d={id:'source',file_name:'bio.pdf',ai_extracted:{},rows:[{key:'relatives.0.deceased',action:'fill',incoming:false}]};
+ const before=JSON.stringify({c,d}),r=build(c,[],[d]);
+ const host={innerHTML:'',querySelector(){return null}},opened=[];
+ w.CRMWorkspace={escape:v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;')};
+ w.openDocument=async id=>opened.push(id);
+ try{
+  w.CRMCaseAssistant.render(host,r);
+  assert.match(host.innerHTML,/Знайдені дані для перевірки \(1\)/);
+  assert.doesNotMatch(host.innerHTML,/Дані для перенесення/);
+  assert.match(host.innerHTML,/що потребує звірки/);
+  assert.match(host.innerHTML,/Тестова Олена · Позначка про смерть — Ні/);
+  assert.match(host.innerHTML,/data-case-source="source"/);
+  await host.onclick({target:{closest:()=>({dataset:{caseSource:'source'}})}});
+  assert.deepEqual(opened,['source']);assert.equal(JSON.stringify({c,d}),before);
+ }finally{delete w.CRMWorkspace;delete w.openDocument;}
+});
 test('explicitly inapplicable historical documents do not add report questions or processing blockers',()=>{const c=candidate(),docs=[{id:'old-work',document_type:'Документи про трудову діяльність',processing_status:'AI помилка',ai_extracted:{},rows:[{key:'full_name',action:'conflict',reason:'Старий файл'}]}];const before=JSON.stringify(docs),r=build(c,[],docs);assert.equal(r.issues.length,0);assert.equal(r.state.errors,0);assert.equal(JSON.stringify(docs),before);});
 test('Read-only report preserves candidate and documents; false employment/service means no questions',()=>{const c=candidate(),docs=[],before=JSON.stringify({c,docs});const r=build(c,[],docs);assert.equal(JSON.stringify({c,docs}),before);assert.equal(r.questions.length,0);assert(!r.ready,'Missing package files still block readiness');});
 test('Unknown differs from false; employment and education receive targeted questions',()=>{const c=candidate();delete c.served_before;c.worked_before=true;delete c.profile_data.education_institution;const r=build(c,[],[]);assert(r.questions.some(q=>q.key==='served_before'));assert(r.questions.some(q=>q.key==='work_history'));assert(r.questions.some(q=>q.key==='education_institution'));assert(!r.questions.some(q=>q.key==='military_service_history'));});
