@@ -20,7 +20,7 @@ function keepKind(row){
  return 'ordinary';
 }
 window.CRMReviewDecision={source:reviewSource,contextMatches:reviewContext,binding:reviewBinding,matches:reviewMatches,keepKind};
-function items(candidate,docs){return CRMResponsibility.latest(docs).map(doc=>{
+function items(candidate,docs){const owned=(Array.isArray(docs)?docs:[]).filter(doc=>doc&&(!doc.candidate_id||doc.candidate_id===candidate?.id));return CRMResponsibility.latest(owned).map(doc=>{
  const pending=doc.processing_status==='AI обробка',failed=doc.processing_status==='AI помилка';
  let plan=null,error=null;try{if(doc.ai_extracted&&!pending&&!failed)plan=CRMDocumentSync.plan(doc,candidate);}catch(e){error=e.message;}
  if(plan&&window.CRMDocumentCrosscheck)CRMDocumentCrosscheck.guard(plan,CRMDocumentCrosscheck.compare(docs,candidate));
