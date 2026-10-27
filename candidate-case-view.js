@@ -38,7 +38,8 @@
     // Optional explicit contracts may add blockers, but must never assert layout readiness.
     for (const [key, contract] of Object.entries(templateRequirements)) {
       if (!readiness[key] || !Array.isArray(contract?.missing)) continue;
-      readiness[key] = { ...readiness[key], ready: contract.missing.length ? false : null, missing: contract.missing.slice() };
+      const missing = [...readiness[key].missing, ...contract.missing];
+      readiness[key] = { ...readiness[key], ready: missing.length || readiness[key].ready === false ? false : null, missing };
     }
     const selected = templateRequirements.selected || 'serviceRecord';
     const missing = readiness[selected]?.missing || [];
@@ -46,6 +47,7 @@
     const nextAction = access ? { kind: 'review', text: 'Перевірити належність документа' }
       : report.state.processing ? { kind: 'wait', text: 'Триває розпізнавання документів' }
       : issues.length ? { kind: 'review', text: 'Перевірити питання: ' + issues.length }
+      : selected === 'serviceRecord' && !service ? { kind: 'review', text: 'Перевірка даних послужного недоступна. Оновіть сторінку.' }
       : missing.length || report.fills.length || report.missingData.length ? { kind: 'review', text: 'Доповнити дані для обраної форми' }
       : { kind: 'case', text: 'Перейти до формування та перевірки PDF' };
     return {

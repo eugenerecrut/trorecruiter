@@ -41,3 +41,27 @@ test('explicitly inapplicable files stay visible without adding verification que
  delete candidate.worked_before;
  assert.equal(build(candidate,[doc]).issues.length,1,'Unknown conditions still require review');
 });
+
+test('optional template contracts add blockers without clearing existing service issues',()=>{
+ const candidate=c(),contract={selected:'serviceRecord',serviceRecord:{missing:[]}},before=JSON.stringify({candidate,contract});
+ const baseline=build(candidate),view=w.CRMCandidateCaseView.build(candidate,{},[],[],contract);
+ assert(baseline.readiness.serviceRecord.missing.length>0);
+ assert.equal(view.readiness.serviceRecord.ready,false);
+ assert.deepEqual(view.readiness.serviceRecord.missing,baseline.readiness.serviceRecord.missing);
+ contract.serviceRecord.missing.push({label:'Додаткова звірка'});
+ const extended=w.CRMCandidateCaseView.build(candidate,{},[],[],contract);
+ assert.equal(extended.readiness.serviceRecord.missing.length,baseline.readiness.serviceRecord.missing.length+1);
+ contract.serviceRecord.missing.pop();assert.equal(JSON.stringify({candidate,contract}),before);
+});
+
+test('unavailable service validator cannot recommend forming a PDF',()=>{
+ const candidate={id:'complete',full_name:'Тестовий Іван',birth_date:'1990-01-01',birth_place:'Дніпро',rnokpp:'1234567890',phone:'test',worked_before:false,served_before:false,profile_data:{service_type:'За мобілізацією',education_level:'Середня',education_institution:'Школа'}};
+ const saved=w.CRMServiceReadiness;
+ try{
+  delete w.CRMServiceReadiness;
+  const view=build(candidate);
+  assert.equal(view.readiness.serviceRecord.ready,null);
+  assert.equal(view.nextAction.kind,'review');
+  assert.match(view.nextAction.text,/недоступна/);
+ }finally{w.CRMServiceReadiness=saved;}
+});
