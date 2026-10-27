@@ -3,6 +3,7 @@
   'use strict';
   const parse = value => { try { return typeof value === 'string' ? JSON.parse(value) || {} : value || {}; } catch { return {}; } };
   function buildCandidateCaseView(candidate, personalFile, documents, requirements, templateRequirements = {}) {
+    personalFile = personalFile && (!personalFile.candidate_id || personalFile.candidate_id === candidate.id) ? personalFile : {};
     const p = parse(candidate.profile_data);
     const mismatched = documents.filter(doc => doc.candidate_id && doc.candidate_id !== candidate.id);
     const latest = root.CRMResponsibility.latest(documents.filter(doc => !doc.candidate_id || doc.candidate_id === candidate.id));
@@ -14,7 +15,7 @@
       severity: item.kind === 'error' ? 'error' : 'review', actions: ['review-source'], decision: null
     }));
     for(const doc of latest){
-      if(doc.verification_status==='Потребує перевірки'&&!issues.some(i=>i.sourceIds.includes(doc.id)))
+      if((!doc.document_type||root.CRMCandidateConditions.documentCondition(doc.document_type,candidate)!==false)&&doc.verification_status==='Потребує перевірки'&&!issues.some(i=>i.sourceIds.includes(doc.id)))
         issues.push({id:JSON.stringify([doc.id,'verification']),fact:null,reason:'Потрібна перевірка документа.',
           current:null,alternatives:[],sourceIds:[doc.id],severity:'review',actions:['review-source'],decision:null});
     }
