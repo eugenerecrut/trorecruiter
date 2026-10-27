@@ -8,3 +8,17 @@ test('Education cannot pass with only unreadable rows; legacy verified data reta
 test('29 service periods fit, 30 are reported without dropping records',()=>{const c=base();c.served_before=true;c.profile_data.work_records=Array.from({length:29},()=>({kind:'military_service',start_date:'2022-01-01',unit:'А0000',position:'Солдат'}));assert(review(c).ready);c.profile_data.work_records.push({...c.profile_data.work_records[0]});assert(review(c).issues.some(i=>i.text.includes('29')));assert.equal(c.profile_data.work_records.length,30);});
 test('Ambiguous rank orders and unconfirmed family address need explicit review',()=>{const c=base();c.military_rank='солдат';c.profile_data.military_rank_records=[{rank:'Солдат',confirmed_by_user:true,order_number:'1'},{rank:'солдат',confirmed_by_user:true,order_number:'2'}];c.profile_data.family_residence_address='Дніпро';const r=review(c);assert(r.issues.some(i=>i.fieldId==='military.rank_order'));assert(r.issues.some(i=>i.fieldId==='family.address'));});
 test('Birth-place fallback is retained; malformed date never treated as valid',()=>{const c=base();delete c.birth_place;assert(review(c,{birth_place:'Дніпро'}).ready);c.birth_date='1990-02-30';assert(review(c,{birth_place:'Дніпро'}).issues.some(i=>i.fieldId==='identity.birth_date'));});
+
+test('ambiguous parent review identifies saved alternatives and all owned current sources',()=>{
+ const c=base();c.profile_data.relatives=[
+  {relationship:'Мати',full_name:'Прикладова Олена Петрівна',source_document_id:'birth'},
+  {relationship:'Мати',full_name:'Тестова (Прикладова) Олена Петрівна',source_document_id:'bio'},
+  {relationship:'Мати',full_name:'Не використовується',requires_review:true,source_document_id:'held'}];
+ const docs=[{id:'birth',candidate_id:'c1',file_name:'Свідоцтво.pdf'},{id:'bio',candidate_id:'c1',file_name:'Автобіографія.pdf'},{id:'held',candidate_id:'c1',file_name:'held.pdf'}];
+ const before=JSON.stringify({c,docs}),r=review(c,{},docs),issue=r.issues.find(i=>i.text.includes('Кілька різних'));
+ assert(issue);assert(issue.text.includes('Прикладова Олена Петрівна'));assert(issue.text.includes('Тестова (Прикладова) Олена Петрівна'));
+ assert.deepEqual(issue.documents.map(d=>d.id),['birth','bio']);
+ assert.equal(JSON.stringify({c,docs}),before);assert.equal(r.ready,false,'Surname notation alone does not resolve identity');
+ const foreign=docs.map(d=>d.id==='bio'?{...d,candidate_id:'other'}:d);
+ assert.deepEqual(review(c,{},foreign).issues.find(i=>i.text.includes('Кілька різних')).documents.map(d=>d.id),['birth']);
+});
