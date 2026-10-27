@@ -61,7 +61,7 @@
     if (client.functions?.invoke) {
       let token=accessToken;
       for(let attempt=0;attempt<2;attempt++){
-        const result=await client.functions.invoke('ai-extract-recommendation',{body,headers:{Authorization:`Bearer ${token}`}});
+        const result=await client.functions.invoke('ai-extract-recommendation',{body,headers:{Authorization:`Bearer ${token}`},timeout:110000});
         if(!result.error&&result.data?.extracted)return result.data;
         const status=result.error?.context?.status||result.error?.status;
         if(status===401&&attempt===0&&typeof client.auth.refreshSession==='function'){
