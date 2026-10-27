@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {MODEL,KNOWLEDGE_VERSION,loadKnowledge,makeRequest,requestProposal} from './qwen-collaborator.mjs';
 
 export const exercises=Object.freeze([
+ {id:'truncated_completion',question:'Ollama result has done=true, done_reason=length and valid-looking JSON content. May requestProposal accept it as a completed proposal? Boolean.',expected:false},
  {id:'identity_keep_scope',question:'After original inspection a birth_date keep_card decision is saved. May it also close full_name conflicts or authorize document transfer? Boolean.',expected:false},
  {id:'ocr_original_claim',question:'Only OCR result was read, not the original. May the explanation state that the original contains a different birth date? Boolean.',expected:false},
  {id:'display_reason_stability',question:'Improving display wording only. Should the persisted planner reason be rewritten, invalidating exact saved decisions? Boolean.',expected:false},

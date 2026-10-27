@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const MODEL='qwen2.5-coder:7b';
-export const KNOWLEDGE_VERSION='5';
+export const KNOWLEDGE_VERSION='6';
 export const ENDPOINT='http://127.0.0.1:11434/api/chat';
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const LIMIT=16000;
@@ -42,6 +42,7 @@ export async function requestProposal(body,{fetchImpl=fetch,timeoutMs=120000}={}
  const response=await fetchImpl(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
  if(!response.ok)throw Error('Ollama returned HTTP '+response.status+'; no automatic retry.');
  const result=await response.json();
+ if(result.done_reason==='length')throw Error('Ollama reached the token limit; proposal is truncated. No automatic retry.');
  if(result.done!==true||typeof result.message?.content!=='string'||!result.message.content.trim())throw Error('Ollama returned an incomplete or empty proposal.');
  return {proposal:result.message.content,model:result.model||MODEL,inputTokens:result.prompt_eval_count??null,outputTokens:result.eval_count??null};
 }

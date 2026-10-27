@@ -31,3 +31,18 @@ test('errors and incomplete responses do not retry or become successful results'
   let calls=0;await assert.rejects(requestProposal(makeRequest('task','rules'),{fetchImpl:async()=>{calls++;return response}}));assert.equal(calls,1);
  }
 });
+
+test('token-limit termination is rejected even when done and the text looks complete',async()=>{
+ for(const content of ['A complete sentence.','const answer = 42;','{"answer":true}','unfinished']){
+  let calls=0;
+  await assert.rejects(requestProposal(makeRequest('task','rules'),{fetchImpl:async()=>{calls++;return {ok:true,json:async()=>({done:true,done_reason:'length',message:{content}})}}}),/token limit/i);
+  assert.equal(calls,1);
+ }
+});
+
+test('normal and legacy completions do not depend on punctuation',async()=>{
+ for(const done_reason of ['stop',undefined])for(const content of ['Complete.','const answer = 42;','{"answer":true}','yes']){
+  const result=await requestProposal(makeRequest('task','rules'),{fetchImpl:async()=>({ok:true,json:async()=>({done:true,done_reason,message:{content}})})});
+  assert.equal(result.proposal,content);
+ }
+});
