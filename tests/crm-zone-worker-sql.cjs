@@ -429,6 +429,42 @@ try{
  await db.query("update public.documents set ai_processed_at='2026-10-25T00:00:00Z' where id=$1",[id(94)]);await actor(1);
  assert.equal((await call('crm_splav_job_status',[rerun.id])).zone_reports.length,0);checks++;
  await assert.rejects(call('crm_splav_zone_page_rerun_enqueue',[nativePlanJob.id,id(1002),'Changed source']),/source changed/);checks++;
+ // Atomic root-to-zone continuation: real migration, no network or AI.
+ await owner();await db.exec(file('supabase/migrations/20261027180109_splav_atomic_zone_continuation.sql'));
+ await db.exec(`update crm_private.splav_settings set enabled=true,zones_enabled=true,zone_canary_coordinator=null;
+ insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status,processing_status,ai_processed_at,mime_type,file_size)
+ values('${id(200)}','${id(10)}','continuation.pdf','${id(200)}',1,'Автобіографія друкована','${id(30)}','{}','Не перевірено','AI оброблено','2026-10-27','application/pdf',100);
+ insert into crm_private.splav_jobs(id,document_id,candidate_id,initiated_by,original_source,current_source,state,stage,leased_by,lease_token,lease_until)
+ select '${id(201)}',id,candidate_id,'${id(1)}',crm_private.splav_source(d),crm_private.splav_source(d),'running','ocr_saved','${id(2)}','${id(202)}',now()+interval '10 minutes' from public.documents d where id='${id(200)}';`);
+ const continuation={state:'needs_review',auto_filled:0,conflict_count:1,zone_eligible:true};
+ const handoff=(digest=hash,pages=1,outcome=continuation,token=id(202))=>call('crm_splav_continue_zone',[id(201),token,outcome,digest,pages]);
+ const unchanged=(await db.query("select ai_extracted,ai_processed_at,verification_status from public.documents where id=$1",[id(200)])).rows[0];
+ await actor(1);await assert.rejects(handoff(),/Invalid or expired/);checks++;
+ await actor(2);await assert.rejects(handoff(hash,1,continuation,id(999)),/Invalid or expired/);checks++;
+ for(const pages of [0,5,null]){await assert.rejects(handoff(hash,pages),/Invalid continuation/);checks++;}
+ await assert.rejects(handoff('bad'),/Invalid continuation/);checks++;
+ await assert.rejects(handoff(hash,1,{state:'needs_review',zone_eligible:false}),/Eligible saved OCR/);checks++;
+ await owner();await db.exec('update crm_private.splav_settings set zones_enabled=false');await actor(2);await assert.rejects(handoff(),/disabled/);checks++;
+ await owner();await db.exec('update crm_private.splav_settings set zones_enabled=true');
+ // A failure at parent finish rolls back the newly created child and coordinator.
+ await db.exec(`create function crm_private.test_reject_parent_finish() returns trigger language plpgsql as $$begin if new.id='${id(201)}' and new.stage='finished' then raise exception 'synthetic parent failure';end if;return new;end$$;
+ create trigger test_parent_failure before update on crm_private.splav_jobs for each row execute function crm_private.test_reject_parent_finish();`);
+ await actor(2);await assert.rejects(handoff(),/synthetic parent failure/);checks++;
+ await owner();assert.equal((await db.query('select count(*)::int n from crm_private.zone_coordinators where document_id=$1',[id(200)])).rows[0].n,0);checks++;
+ await db.exec('drop trigger test_parent_failure on crm_private.splav_jobs');await actor(2);
+ const continued=await handoff();assert.equal(continued.state,'queued');assert.equal(continued.budget,13);checks+=2;
+ await owner();const parent=(await db.query('select state,stage,result,lease_token from crm_private.splav_jobs where id=$1',[id(201)])).rows[0];
+ assert.equal(parent.stage,'finished');assert.equal(parent.lease_token,null);assert.equal(parent.result.continuation.job_id,continued.job_id);checks+=3;
+ assert.deepEqual((await db.query("select ai_extracted,ai_processed_at,verification_status from public.documents where id=$1",[id(200)])).rows[0],unchanged);checks++;
+ const child=(await db.query('select initiated_by,kind,state from crm_private.splav_jobs where id=$1',[continued.job_id])).rows[0];assert.equal(child.initiated_by,id(1));assert.equal(child.kind,'zone');assert.equal(child.state,'queued');checks+=3;
+ await actor(2);await assert.rejects(handoff(),/Invalid or expired/);checks++;
+ await owner();assert.equal((await db.query("select count(*)::int n from crm_private.splav_jobs where document_id=$1 and kind='zone'",[id(200)])).rows[0].n,1);checks++;
+ assert.equal((await db.query("select has_function_privilege('anon','public.crm_splav_continue_zone(uuid,uuid,jsonb,text,integer)','EXECUTE') allowed")).rows[0].allowed,false);checks++;
+ // Re-open only a synthetic parent to exercise existing-history preservation.
+ await db.query("update crm_private.splav_jobs set state='running',stage='ocr_saved',leased_by=$2,lease_token=$3,lease_until=now()+interval '10 minutes' where id=$1",[id(201),id(2),id(202)]);
+ const childCount=(await db.query("select count(*)::int n from crm_private.splav_jobs where kind='zone' and document_id=$1",[id(200)])).rows[0].n;
+ await actor(2);const skipped=await handoff();assert.equal(skipped.reason,'existing_zone_history');checks++;
+ await owner();assert.equal((await db.query("select count(*)::int n from crm_private.splav_jobs where kind='zone' and document_id=$1",[id(200)])).rows[0].n,childCount);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

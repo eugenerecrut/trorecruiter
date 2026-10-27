@@ -279,7 +279,7 @@
         if(!equal(p.relatives||[],merged))selections.push({target:'profile',key:'relatives',incoming:merged,expected_current:p.relatives??null,fill_only:true,merge_relatives:true,relative_sources:true,expected_ai:document.ai_extracted});
       }
     }
-    return {document,candidate,rows,selections,supported:true};
+    return {document,candidate,rows,selections,supported:true,ownerBlocked:!!ownerIssue};
   }
   async function preview(client,id){
     const dr=await client.from('documents').select('*').eq('id',id).single();if(dr.error)throw dr.error;
