@@ -460,6 +460,7 @@ function parseRecommendation(rawText) {
   // Виборка під фактичний формат рекомендаційного листа.
   let fullName = '';
   const namePatterns = [
+    /звернув(?:ся|лась|лася)\s+громадян(?:ин|ка)\s+([А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Zа-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/u,
     /призовника\s+([А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Zа-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/u,
     /призовника\s+([А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Zа-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/u,
     /кандидат(?:а)?\s+([А-ЯІЇЄҐA-Z][А-ЯІЇЄҐA-Zа-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+\s+[А-ЯІЇЄҐA-Z][а-яіїєґ'’\-]+)/u,
@@ -475,36 +476,37 @@ function parseRecommendation(rawText) {
   }
 
   const dateMatch =
-    flat.match(/(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.н\./iu) ||
+    flat.match(/(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})\s*р\.\s*н\./iu) ||
     flat.match(/(?:дата\s*народження|народився|народилася)\s*[:\-]?\s*(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4})/iu);
   const birthDate = dateMatch?.[1] ? guessDate(dateMatch[1]) : '';
 
   const phoneMatch =
     flat.match(/\((0\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2})\)/u) ||
-    flat.match(/(?:тел(?:ефон)?|моб(?:ільний)?|контакт(?:ний)?)\s*[:\-]?\s*(\+?\d[\d ()-]{7,})/iu);
+    flat.match(/(?:тел(?:ефон)?|моб(?:ільний)?|контакт(?:ний)?)\.?\s*[:\-]?\s*(\+?\d[\d ()-]{7,})/iu);
   const phone = phoneMatch?.[1] ? phoneMatch[1].replace(/[^+\d]/g, '') : '';
 
-  const addressMatch = flat.match(/мешкає\s+за\s+адресою\s*:\s*(.+?)\s*\(0\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2}\)/iu);
+  const addressMatch = flat.match(/мешкає\s+за\s+адресою\s*:\s*(.+?)\.\s*[УВ]\s+військовій/iu) || flat.match(/мешкає\s+за\s+адресою\s*:\s*(.+?)\s*\(0\d{2}[ \-]?\d{3}[ \-]?\d{2}[ \-]?\d{2}\)/iu);
   const address = addressMatch?.[1] ? normalizeLine(addressMatch[1]) : '';
 
   const positionMatch =
-    flat.match(/планується\s+на\s+посаду\s+(.+?)\s*,\s*ШПК/iu);
+    flat.match(/на\s+вакантну\s+посаду\s*:\s*(.+?)\s*,?\s*ВОС\s/iu) || flat.match(/планується\s+на\s+посаду\s+(.+?)\s*,\s*ШПК/iu);
   const desiredPosition = positionMatch?.[1] ? normalizeLine(positionMatch[1]) : '';
 
-  const shpkMatch = flat.match(/ШПК\s*[“"«]?\s*([^”"»\n,]+?)(?:[”"»])?\s*,?\s*ВОС/iu);
+  const shpkMatch = flat.match(/ШПК\s*[“"«]\s*([^”"»]+)[”"»]/iu) || flat.match(/ШПК\s*[“"«]?\s*([^”"»\n,]+?)(?:[”"»])?\s*,?\s*ВОС/iu);
   const shpk = shpkMatch?.[1] ? normalizeLine(shpkMatch[1]) : '';
 
-  const vosMatch = flat.match(/ВОС\s*[-–:]\s*([0-9]{3,8}[А-ЯІЇЄҐA-Z]?)/iu);
+  const vosMatch = flat.match(/ВОС\s*(?:[-–:]\s*)?([0-9]{3,8}[А-ЯІЇЄҐA-Z]?)/iu);
   const militarySpecialty = vosMatch?.[1] ? normalizeLine(vosMatch[1]) : '';
 
-  const tariffMatch = flat.match(/тарифний\s+розряд\s*[-–:]\s*(\d+)/iu);
+  const tariffMatch = flat.match(/тарифний\s+розряд\s*(?:[-–:]\s*)?(\d+)/iu);
   const tariffGrade = tariffMatch?.[1] || '';
 
   const serviceMatch = flat.match(/військової\s+служби\s+(за\s+контрактом)/iu);
   const serviceType = serviceMatch?.[1] ? normalizeLine(serviceMatch[1]) : '';
 
   const unitMatch = flat.match(/планується\s+на\s+посаду\s+.+?військової\s+частини\s+([А-ЯІЇЄҐA-Z]\d{2,6})/iu);
-  const militaryUnit = unitMatch?.[1] || '';
+  const unitAlternatives=[...new Set([...flat.matchAll(/військов(?:ої|а|ій)\s+частин[а-яіїєґ]*\s+([АA]\d{4})/giu)].map(m=>m[1].replace(/^A/,'А')))];
+  const militaryUnit = unitMatch?.[1] || (unitAlternatives.length===1?unitAlternatives[0]:'');
 
   const recommendationBlock =
     flat.match(/\bУ\s+(\d+\s+центрі[^.]*?військової\s+частини\s+[А-ЯІЇЄҐA-Z]\d{2,6})\s+попередньо\s+вивчено/iu);
@@ -540,7 +542,7 @@ function parseRecommendation(rawText) {
     recommender_unit: recommenderUnit,
     signatory,
     recruiter_name: recruiterName,
-    rnokpp: '',
+    rnokpp: flat.match(/(?:ІПН|РНОКПП)\s*[:№]?\s*(\d{10})(?!\d)/iu)?.[1] || '',
     military_rank: '',
     tcc: '',
     vlk_status: '',
@@ -643,9 +645,16 @@ async function aiExtractRecommendation(text) {
   throw new Error('AI-модуль рекомендаційного листа не підключено');
 }
 
+function recommendationHasData(parsed) {
+  return !!parsed&&['full_name','birth_date','phone','address','military_unit','desired_unit','desired_position','shpk','military_specialty','tariff_grade','service_type','recommender_unit','signatory','recruiter_name','rnokpp','military_rank','tcc'].some(key=>typeof parsed[key]==='string'&&parsed[key].trim());
+}
+
 async function handleRecommendationFile(file) {
   pendingRecommendationFile = file;
   pendingRecommendationText = '';
+  document.getElementById('extractionBox')?.classList.add('hidden');
+  document.getElementById('aiWarnings')?.classList.add('hidden');
+  const priorOcr=document.getElementById('ocrText');if(priorOcr)priorOcr.value='';
 
   const selected = document.getElementById('selectedFile');
   const status = document.getElementById('ocrStatus');
@@ -657,6 +666,7 @@ async function handleRecommendationFile(file) {
     if (selected && pendingRecommendationFile !== file) selected.textContent = `Обрано: ${file.name} → ${pendingRecommendationFile.name} • ${Math.round(pendingRecommendationFile.size / 1024)} КБ`;
     let text = '';
 
+    try {
     if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
       text = await extractPdfText(file);
 
@@ -677,6 +687,7 @@ async function handleRecommendationFile(file) {
       text = await runOcr(file);
     }
 
+    } catch(ocrError) { console.warn('Локальний OCR недоступний; передаємо оригінал до AI.',ocrError); }
     pendingRecommendationText = normalizeDocumentText(text);
 
     const ocrBox = document.getElementById('ocrResultBox');
@@ -686,21 +697,19 @@ async function handleRecommendationFile(file) {
 
     let parsed = null;
 
-    if (!pendingRecommendationText) {
-      status.textContent = 'Текст не вдалося розпізнати. Заповніть дані вручну.';
-    } else {
-      try {
-        status.textContent = 'OCR готовий. Передаємо текст до AI для точної структурованої виборки...';
-        parsed = await aiExtractRecommendation(pendingRecommendationText);
-        status.textContent = 'AI-виборка готова. Перевірте дані перед створенням справи.';
-      } catch (aiError) {
-        console.warn('AI extraction unavailable, using local parser:', aiError);
-        parsed = parseRecommendation(pendingRecommendationText);
-        status.textContent = 'AI-виборка наразі недоступна. Використано локальну виборку OCR. Перевірте дані.';
-      }
+    try {
+      status.textContent='AI читає оригінал рекомендаційного листа…';
+      parsed=await aiExtractRecommendation(pendingRecommendationText);
+      status.textContent=recommendationHasData(parsed)?'AI-вибірка готова. Перевірте дані перед створенням справи.':'AI не знайшов придатних даних у документі. Перевірте файл або заповніть дані вручну.';
+    } catch(aiError) {
+      console.warn('AI extraction unavailable:',aiError);
+      const authError=[401,403].includes(aiError?.status);
+      parsed=!authError&&pendingRecommendationText?parseRecommendation(pendingRecommendationText):null;
+      const reason=String(aiError?.message||'Сервіс недоступний.');
+      status.textContent=recommendationHasData(parsed)?'AI не спрацював: '+reason+' Показано лише попередні дані локального OCR — звірте їх.':'Розпізнавання не виконано: '+reason+' Дані не заповнено; файл можна вибрати повторно або заповнити вручну.';
     }
 
-    if (parsed) {
+    if (recommendationHasData(parsed)) {
       renderExtraction(parsed);
       fillCandidateForm(parsed);
 

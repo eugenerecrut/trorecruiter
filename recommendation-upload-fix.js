@@ -15,6 +15,7 @@
     return `${ascii}${ext}`;
   }
   function getRecommendationFile() {
+    try { if(typeof pendingRecommendationFile!=='undefined'&&pendingRecommendationFile)return pendingRecommendationFile; } catch(_) {}
     const exact = document.getElementById('recommendationFile')?.files?.[0];
     if (exact) return exact;
     const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
@@ -58,22 +59,29 @@
     const accessToken = sessionData?.session?.access_token;
     if (!accessToken) throw new Error('Немає активної сесії CRM. Увійдіть повторно.');
     if (client.functions?.invoke) {
-      const result = await client.functions.invoke('ai-extract-recommendation', { body });
-      if (!result.error && result.data?.extracted) return result.data;
-      let detail = result?.error?.message || 'AI-виборка не виконана.';
-      try { const ctx = result.error?.context; if (ctx && typeof ctx.json === 'function') { const server = await ctx.json(); detail = server?.error || server?.message || detail; } } catch (_) {}
-      try {
-        const response = await fetch('https://vhfysipxorlhuiaatxqi.supabase.co/functions/v1/ai-extract-recommendation', { method:'POST', headers:{'Authorization':`Bearer ${accessToken}`,'apikey':'sb_publishable_o8ZTKE4Ek0m58zq1q0QpFQ_domIX0Yz','Content-Type':'application/json'}, body:JSON.stringify(body) });
-        const raw = await response.text(); let parsed = null; try { parsed = JSON.parse(raw); } catch (_) {}
-        if (!response.ok) throw new Error(parsed?.error || parsed?.message || `HTTP ${response.status}: ${raw.slice(0,300)}`);
-        if (!parsed?.extracted) throw new Error('Edge Function не повернула структурованих даних.');
-        return parsed;
-      } catch (directError) { throw new Error(`${detail} ${directError?.message || ''}`.trim()); }
+      let token=accessToken;
+      for(let attempt=0;attempt<2;attempt++){
+        const result=await client.functions.invoke('ai-extract-recommendation',{body,headers:{Authorization:`Bearer ${token}`}});
+        if(!result.error&&result.data?.extracted)return result.data;
+        const status=result.error?.context?.status||result.error?.status;
+        if(status===401&&attempt===0&&typeof client.auth.refreshSession==='function'){
+          const refreshed=await client.auth.refreshSession();
+          if(!refreshed.error&&refreshed.data?.session?.access_token){token=refreshed.data.session.access_token;continue;}
+        }
+        let detail=result.error?.message||'AI не повернув структурованих даних.';
+        try{const server=await result.error?.context?.json?.();detail=server?.error||server?.message||detail;}catch(_){}
+        if(status===401)detail='Сесія CRM завершилась. Увійдіть повторно та повторіть розпізнавання.';
+        else if(status===403)detail='Немає доступу до AI-обробки. Перевірте обліковий запис CRM.';
+        else if(status===429)detail='Ліміт AI тимчасово вичерпано. Повторіть пізніше.';
+        else if(status===503)detail='Сервіс AI тимчасово недоступний. Повторіть пізніше.';
+        const error=new Error(detail);error.status=status;throw error;
+      }
     }
     throw new Error('Supabase Functions API недоступний у браузері.');
   }
   let recognizedFile=null,recognizedResponse=null;
   window.aiExtractRecommendation = async function (text) {
+    recognizedFile=null;recognizedResponse=null;
     const file = await CRMUploadPDF.prepare(getRecommendationFile());
     const body = { text: String(text || '') };
     if (file) {
