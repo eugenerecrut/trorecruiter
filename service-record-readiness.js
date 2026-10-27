@@ -35,6 +35,7 @@ function review(c,pf={},documents=[]){
    const end=r.source_type==='autobiography'?root.CRMBiographyFacts?.partial(r.end_date):date(r.end_date)?{min:r.end_date,max:r.end_date}:null;
    if(!start)add(id,prefix+'уточніть дату початку.',r);
    if(r.end_date&&(!end||start&&end.max<start.min))add(id,prefix+'перевірте дату завершення.',r);
+   if(kind==='military_service'&&r.order_date&&!date(r.order_date))add(id,prefix+'перевірте дату наказу.',r,['order_date']);
    if(blank(kind==='employment'?r.employer:r.unit||r.employer))add(id,prefix+(kind==='employment'?'немає підприємства.':'немає військової частини.'),r);
    if(blank(r.position)&&blank(r.disposition))add(id,prefix+'немає посади.',r);
   }
