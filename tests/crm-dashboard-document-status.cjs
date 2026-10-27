@@ -86,3 +86,19 @@ test('personal file lookup fails closed on errors, malformed rows and timeout',a
  assert.equal(await read({from:()=>{throw Error('offline')}}),null);
  assert.match(source,/serviceDataLabel\(serviceData.get\(c.id\)\)/);
 });
+
+test('dashboard scopes each candidate before selecting latest document versions',()=>{
+ const ctx=vm.createContext({CRMWorkspace:{}});ctx.window=ctx;
+ for(const file of ['crm-responsibility.js','crm-dashboard.js'])vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../'+file),'utf8'),ctx);
+ const person={id:'own'},docs=[
+  {id:'own-v1',candidate_id:'own',version_group_id:'shared',version_number:1},
+  {id:'other-v2',candidate_id:'other',version_group_id:'shared',version_number:2},
+  {id:'unassigned',version_group_id:'shared',version_number:3}];
+ const before=JSON.stringify({person,docs});
+ assert.equal(ctx.CRMResponsibility.latest(docs).filter(d=>d.candidate_id===person.id).length,0,'Previous global ordering could hide own documents');
+ assert.deepEqual(Array.from(ctx.CRMDashboard.candidateDocuments(person,docs),d=>d.id),['own-v1']);
+ const ownNew={id:'own-v4',candidate_id:'own',version_group_id:'shared',version_number:4};
+ assert.deepEqual(Array.from(ctx.CRMDashboard.candidateDocuments(person,[...docs,ownNew]),d=>d.id),['own-v4']);
+ assert.equal(JSON.stringify({person,docs}),before);
+ assert(source.includes('candidateDocs.get(c.id)'),'Document and data counters share the scoped list');
+});
