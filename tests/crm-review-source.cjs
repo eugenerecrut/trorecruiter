@@ -69,3 +69,27 @@ test('intake preserves unscoped legacy documents but handles absent and null inp
  assert.equal(f.c.CRMIntake.items(f.candidate,null).length,0);
  assert.equal(f.c.CRMIntake.items(f.candidate,[null,undefined]).length,0);
 });
+
+test('blocked plans explain their actual reason without recommending another OCR run',()=>{
+ const f=fixture(),reason='Це свідоцтво дитини: особисті дані кандидата з нього не переносяться.';
+ const item={plan:{supported:false,blockedReason:reason},conflicts:[],fills:[]},before=JSON.stringify(item);
+ assert.equal(f.c.CRMIntake.unavailableText(item),reason);
+ assert.equal(f.c.CRMIntake.questionTitle(item),'Перенесення даних недоступне');
+ assert.equal(JSON.stringify(item),before);
+ const unknown={plan:{supported:false},conflicts:[],fills:[]};
+ assert(f.c.CRMIntake.unavailableText(unknown).includes('не підтримується'));
+ assert(!f.c.CRMIntake.unavailableText(unknown).includes('повторіть'));
+ assert.equal(f.c.CRMIntake.questionTitle({...item,failed:true}),'Не вдалося прочитати документ');
+ assert.equal(f.c.CRMIntake.questionTitle({...item,error:'error'}),'Не вдалося перевірити дані');
+});
+
+test('unsupported-plan UI escapes its reason, offers original and does not expose retry',async()=>{
+ const f=fixture();f.c.CRMWorkspace={escape:v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')};
+ f.c.CRMDocumentSync.plan=()=>({supported:false,blockedReason:'Blocked <script>unsafe</script>',rows:[],selections:[]});
+ const controls=new Map(),host={innerHTML:'',querySelector(key){if(!controls.has(key))controls.set(key,{});return controls.get(key);},querySelectorAll(){return []}};
+ const before=JSON.stringify(f.doc);await f.c.CRMIntake.review(host,f.candidate,[f.doc]);
+ assert(host.innerHTML.includes('Перенесення даних недоступне'));
+ assert(host.innerHTML.includes('Blocked &lt;script&gt;unsafe&lt;/script&gt;'));assert(!host.innerHTML.includes('<script>unsafe'));
+ assert(host.innerHTML.includes('data-intake-open="d"'));assert(!host.innerHTML.includes('data-intake-retry='));
+ assert(!host.innerHTML.includes('повторіть розпізнавання'));assert.equal(JSON.stringify(f.doc),before);
+});
