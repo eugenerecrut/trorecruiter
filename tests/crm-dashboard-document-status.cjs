@@ -102,3 +102,27 @@ test('dashboard scopes each candidate before selecting latest document versions'
  assert.equal(JSON.stringify({person,docs}),before);
  assert(source.includes('candidateDocs.get(c.id)'),'Document and data counters share the scoped list');
 });
+
+test('deleted latest version does not silently reactivate an older document',()=>{
+ const ctx=vm.createContext({CRMWorkspace:{}});ctx.window=ctx;
+ for(const file of ['crm-responsibility.js','crm-dashboard.js'])vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../'+file),'utf8'),ctx);
+ const person={id:'own'},old={id:'v1',candidate_id:'own',version_group_id:'g',version_number:1},latest={id:'v2',candidate_id:'own',version_group_id:'g',version_number:2,deleted_at:'2026-10-27T00:00:00Z'};
+ const docs=[old,latest],before=JSON.stringify(docs);
+ assert.deepEqual(Array.from(ctx.CRMDashboard.candidateDocuments(person,docs),d=>d.id),[]);
+ const restored={...latest,deleted_at:null};
+ assert.deepEqual(Array.from(ctx.CRMDashboard.candidateDocuments(person,[old,restored]),d=>d.id),['v2']);
+ assert.equal(JSON.stringify(docs),before);
+});
+
+test('candidate document lists remain independent for shared groups and unrelated standalone files',()=>{
+ const ctx=vm.createContext({CRMWorkspace:{}});ctx.window=ctx;
+ for(const file of ['crm-responsibility.js','crm-dashboard.js'])vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../'+file),'utf8'),ctx);
+ const docs=[
+  {id:'a1',candidate_id:'a',version_group_id:'g',version_number:1},
+  {id:'b2',candidate_id:'b',version_group_id:'g',version_number:2},
+  {id:'standalone',candidate_id:'a',version_group_id:null,version_number:1},
+  {id:'removed',candidate_id:'a',deleted_at:'now',version_group_id:null}];
+ const read=id=>Array.from(ctx.CRMDashboard.candidateDocuments({id},docs),d=>d.id);
+ assert.deepEqual(read('a'),['a1','standalone']);assert.deepEqual(read('b'),['b2']);assert.deepEqual(read('absent'),[]);
+ assert.deepEqual(read('a'),['a1','standalone'],'Repeated reads do not contaminate another candidate scope');
+});
