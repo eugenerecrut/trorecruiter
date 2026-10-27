@@ -3,6 +3,7 @@
 
 let pendingRecommendationFile = null;
 let pendingRecommendationText = '';
+let recommendationRequestSequence = 0;
 
 async function getCurrentUser() {
   const { data, error } = await supabaseClient.auth.getUser();
@@ -650,6 +651,7 @@ function recommendationHasData(parsed) {
 }
 
 async function handleRecommendationFile(file) {
+  const request=++recommendationRequestSequence;
   pendingRecommendationFile = file;
   pendingRecommendationText = '';
   document.getElementById('extractionBox')?.classList.add('hidden');
@@ -662,7 +664,9 @@ async function handleRecommendationFile(file) {
   if (status) status.textContent = 'Аналізуємо документ...';
 
   try {
-    pendingRecommendationFile = await CRMUploadPDF.prepare(file);
+    const prepared=await CRMUploadPDF.prepare(file);
+    if(request!==recommendationRequestSequence)return;
+    pendingRecommendationFile=prepared;
     if (selected && pendingRecommendationFile !== file) selected.textContent = `Обрано: ${file.name} → ${pendingRecommendationFile.name} • ${Math.round(pendingRecommendationFile.size / 1024)} КБ`;
     let text = '';
 
@@ -676,6 +680,7 @@ async function handleRecommendationFile(file) {
         const parts = [];
 
         for (let i = 0; i < images.length; i++) {
+          if(request!==recommendationRequestSequence)return;
           status.textContent = `OCR сторінки ${i + 1} з ${images.length}...`;
           const pageText = await runOcr(images[i]);
           if (pageText) parts.push(pageText);
@@ -688,6 +693,7 @@ async function handleRecommendationFile(file) {
     }
 
     } catch(ocrError) { console.warn('Локальний OCR недоступний; передаємо оригінал до AI.',ocrError); }
+    if(request!==recommendationRequestSequence)return;
     pendingRecommendationText = normalizeDocumentText(text);
 
     const ocrBox = document.getElementById('ocrResultBox');
@@ -700,8 +706,10 @@ async function handleRecommendationFile(file) {
     try {
       status.textContent='AI читає оригінал рекомендаційного листа…';
       parsed=await aiExtractRecommendation(pendingRecommendationText);
+      if(request!==recommendationRequestSequence)return;
       status.textContent=recommendationHasData(parsed)?'AI-вибірка готова. Перевірте дані перед створенням справи.':'AI не знайшов придатних даних у документі. Перевірте файл або заповніть дані вручну.';
     } catch(aiError) {
+      if(request!==recommendationRequestSequence)return;
       console.warn('AI extraction unavailable:',aiError);
       const authError=[401,403].includes(aiError?.status);
       parsed=!authError&&pendingRecommendationText?parseRecommendation(pendingRecommendationText):null;
@@ -729,6 +737,7 @@ async function handleRecommendationFile(file) {
       }
     }
   } catch (error) {
+    if(request!==recommendationRequestSequence)return;
     console.error('OCR error:', error);
     status.textContent = 'Автоматичне розпізнавання не вдалося. Заповніть дані вручну — оригінал документа все одно можна зберегти.';
     document.getElementById('ocrResultBox')?.classList.remove('hidden');

@@ -110,7 +110,7 @@ test('recommendation form tries original after OCR failure and hides empty extra
  for(const mode of ['empty','vision','auth']){
   const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',value:'',hidden:false,classList:{add(){},remove(){}}});return nodes.get(id);};
   let invoked=0,rendered=0,filled=0,parsed=0;
-  const ctx={pendingRecommendationFile:null,pendingRecommendationText:'',CRMUploadPDF:uploadPDF,document:{getElementById:node},extractPdfText:async()=>{throw Error('OCR failed')},normalizeDocumentText:v=>v,aiExtractRecommendation:async()=>{invoked++;if(mode==='auth'){const e=Error('Сесія CRM завершилась');e.status=401;throw e;}return mode==='vision'?{full_name:candidate().full_name}:{full_name:''};},parseRecommendation:()=>{parsed++;return{}},renderExtraction:()=>rendered++,fillCandidateForm:()=>filled++,console:{warn(){},error(){}}};
+  const ctx={recommendationRequestSequence:0,pendingRecommendationFile:null,pendingRecommendationText:'',CRMUploadPDF:uploadPDF,document:{getElementById:node},extractPdfText:async()=>{throw Error('OCR failed')},normalizeDocumentText:v=>v,aiExtractRecommendation:async()=>{invoked++;if(mode==='auth'){const e=Error('Сесія CRM завершилась');e.status=401;throw e;}return mode==='vision'?{full_name:candidate().full_name}:{full_name:''};},parseRecommendation:()=>{parsed++;return{}},renderExtraction:()=>rendered++,fillCandidateForm:()=>filled++,console:{warn(){},error(){}}};
   vm.createContext(ctx);vm.runInContext(code,ctx);
   await ctx.handleRecommendationFile({name:'test.pdf',type:'application/pdf',size:100});
   assert.equal(invoked,1);assert.equal(rendered,mode==='vision'?1:0);assert.equal(filled,mode==='vision'?1:0);assert.equal(parsed,0);
@@ -126,6 +126,38 @@ test('local fallback recognizes citizen/vacant-position RL punctuation without i
  assert.equal(p.full_name,'ТЕСТОВА Олена Петрівна');assert.equal(p.birth_date,'2000-04-12');assert.equal(p.phone,'+380000000000');assert.equal(p.rnokpp,'1234567890');
  assert.equal(p.address,'м. Приклад, вул. Тестова, 1');assert.equal(p.military_unit,'А0001');assert.equal(p.desired_position,'ОПЕРАТОР ТЕСТОВОГО ПІДРОЗДІЛУ');assert.equal(p.shpk,'СОЛДАТ');assert.equal(p.military_specialty,'123456А');assert.equal(p.tariff_grade,'4');assert.equal(p.military_rank,'');
  assert.equal(ctx.parseRecommendation('Військова частина А0001 та військової частини А0002').military_unit,'','Ambiguous units are not guessed');
+});
+
+test('late preparation of an older recommendation cannot replace the selected file or result',async()=>{
+ const s=read('script.js'),code=s.slice(s.indexOf('function recommendationHasData('),s.indexOf('function safeFileName('));
+ let releaseA;const held=new Promise(resolve=>releaseA=resolve),rendered=[],invoked=[];
+ const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',value:'',classList:{add(){},remove(){}}});return nodes.get(id);};
+ const a={name:'a.pdf',type:'application/pdf',size:100},b={name:'b.pdf',type:'application/pdf',size:100};
+ const ctx={recommendationRequestSequence:0,pendingRecommendationFile:null,pendingRecommendationText:'',document:{getElementById:node},CRMUploadPDF:{prepare:file=>file===a?held:Promise.resolve(file)},extractPdfText:async file=>'Текст '+file.name+' '.repeat(120),normalizeDocumentText:v=>v,aiExtractRecommendation:async text=>{invoked.push(text);return{full_name:'Новий результат'}},renderExtraction:p=>rendered.push(p.full_name),fillCandidateForm(){},console:{warn(){},error(){}}};
+ vm.createContext(ctx);vm.runInContext(code,ctx);
+ const first=ctx.handleRecommendationFile(a);await ctx.handleRecommendationFile(b);releaseA(a);await first;
+ assert.equal(ctx.pendingRecommendationFile,b);assert.deepEqual(rendered,['Новий результат']);assert.equal(invoked.length,1);assert.match(invoked[0],/b.pdf/);
+});
+
+test('failed flattening cannot leave an AI receipt for recommendation upload',async()=>{
+ let inserted;const file={name:'synthetic.pdf',size:100,type:'application/pdf'};
+ const client={auth:{getSession:async()=>({data:{session:{access_token:'test'}}})},functions:{invoke:async()=>({data:{extracted:{full_name:'Тестова Олена'}}})},storage:{from:()=>({upload:async()=>({}),remove:async()=>({})})},from:table=>{
+  const q={select(){return q},eq(){return q},limit(){return q},maybeSingle:async()=>({data:null}),insert:data=>{inserted=data;return q},single:async()=>({data:{id:'d'}})};return q;
+ }};
+ const ctx={pendingRecommendationFile:file,CRMUploadPDF:uploadPDF,window:{supabaseClient:client,CRMDocumentSync:{flatten(){throw Error('Bad extraction')},valid:()=>true}},document:{getElementById:()=>null,querySelectorAll:()=>[]},FileReader:class{readAsDataURL(){this.result='data:application/pdf;base64,JVBERi0=';this.onload()}},structuredClone,console};
+ vm.createContext(ctx);vm.runInContext(read('recommendation-upload-fix.js'),ctx);
+ await assert.rejects(ctx.window.aiExtractRecommendation('text'),/Bad extraction/);
+ assert.equal((await ctx.window.uploadRecommendation('c',{id:'u'})).ok,true);
+ assert.equal(inserted.processing_status,'Завантажено');assert.equal(Object.hasOwn(inserted,'ai_extracted'),false);
+});
+
+test('recommendation observer and timer never mount the relatives card editor in new RL form',async()=>{
+ let mutation;const timers=[],form={id:'candidateForm',append(){throw Error('Unexpected relatives UI')},prepend(){throw Error('Unexpected relatives UI')}};
+ const ctx={window:{},document:{body:{},getElementById:id=>id==='candidateForm'?form:null,createElement(){throw Error('Unexpected editor')}},MutationObserver:class{constructor(fn){mutation=fn}observe(){}},setInterval:fn=>{timers.push(fn);return 1},setTimeout(){},clearInterval(){},console:{info(){}}};
+ vm.createContext(ctx);vm.runInContext(read('ai-recommendation-bridge.js'),ctx);
+ await mutation();for(const callback of timers)await callback();
+ assert.equal(form.__pskReadRelatives,undefined);assert.equal(form.onsubmit,undefined);
+ assert(read('ai-recommendation-bridge.js').includes("document.getElementById('candidateCardV2')"),'Existing candidate-card relative editor remains available');
 });
 
 test('Contradictory flat/nested OCR and malformed relative entries become conflicts',()=>{

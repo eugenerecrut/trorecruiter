@@ -79,8 +79,9 @@
     }
     throw new Error('Supabase Functions API недоступний у браузері.');
   }
-  let recognizedFile=null,recognizedResponse=null;
+  let recognizedFile=null,recognizedResponse=null,recognitionAttempt=0;
   window.aiExtractRecommendation = async function (text) {
+    const attempt=++recognitionAttempt;
     recognizedFile=null;recognizedResponse=null;
     const file = await CRMUploadPDF.prepare(getRecommendationFile());
     const body = { text: String(text || '') };
@@ -92,9 +93,10 @@
     }
     const data = await invokeAI(body);
     if (!data?.extracted) throw new Error(data?.error || 'AI не повернув структурованих даних.');
-    recognizedFile=file;recognizedResponse=structuredClone(data);
+    if(attempt!==recognitionAttempt)throw new Error('Результат замінено новішим розпізнаванням.');
     const flat=flattenAIExtraction(data.extracted);
     for(const k of ['full_name','military_specialty','shpk','tariff_grade','military_rank','recruiter_name','signatory','desired_position'])if(!window.CRMDocumentSync.valid(k,flat[k])){flat.warnings.push('Некоректне OCR-значення '+k+': '+flat[k]);flat[k]='';}
+    recognizedFile=file;recognizedResponse=structuredClone(data);
     return flat;
   };
   window.uploadRecommendation = async function (candidateId, user) {
