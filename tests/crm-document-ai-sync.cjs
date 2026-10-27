@@ -176,6 +176,19 @@ test('recommendation observer and timer never mount the relatives card editor in
  assert(read('ai-recommendation-bridge.js').includes("document.getElementById('candidateCardV2')"),'Existing candidate-card relative editor remains available');
 });
 
+test('late-mounted relatives editor respects archive lock and blocks stale click handlers',()=>{
+ const source=read('ai-recommendation-bridge.js'),code=source.slice(source.indexOf('function addUI('),source.indexOf('  async function persist('));
+ for(const archived of [false,true]){
+  const add={disabled:false},remove={disabled:false,dataset:{removeRelative:'0'}},input={disabled:false};let renders=0;
+  const list={set innerHTML(v){renders++},querySelectorAll:()=>[remove]};
+  const panel={style:{cssText:''},querySelector:s=>s==='#pskRelativesList'?list:add,querySelectorAll:()=>[add,remove,input]};
+  const form={id:'candidateCardForm',dataset:archived?{archiveReadOnly:'true'}:{},querySelector:()=>null,append(){}};
+  const ctx={document:{createElement:()=>panel},norm:x=>x,row:()=>'',read:()=>[],esc:x=>x};vm.createContext(ctx);vm.runInContext(code,ctx);ctx.addUI(form,[{full_name:'Synthetic'}]);
+  assert.equal(input.disabled,archived);assert.equal(add.disabled,archived);assert.equal(remove.disabled,archived);
+  const before=renders;add.onclick();remove.onclick();assert.equal(renders,archived?before:before+2);
+ }
+});
+
 test('Contradictory flat/nested OCR and malformed relative entries become conflicts',()=>{
   const d=document({...personal(),military_specialty:'218121',service:service(),relatives:[null]});
   const p=sync.plan(d,candidate());assert.equal(p.rows.find(r=>r.key==='military_specialty').action,'conflict');assert(!p.selections.some(s=>s.key==='military_specialty'));assert(p.rows.some(r=>r.key==='relatives'&&r.action==='conflict'));
