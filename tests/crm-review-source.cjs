@@ -119,3 +119,15 @@ test('confirmation handler uses snapshot guards and never applies after stale ev
   else{assert(calls.filters.some(([k,v])=>k==='ai_processed_at'&&v===f.doc.ai_processed_at));assert(calls.filters.some(([k,v])=>k==='processing_status'&&v===f.doc.processing_status));assert(calls.filters.some(([k,v])=>k==='verified_at'&&v===null));assert.equal(calls.applies,mode==='success'?1:0);assert.equal(calls.previews,mode==='lost-update'?0:1);}
  }
 });
+
+test('relative question UI renders escaped names and boolean words without changing source values',async()=>{
+ const f=fixture();vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-case-assistant.js'),'utf8'),f.c);
+ f.candidate.profile_data={relatives:[{full_name:'Тестова <Олена>'}]};
+ f.c.CRMWorkspace={escape:v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')};
+ f.c.CRMDocumentSync.plan=()=>({supported:true,rows:[{target:'profile',key:'relatives.0.deceased',current:null,incoming:false,action:'fill'},{target:'profile',key:'relatives.0.birth_date',current:null,incoming:'1981',action:'fill'}],selections:[]});
+ const controls=new Map(),host={innerHTML:'',querySelector(key){if(!controls.has(key))controls.set(key,{});return controls.get(key);},querySelectorAll(){return []}};
+ const before=JSON.stringify({doc:f.doc,candidate:f.candidate});await f.c.CRMIntake.review(host,f.candidate,[f.doc]);
+ assert(host.innerHTML.includes('Тестова &lt;Олена&gt; · Позначка про смерть'));assert(!host.innerHTML.includes('<Олена>'));
+ assert(host.innerHTML.includes('Розпізнано з документа<br>Ні'));assert(host.innerHTML.includes('Розпізнано з документа<br>1981'));assert(!host.innerHTML.includes('1981-01-01'));
+ assert(!host.innerHTML.includes('Інші відомості (relatives.'));assert.equal(JSON.stringify({doc:f.doc,candidate:f.candidate}),before);
+});
