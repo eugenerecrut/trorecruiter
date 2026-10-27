@@ -73,3 +73,21 @@ Reference: tests/crm-case-assistant.cjs, “case report scopes candidate sources
 
 A personal_files fallback with a different explicit candidate_id cannot supply birthplace. Blank or whitespace-only candidate birthplace may use the matching personal-file value for output; an existing nonblank candidate value retains priority. Read-only fallback does not write to the candidate. Preserve existing compatibility for legacy inputs without candidate_id.
 Reference: tests/crm-case-assistant.cjs, “birthplace fallback belongs to candidate and agrees across report readiness and model”.
+
+## 12. An OCR identity conflict is not proof about the original
+
+Wrong: “The original has a different birth date” when only saved OCR was inspected; “tax declaration number” for RNOKPP.
+Correct: the recognized identity values disagree with the card; an OCR mistake or a foreign document is possible. Inspect the original. A human keep_card decision for candidate birth_date cannot close full_name, birthplace or tcc conflicts and cannot enable transfer. Only populated full_name, birth_date and rnokpp have this explicit identity-review action.
+Reference: tests/crm-review-source.cjs, “explicit OCR identity review is restricted to populated identity fields”, “identity keep closes one exact question, without clearing other owner conflicts or authorizing transfer” and “human explanation distinguishes OCR disagreement from proven foreign ownership without changing evidence”.
+
+## 13. Keep presentation changes separate from source decisions
+
+Wrong: replace the planner reason everywhere to improve UI copy. Existing saved decisions compare the exact reason and could reopen.
+Correct: use CRMIntake.reasonText(row) for display only; row.reason and source extraction stay unchanged. Update index.html crm-intake.js?v= to the release version so cached browsers receive the changed script.
+Reference: tests/crm-review-source.cjs, “intake script cache key follows the current published release”.
+
+## 14. Normalization accepts declared input types only
+
+Wrong: value.trim().toLowerCase() before checking input type.
+Correct: if typeof value is not string, return null; normalize only recognized aliases. Unknown values require review; manual values remain protected.
+Reference: tests/crm-document-ai-sync.cjs (sex alias normalization).

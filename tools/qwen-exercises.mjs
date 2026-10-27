@@ -5,6 +5,11 @@ import {fileURLToPath} from 'node:url';
 import {MODEL,KNOWLEDGE_VERSION,loadKnowledge,makeRequest,requestProposal} from './qwen-collaborator.mjs';
 
 export const exercises=Object.freeze([
+ {id:'identity_keep_scope',question:'After original inspection a birth_date keep_card decision is saved. May it also close full_name conflicts or authorize document transfer? Boolean.',expected:false},
+ {id:'ocr_original_claim',question:'Only OCR result was read, not the original. May the explanation state that the original contains a different birth date? Boolean.',expected:false},
+ {id:'display_reason_stability',question:'Improving display wording only. Should the persisted planner reason be rewritten, invalidating exact saved decisions? Boolean.',expected:false},
+ {id:'intake_cache_version',question:'Editing crm-intake.js for a release: must its index.html cache key follow the current release? Boolean.',expected:true},
+ {id:'nonstring_normalization',question:'Input may be null or an object. Is calling value.trim() without a type check safe? Boolean.',expected:false},
  {id:'version_scope_order',question:'Mixed documents include owned version 1 and foreign candidate version 2 of the same group. Which order preserves the owned file: filter-before-latest or latest-before-filter? Return that exact string.',expected:'filter-before-latest'},
  {id:'foreign_personal_file',question:'Candidate id=A has blank birthplace. personalFile candidate_id=B has birthplace. May its value fill this candidate output? Boolean.',expected:false},
  {id:'police_service_question',question:'worked_before=true, served_before=true. Only work_records entry is a usable police_service record; no legacy narratives. Must the military_service_history clarification question be asked? Boolean.',expected:false},
