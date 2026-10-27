@@ -18,7 +18,17 @@ test('exercise prompts do not contain the answer key; actual regex expectations 
  assert.equal(exercises.find(e=>e.id==='marriage_regex').expected,/шлюб/iu.test('Копія свідоцтва про шлюб'));
 });
 test('both curated memory files fit the diagnostic request and are loaded automatically',async()=>{
- assert.equal(KNOWLEDGE_VERSION,'4');const knowledge=await loadKnowledge();
+ assert.equal(KNOWLEDGE_VERSION,'5');const knowledge=await loadKnowledge();
  assert.match(knowledge,/Verified CRM examples/);assert.match(knowledge,/selection\.key/);
  assert.doesNotThrow(()=>makeRequest(exerciseTask(),knowledge));
+});
+
+test('new review and cache lessons are graded independently with exact primitive types',()=>{
+ const correct=Object.fromEntries(exercises.map(e=>[e.id,e.expected]));
+ for(const id of ['identity_keep_scope','ocr_original_claim','display_reason_stability','intake_cache_version','nonstring_normalization']){
+  assert(exercises.some(e=>e.id===id));
+  for(const wrong of [!correct[id],String(correct[id]),null]){
+   const score=grade(JSON.stringify({...correct,[id]:wrong}));assert.equal(score.passed,exercises.length-1);assert.deepEqual(score.failures,[id]);
+  }
+ }
 });
