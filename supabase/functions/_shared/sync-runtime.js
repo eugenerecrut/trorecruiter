@@ -27,6 +27,7 @@ export async function reconcileDocument(client, documentId, expectedRevision, qu
   const report = await globalThis.CRMDocumentSync.automate(scoped, documentId, options);
   return {
     state: report.superseded ? 'superseded' : report.needsRecruiter ? 'needs_review' : 'completed',
+    zone_eligible: report.supported===true && !report.ownerBlocked && !report.blockedReason && !report.superseded,
     auto_filled: report.autoFilled || 0,
     conflict_count: report.rows.filter(row => row.action === 'conflict').length,
     reasons: report.reasons || []
