@@ -12,7 +12,7 @@ function protectWorkflow(host,c){if(readOnly(c))host.querySelectorAll('[data-car
 function protectCard(form,c){
  if(!readOnly(c))return false;
  form.dataset.archiveReadOnly='true';
- form.querySelectorAll('input[name],select[name],textarea[name],[data-education-field],[type=submit],#ccAddRelative,[data-remove-relative],[data-add-work],[data-remove-work]').forEach(el=>el.disabled=true);
+ form.querySelectorAll('input[name],select[name],textarea[name],[data-education-field],[data-relative-field],[type=submit],#ccAddRelative,#pskAddRelative,[data-remove-relative],[data-add-work],[data-remove-work]').forEach(el=>el.disabled=true);
  if(!form.querySelector('[data-archive-notice]')){const note=document.createElement('p');note.dataset.archiveNotice='';note.className='crm-notice';note.textContent='Архівна або заблокована справа: перегляд без змін. Для редагування поверніть справу в роботу через розділ «Архів».';form.prepend(note);}
  return true;
 }
