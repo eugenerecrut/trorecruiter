@@ -1,7 +1,20 @@
 (function(root){
 'use strict';
 const labels={name_genitive:'ПІБ у родовому відмінку',birth_certificate:'Свідоцтво про народження',passport_data:'Реквізити паспорта',registered_address:'Адреса реєстрації',military_oath:'Військова присяга',military_discharge:'Звільнення в запас',military_rank_records:'Накази про військові звання',combat_records:'Бойові періоди',awards:'Нагороди',reserve_training_records:'Збори в запасі',full_name:'ПІБ',name_nominative:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',phone:'Телефон',sex:'Стать',service_type:'Вид оформлення',education_level:'Рівень освіти',education_institution:'Заклад освіти',education_records:'Освіта',work_records:'Періоди роботи / служби',work_events:'Події трудової діяльності',worked_before:'Досвід роботи',served_before:'Досвід служби',military_specialty:'ВОС',military_rank:'Військове звання',military_unit:'Військова частина',desired_position:'Бажана посада',relatives:'Рідні та близькі',shpk:'ШПК',tariff_grade:'Тарифний розряд',recruiter_name:'Рекрутер',passport_number:'Номер паспорта',criminal_record_info:'Відомості про судимість'};
-const label=k=>labels[k]||'Інші відомості ('+k+')';
+const relativeLabels={full_name:'ПІБ',birth_date:'Дата народження',relationship:'Ступінь споріднення',relation:'Ступінь споріднення',deceased:'Позначка про смерть',phone:'Телефон',address:'Місце проживання',birth_place:'Місце народження',citizenship:'Громадянство',occupation:'Заняття',workplace:'Місце роботи'};
+const extraLabels={tcc:'ТЦК та СП',desired_unit:'Бажана військова частина',recommender_unit:'Військова частина рекомендації',signatory:'Підписант документа'};
+function label(value,candidate){
+ const key=String(value??'');
+ if(Object.hasOwn(labels,key))return labels[key];
+ if(Object.hasOwn(extraLabels,key))return extraLabels[key];
+ const match=/^relatives\.(0|[1-9]\d*)\.([a-z_]+)$/.exec(key);
+ if(match&&Number.isSafeInteger(Number(match[1]))&&Object.hasOwn(relativeLabels,match[2])){
+  const index=Number(match[1]),relatives=profile(candidate||{}).relatives,relative=Array.isArray(relatives)?relatives[index]:null;
+  const name=typeof relative?.full_name==='string'?relative.full_name.trim():'';
+  return (name||'Родич №'+(index+1))+' · '+relativeLabels[match[2]];
+ }
+ return 'Інші відомості ('+key+')';
+}
 const blank=v=>v==null||typeof v==='string'&&!v.trim()||Array.isArray(v)&&!v.length;
 function profile(c){if(typeof c.profile_data==='string'){try{return JSON.parse(c.profile_data)||{}}catch{return {}}}return c.profile_data||{}}
 function build(candidate,requirements,documents,personalFile={}){

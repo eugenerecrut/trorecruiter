@@ -6,6 +6,17 @@ for(const f of ['candidate-conditions.js','document-presence.js','document-state
 const w=ctx.window;w.CRMResponsibility={latest:docs=>docs.filter(d=>!d.deleted_at)};w.CRMDocumentSync={plan:d=>({rows:d.rows||[]})};
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-case-assistant.js'),'utf8'),ctx);
 const build=w.CRMCaseAssistant.build;
+
+test('relative labels identify the saved person without altering the field key or profile',()=>{
+ const c={profile_data:{relatives:[{full_name:'Тестова Олена Петрівна'}]}},before=JSON.stringify(c);
+ assert.equal(w.CRMCaseAssistant.label('relatives.0.birth_date',c),'Тестова Олена Петрівна · Дата народження');
+ assert.equal(w.CRMCaseAssistant.label('relatives.0.deceased',c),'Тестова Олена Петрівна · Позначка про смерть');
+ assert.equal(w.CRMCaseAssistant.label('relatives.2.deceased'),'Родич №3 · Позначка про смерть');
+ assert.equal(w.CRMCaseAssistant.label('relatives.0.unknown',c),'Інші відомості (relatives.0.unknown)');
+ assert.equal(w.CRMCaseAssistant.label('tcc'),'ТЦК та СП');
+ assert.equal(typeof w.CRMCaseAssistant.label('toString'),'string');
+ assert.equal(JSON.stringify(c),before);
+});
 const candidate=()=>({id:'c1',full_name:'Тестенко Іван',birth_date:'1990-01-01',birth_place:'Дніпро',phone:'+380000000000',worked_before:false,served_before:false,profile_data:{service_type:'За мобілізацією',education_level:'Середня',education_institution:'Школа'}});
 test('explicitly inapplicable historical documents do not add report questions or processing blockers',()=>{const c=candidate(),docs=[{id:'old-work',document_type:'Документи про трудову діяльність',processing_status:'AI помилка',ai_extracted:{},rows:[{key:'full_name',action:'conflict',reason:'Старий файл'}]}];const before=JSON.stringify(docs),r=build(c,[],docs);assert.equal(r.issues.length,0);assert.equal(r.state.errors,0);assert.equal(JSON.stringify(docs),before);});
 test('Read-only report preserves candidate and documents; false employment/service means no questions',()=>{const c=candidate(),docs=[],before=JSON.stringify({c,docs});const r=build(c,[],docs);assert.equal(JSON.stringify({c,docs}),before);assert.equal(r.questions.length,0);assert(!r.ready,'Missing package files still block readiness');});
