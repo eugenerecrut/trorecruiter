@@ -24,6 +24,7 @@
     return order[bucket(a,day)]-order[bucket(b,day)]||due(a).localeCompare(due(b))||String(a.full_name||'').localeCompare(String(b.full_name||''),'uk');
   }
   const active=c=>!CRMWorkflow.isArchived(c)&&!CRMWorkflow.profile(c).merged_into;
+  const candidateDocuments=(candidate,documents)=>CRMResponsibility.latest(documents.filter(d=>d.candidate_id===candidate.id));
   function documentStatus(s){
     if(s.errors)return 'Помилка AI';
     if(s.processing)return 'Розпізнавання';
@@ -68,9 +69,10 @@
     try {
       const [all,requirements,staff,result,personalFiles]=await Promise.all([getCandidates(),getDocumentRequirements(),CRMResponsibility.ready(),supabaseClient.from('documents').select('id,candidate_id,requirement_id,document_type,storage_path,verification_status,processing_status,version_group_id,version_number,deleted_at'),serviceFiles(supabaseClient)]);
       if(result.error)throw result.error;if(!host.isConnected)return;
-      const candidates=all.filter(active),docs=CRMResponsibility.latest(result.data||[]),day=today();
-      const totals=new Map(candidates.map(c=>[c.id,CRMDocumentState.summary(c,requirements,docs.filter(d=>d.candidate_id===c.id))]));
-      const serviceData=new Map(candidates.map(c=>[c.id,serviceDataSummary(c,personalFiles,docs.filter(d=>d.candidate_id===c.id))]));
+      const candidates=all.filter(active),docs=result.data||[],day=today();
+      const candidateDocs=new Map(candidates.map(c=>[c.id,candidateDocuments(c,docs)]));
+      const totals=new Map(candidates.map(c=>[c.id,CRMDocumentState.summary(c,requirements,candidateDocs.get(c.id))]));
+      const serviceData=new Map(candidates.map(c=>[c.id,serviceDataSummary(c,personalFiles,candidateDocs.get(c.id))]));
       const staffIds=[...new Set([...staff.filter(s=>s.active&&['lead','recruiter'].includes(s.role)).map(s=>s.user_id),...candidates.map(c=>c.responsible_recruiter_id).filter(Boolean)])];
       const current=staff.find(s=>s.user_id===CRMResponsibility.userId);
       let owner=current?.role==='recruiter'?current.user_id:'all',view=mode==='documents'?'review':'all';
@@ -103,6 +105,6 @@
     }catch(error){if(host.isConnected){host.querySelector('[data-dashboard-status]').textContent='Не вдалося завантажити дашборд: '+error.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=()=>load(mode);host.append(retry);}}
   }
   window.CRMCaseTasks={today,date,due,bucket,next,compare,active};
-  window.CRMDashboard={load,documentStatus,serviceDataLabel,serviceDataSummary,serviceFiles};
+  window.CRMDashboard={load,documentStatus,serviceDataLabel,serviceDataSummary,serviceFiles,candidateDocuments};
   CRMWorkspace.loadHome=()=>load();
 })();
