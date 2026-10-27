@@ -30,6 +30,22 @@ test('keep-card decision closes only the exact saved question and reopens on cha
  const doc={ai_extracted:{_crm_review_decisions:[{...conflict,action:'keep_card',reviewed_by:'user',reviewed_at:'now'}]}};assert.equal(c.CRMIntake.items({},[doc])[0].conflicts.length,0);conflict.incoming='333';assert.equal(c.CRMIntake.items({},[doc])[0].conflicts.length,1);
 });
 
+test('one relative field uses the real aggregate planner without transferring other proposed facts',()=>{
+ const c=context(files);c.CRMResponsibility={latest:docs=>docs};vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-intake.js'),'utf8'),c);
+ const candidate={id:'c',full_name:'Тестенко Іван Петрович',profile_data:{relatives:[{relationship:'мати',full_name:'Тестова Олена Іванівна',phone:'saved',field_sources:{full_name:'old'}}]}},doc={id:'d',candidate_id:'c',document_type:'Свідоцтво про народження',verification_status:'Підтверджено',ai_extracted:{full_name:candidate.full_name,relatives:[{relationship:'мати',full_name:'Тестова Олена Іванівна',birth_date:'1970',deceased:false,address:'New address'}]}};
+ const plan=c.CRMDocumentSync.plan(doc,candidate),row=plan.rows.find(r=>r.key==='relatives.0.birth_date');assert.equal(row?.action,'fill');assert.equal(c.CRMIntake.canFillField(plan,row),true);
+ const before=JSON.stringify({candidate,doc,plan}),chosen=c.CRMIntake.reviewedFill({doc,plan},plan,candidate,row);
+ assert.equal(chosen.selections.length,1);assert.equal(chosen.selections[0].key,'relatives');const relative=chosen.selections[0].incoming[0];
+ assert.equal(relative.birth_date,'1970');assert.equal(relative.deceased,undefined);assert.equal(relative.address,undefined);assert.equal(relative.phone,'saved');
+ assert.equal(relative.field_sources.full_name,'old');assert.equal(relative.field_sources.birth_date,'d');assert.equal(chosen.rows.length,1);
+ assert.equal(JSON.stringify({candidate,doc,plan}),before);
+ const falseRow=plan.rows.find(r=>r.key==='relatives.0.deceased'),falsePlan=c.CRMIntake.reviewedFill({doc,plan},plan,candidate,falseRow);assert.equal(falsePlan.selections[0].incoming[0].deceased,false);assert.equal(falsePlan.selections[0].incoming[0].birth_date,undefined);
+ const stale=structuredClone(plan);stale.document.ai_extracted.full_name='Changed';assert.throws(()=>c.CRMIntake.reviewedFill({doc,plan},stale,candidate,row),/Джерело/);
+ const reordered=structuredClone(plan);reordered.selections.find(s=>s.key==='relatives').expected_current[0].full_name='Other person';assert.throws(()=>c.CRMIntake.reviewedFill({doc,plan},reordered,candidate,row),/перевірку документа/);
+ assert.equal(c.CRMIntake.canFillField(plan,{action:'fill',target:'profile',key:'relatives.1.birth_date'}),false);
+ assert.equal(c.CRMIntake.canFillField(plan,{action:'fill',target:'profile',key:'relatives.1'}),false);
+});
+
 test('relative phones in local and international notation agree without changing saved values',()=>{
  const c=context([]);c.document={addEventListener(){}};vm.runInContext(fs.readFileSync(path.join(__dirname,'../candidate-phone.js'),'utf8'),c);vm.runInContext(fs.readFileSync(path.join(__dirname,'../document-ai-sync.js'),'utf8'),c);
  const stored=[{relationship:'Мати',full_name:'Тестенко Олена Іванівна',phone:'+380501234567'}],rows=[];

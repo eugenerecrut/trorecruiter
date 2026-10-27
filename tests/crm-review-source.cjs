@@ -131,3 +131,31 @@ test('relative question UI renders escaped names and boolean words without chang
  assert(host.innerHTML.includes('Розпізнано з документа<br>Ні'));assert(host.innerHTML.includes('Розпізнано з документа<br>1981'));assert(!host.innerHTML.includes('1981-01-01'));
  assert(!host.innerHTML.includes('Інші відомості (relatives.'));assert.equal(JSON.stringify({doc:f.doc,candidate:f.candidate}),before);
 });
+
+test('bulk fill preflights all sources, avoids unseen OCR and reports partial completion',async()=>{
+ for(const mode of ['preflight-stale','later-stale','success']){
+  const f=fixture(),second={...structuredClone(f.doc),id:'e',version_group_id:'g2'},docs=[f.doc,second],calls=[];
+  const report=d=>{const key=d.id==='d'?'phone':'email',row={target:'candidate',key,current:null,incoming:d.id==='d'?'222':'test@example.invalid',action:'fill'};return {document:d,supported:true,rows:[row],selections:[{target:'candidate',key,incoming:row.incoming,expected_current:null}]};};
+  const controls=new Map(),host={innerHTML:'',querySelector(key){if(!controls.has(key))controls.set(key,{});return controls.get(key);},querySelectorAll(){return []}};
+  f.c.CRMWorkspace={escape:v=>String(v??''),guard:async()=>true};f.c.openCandidateCard=async()=>{};
+  f.c.supabaseClient={from:()=>({select:()=>({eq:()=>({single:async()=>({data:f.candidate})})})})};
+  f.c.CRMDocumentSync={plan:report,preview:async(_,id)=>{calls.push('preview:'+id);const d=structuredClone(docs.find(d=>d.id===id));if(id==='e'&&(mode==='preflight-stale'||mode==='later-stale'&&calls.includes('apply:d')))d.ai_extracted.phone='unseen';return report(d);},apply:async(_,r)=>{calls.push('apply:'+r.document.id);},sync:async()=>{throw Error('unguarded sync must not run');}};
+  await f.c.CRMIntake.review(host,f.candidate,docs);await controls.get('[data-intake-fill]').onclick();
+  const applied=calls.filter(c=>c.startsWith('apply:'));
+  assert.equal(applied.length,mode==='success'?2:mode==='later-stale'?1:0);
+  if(mode==='later-stale')assert(controls.get('[data-intake-status]').textContent.includes('Перенесено документів: 1'));
+  if(applied.length)assert(calls.indexOf('preview:e')<calls.indexOf('apply:d'));
+ }
+});
+
+test('single-field click transfers only the displayed field and rejects changed OCR',async()=>{
+ for(const stale of [false,true]){
+  const f=fixture(),controls=new Map(),applied=[];
+  const plan=doc=>({document:doc,supported:true,rows:['phone','email'].map(key=>({target:'candidate',key,action:'fill',current:null,incoming:key==='phone'?'222':'test@example.invalid'})),selections:['phone','email'].map(key=>({target:'candidate',key,incoming:key==='phone'?'222':'test@example.invalid',expected_current:null}))});
+  const host={innerHTML:'',querySelector(key){if(!controls.has(key))controls.set(key,{});return controls.get(key);},querySelectorAll(){return []}};
+  f.c.CRMWorkspace={escape:v=>String(v??''),guard:async()=>true};f.c.openCandidateCard=async()=>{};f.c.supabaseClient={from:()=>({select:()=>({eq:()=>({single:async()=>({data:f.candidate})})})})};
+  f.c.CRMDocumentSync={plan,preview:async()=>{const doc=structuredClone(f.doc);if(stale)doc.ai_extracted.phone='unseen';return plan(doc);},apply:async(_,report)=>applied.push(report)};
+  await f.c.CRMIntake.review(host,f.candidate,[f.doc]);await host.onclick({target:{closest:()=>({dataset:{intakeField:'d',row:'0'}})}});
+  assert.equal(applied.length,stale?0:1);if(!stale){assert.deepEqual(Array.from(applied[0].selections,s=>s.key),['phone']);assert.deepEqual(Array.from(applied[0].rows,r=>r.key),['phone']);}
+ }
+});
