@@ -11,6 +11,9 @@ assert.equal(v3.tabs.length,3);
  const view={readiness:{serviceRecord:{ready:false,missing:[{label:'ПІБ <тест>',text:'Уточніть & збережіть'}]}}},before=JSON.stringify(view);
  const html=v3.readinessDetails(view);
  assert(html.includes('Дані послужного: уточнень 1'));
+ assert(v3.readinessDetails(view,true).includes('<details data-case-data-review open>'));
+ assert(!html.includes('<details data-case-data-review open>'));
+ assert(read('candidate-card-v3.js').includes("caseSummary.querySelector('[data-case-data-review]')?.open===true"));
  assert(html.includes('ПІБ &lt;тест&gt;'));
  assert(html.includes('Уточніть &amp; збережіть'));
  assert(!html.includes('<тест>'));assert.equal(JSON.stringify(view),before);
@@ -18,7 +21,7 @@ assert.equal(v3.tabs.length,3);
  for(const value of [{},{readiness:{serviceRecord:{ready:null,missing:[]}}},{readiness:{serviceRecord:{ready:true}}}])
   assert(v3.readinessDetails(value).includes('перевірка недоступна'));
  assert(!v3.readinessDetails({readiness:{serviceRecord:{ready:false,missing:[]}}}).includes('основні дані заповнені'));
- assert(read('candidate-card-v3.js').includes("</small>'+readinessDetails(view)"),'Actual compact card renders the tested readiness explanation');
+ assert(read('candidate-card-v3.js').includes("</small>'+readinessDetails(view,"),'Actual compact card renders the tested readiness explanation');
 }
 const events = [
   {action:'candidates_update',source_document_id:null,changes:{profile_data:{before:{passport_number:'123',workflow:1},after:{passport_number:'123',workflow:2}}}},
