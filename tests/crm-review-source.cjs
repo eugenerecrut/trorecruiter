@@ -2,11 +2,11 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 function fixture(){const c={structuredClone,CRMResponsibility:{latest:x=>x}};c.window=c;vm.createContext(c);vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-intake.js'),'utf8'),c);const row={target:'candidate',key:'phone',current:'111',incoming:'222',reason:'different',action:'conflict'};c.CRMDocumentSync={plan:()=>({supported:true,rows:[{...row}],selections:[]})};const doc={id:'d',candidate_id:'c',document_type:'ID',version_group_id:'g',version_number:1,storage_path:'c/a.pdf',file_hash:'abc',processing_status:'AI готово',ai_extracted:{phone:'222',relatives:[{full_name:'Тестова Олена'}]}};const candidate={id:'c'};doc.ai_extracted._crm_review_context={version:1,id:'context',source:structuredClone(c.CRMReviewDecision.source(doc))};doc.ai_extracted._crm_review_decisions=[{...row,action:'keep_card',reviewed_by:'u',reviewed_at:'now',source_binding:{version:1,context_id:'context'}}];return {c,doc,row,candidate};}
 const conflicts=f=>f.c.CRMIntake.items(f.candidate,[f.doc])[0].conflicts.length;
 test('bound decision closes current exact evidence; shared metadata does not invalidate itself',()=>{const f=fixture();assert.equal(conflicts(f),0);f.doc.ai_extracted._crm_review_decisions.push({...f.doc.ai_extracted._crm_review_decisions[0],key:'other'});assert.equal(conflicts(f),0);assert.equal(f.c.CRMReviewDecision.binding(f.doc,f.doc.ai_extracted._crm_review_decisions[0],f.candidate),'source-snapshot');});
-for(const key of ['id','candidate_id','document_type','version_group_id','version_number','storage_path','file_hash'])test('bound decision reopens on changed source '+key,()=>{const f=fixture();f.doc[key]=key==='version_number'?2:'changed';assert.equal(conflicts(f),1);});
+for(const key of ['id','candidate_id','document_type','version_group_id','version_number','storage_path','file_hash'])test('bound decision invalidates on changed source '+key,()=>{const f=fixture();f.doc[key]=key==='version_number'?2:'changed';assert.equal(f.c.CRMReviewDecision.binding(f.doc,f.doc.ai_extracted._crm_review_decisions[0],f.candidate),'stale-source');if(key==='candidate_id')assert.equal(f.c.CRMIntake.items(f.candidate,[f.doc]).length,0);else assert.equal(conflicts(f),1);});
 test('unrelated nested OCR change invalidates a decision even when proposed phone is unchanged',()=>{const f=fixture();f.doc.ai_extracted.relatives[0].full_name+=' Петрівна';assert.equal(conflicts(f),1);});
 test('JSON object key order is irrelevant but array order and values are exact',()=>{const f=fixture(),ctx=f.doc.ai_extracted._crm_review_context;ctx.source=Object.fromEntries(Object.entries(ctx.source).reverse());assert.equal(conflicts(f),0);ctx.source.extraction.relatives.push({full_name:'Інша'});assert.equal(conflicts(f),1);});
 test('missing, malformed or unsupported binding never falls back to legacy approval',()=>{for(const value of [null,{},'x',{version:2,context_id:'context'},{version:1,context_id:'other'}]){const f=fixture();f.doc.ai_extracted._crm_review_decisions[0].source_binding=value;assert.equal(conflicts(f),1);}});
-test('missing helper context and mismatched candidate fail closed for bound decisions',()=>{for(const change of [f=>delete f.doc.ai_extracted._crm_review_context,f=>f.candidate.id='other']){const f=fixture();change(f);assert.equal(conflicts(f),1);}});
+test('missing helper context and mismatched candidate fail closed for bound decisions',()=>{const f=fixture();delete f.doc.ai_extracted._crm_review_context;assert.equal(conflicts(f),1);const other=fixture();other.candidate.id='other';assert.equal(other.c.CRMReviewDecision.binding(other.doc,other.doc.ai_extracted._crm_review_decisions[0],other.candidate),'stale-source');assert.equal(other.c.CRMIntake.items(other.candidate,[other.doc]).length,0);});
 test('legacy decisions retain their prior exact-value semantics without fabricated binding',()=>{const f=fixture();delete f.doc.ai_extracted._crm_review_decisions[0].source_binding;assert.equal(conflicts(f),0);assert.equal(f.c.CRMReviewDecision.binding(f.doc,f.doc.ai_extracted._crm_review_decisions[0],f.candidate),'container-only');f.row.current='changed';assert.equal(conflicts(f),1);});
 test('all binding checks are pure and make no writes or mutations',()=>{const f=fixture(),before=JSON.stringify(f.doc);conflicts(f);assert.equal(JSON.stringify(f.doc),before);});
 
@@ -51,4 +51,21 @@ test('human explanation distinguishes OCR disagreement from proven foreign owner
 test('intake script cache key follows the current published release',()=>{
  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8'),release=fs.readFileSync(path.join(__dirname,'../crm-release.js'),'utf8').match(/version:\s*['"]([^'"]+)['"]/)[1];
  assert(html.includes('crm-intake.js?v='+release+'"'));
+});
+
+test('intake scopes ownership before real latest selection and never plans foreign files',()=>{
+ const f=fixture();
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-responsibility.js'),'utf8'),f.c);
+ const own={...f.doc,id:'owned',version_number:1},foreign={...f.doc,id:'foreign',candidate_id:'other',version_number:2},calls=[];
+ f.c.CRMDocumentSync.plan=doc=>{calls.push(doc.id);return {supported:true,rows:[],selections:[]}};
+ const input=[own,foreign],before=JSON.stringify(input),rows=f.c.CRMIntake.items(f.candidate,input);
+ assert.deepEqual(Array.from(rows,r=>r.doc.id),['owned']);assert.deepEqual(calls,['owned']);assert.equal(JSON.stringify(input),before);
+ assert.equal(f.c.CRMIntake.items(f.candidate,[foreign]).length,0);
+});
+
+test('intake preserves unscoped legacy documents but handles absent and null inputs',()=>{
+ const f=fixture(),legacy={...f.doc};delete legacy.candidate_id;
+ assert.equal(f.c.CRMIntake.items(f.candidate,[legacy]).length,1);
+ assert.equal(f.c.CRMIntake.items(f.candidate,null).length,0);
+ assert.equal(f.c.CRMIntake.items(f.candidate,[null,undefined]).length,0);
 });
