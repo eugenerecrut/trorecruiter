@@ -3,7 +3,7 @@ import {renderPDFZone} from '../_shared/pdf-zone-raster.mjs';
 const json=(status,value)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const base64=bytes=>{let out='';for(let i=0;i<bytes.length;i+=8192)out+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(out);};
-export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=fetch}) {
+export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck,fetchImpl=fetch}) {
  let busy=false;
  return async req=>{
   if(req.method!=='POST')return json(405,{error:'Method not allowed'});
@@ -78,7 +78,14 @@ export function createZoneWorker({createClient,env,getLibrary,planner,fetchImpl=
    if(context.native_only===true){await rpc('hold');return json(200,{state:'native_control_finished',ai_requests:0});}
    if(summary.budget_exhausted){await rpc('hold');return json(200,{state:'budget_exhausted'});}
    if(summary.done){
-    const saved=await rpc('final');
+    let finalData={};
+    if(context.crosscheck_binding){
+     if(typeof crosscheck!=='function')throw Error('Server crosscheck unavailable');
+     const fresh=await rpc('load');
+     if(!fresh.crosscheck_binding||fresh.reports_truncated)throw Error('Fresh crosscheck context unavailable');
+     finalData={crosscheck:await crosscheck({client,context:fresh})};
+    }
+    const saved=await rpc('final',finalData);
     // Queue exhaustion is not proof of a complete report. Use the persisted verdict.
     const confirmed=saved?.status==='complete'||saved?.status==='complete_with_gaps';
     return json(200,{state:saved?.status==='complete'?'finished':'needs_review',
