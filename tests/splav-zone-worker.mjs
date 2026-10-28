@@ -7,8 +7,9 @@ async function fixture(options={}){
  const hash=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex');
  const context={id:doc,version:0,native_only:options.nativeOnly===true,source:{document_id:doc,file_sha256:options.hashMismatch?'0'.repeat(64):hash,revision:'r1'},document:{id:doc,storage_path:'source.pdf',document_type:options.documentType},reports:[]};
  context.snapshot=planner.create(1,{source:context.source,budget:options.budget??2600}).snapshot();
- const calls=[],ai=[],rpc=[];let failed=false;
- const client={rpc:async(name,payload)=>{assert.equal(name,'crm_splav_zone_step');assert.equal(payload.p_job,id);assert.equal(payload.p_token,token);rpc.push(payload.p_operation);
+ const calls=[],ai=[],rpc=[],rpcPayloads=[];let failed=false;
+ if(options.continued)context.crosscheck_binding={document_id:doc,candidate_id:"synthetic",candidate_revision:"r"};
+ const client={rpc:async(name,payload)=>{assert.equal(name,'crm_splav_zone_step');assert.equal(payload.p_job,id);assert.equal(payload.p_token,token);rpc.push(payload.p_operation);rpcPayloads.push(payload);
   const op=payload.p_operation;
   if(options.denied)return {error:{message:'denied'}};
   if(op==='final')return {data:options.finalResult===undefined?{status:'complete'}:options.finalResult};
@@ -29,7 +30,7 @@ async function fixture(options={}){
  const heap=new Float32Array(32),put=values=>heap.set(values,4),module={HEAPF32:heap,wasmExports:{malloc:()=>16,free(){}},_FPDFPage_GetRotation:()=>0,_FPDFPage_GetAnnotCount:()=>0,
   _FPDFPage_GetMediaBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPage_GetCropBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPageObj_GetBounds:i=>{put([100,80-i*(options.splitNative?30:15),500,90-i*(options.splitNative?30:15)]);return 1;}};
  const native=options.native?{module,pageIdx:1,getObjectCount:()=>options.graphics?4:3,getObject:i=>({type:options.graphics&&i===3?'path':'text',objectIdx:i,getText:()=> 'Synthetic native paragraph containing enough characters.'})}:{};
- const dependencies={planner,env:key=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public'})[key],createClient:(_url,key,opts)=>{assert.equal(key,'public');assert.equal(opts.global.headers.Authorization,'Bearer processor');return client;},
+ const dependencies={planner,crosscheck:options.crosscheck,env:key=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public'})[key],createClient:(_url,key,opts)=>{assert.equal(key,'public');assert.equal(opts.global.headers.Authorization,'Bearer processor');return client;},
  getLibrary:async()=>({loadDocument:async()=>({getPageCount:()=>options.pages??1,destroy(){},getPage:()=>({...native,getOriginalSize:()=>({originalWidth:1800,originalHeight:100}),close(){},render:async({width,height})=>({width,height,data:new Uint8Array(width*height)})})})}),
  fetchImpl:async(url,init)=>{
   if(url.includes('/storage/'))return new Response(bytes,{headers:{'content-length':String(bytes.length)}});
@@ -41,7 +42,7 @@ async function fixture(options={}){
   context.in_flight_response={state:'completed',result};return Response.json(result);
  }};
  const invoke=(extra={})=>createZoneWorker(dependencies)(new Request('https://test/worker',{method:'POST',headers:{Authorization:'Bearer processor'},body:JSON.stringify({job_id:id,lease_token:token,...extra})}));
- return {invoke,context,ai,rpc,calls};
+ return {invoke,context,ai,rpc,calls,rpcPayloads};
 }
 test('invalid/denied lease makes no source or AI request',async()=>{
  const f=await fixture({denied:true});assert.equal((await f.invoke()).status,403);assert.deepEqual(f.calls,[]);assert.deepEqual(f.ai,[]);
@@ -103,4 +104,18 @@ test('final response follows persisted report verdict instead of queue exhaustio
 test('one-page typed biography control persists all original native regions and dispatches one full page',async()=>{
  const f=await fixture({native:true,splitNative:true,budget:13,documentType:'Автобіографія друкована'});await f.invoke();assert.deepEqual(f.ai,[]);const overview=f.context.in_flight_response.result;assert.equal(overview.zones.length,1);assert.equal(overview.reading_plan.original_zones.length,3);assert.equal(overview.ai_requests,0);assert.deepEqual(f.context.snapshot.tasks[0].box,{x:0,y:0,w:1,h:1});f.context.in_flight_response=null;await f.invoke();assert.deepEqual(f.ai,['zone']);assert.equal(f.rpc.at(-1),'final');
  const old={review_only:true,mode:'overview',zones:[{kind:'text',box:{x:.2,y:.2,w:.3,h:.2}}]};const cached=await fixture({native:true,splitNative:true,budget:13,documentType:'Автобіографія друкована',nativeCached:old});await cached.invoke();assert(!cached.rpc.includes('finish'));assert.deepEqual(cached.context.snapshot.tasks[0].box,old.zones[0].box);
+});
+
+
+test('continued worker reloads current reports and crosschecks before finalizing',async()=>{
+ let compared=0;const f=await fixture({continued:true,crosscheck:async({context})=>{compared++;assert(context.crosscheck_binding);return{status:'needs_review',contract:'synthetic'};}});
+ await f.invoke();await f.invoke();assert.equal(compared,1);assert.equal(f.rpc.at(-2),'load');assert.equal(f.rpc.at(-1),'final');assert.equal(f.rpcPayloads.at(-1).p_data.crosscheck.status,'needs_review');
+});
+test('failed post-zone comparison retries without finalization or another AI step',async()=>{
+ let compared=0;const f=await fixture({continued:true,crosscheck:async()=>{if(++compared===1)throw Error('database unavailable');return{status:'matched'}}});
+ await f.invoke();assert.equal((await f.invoke()).status,503);assert(!f.rpc.includes('final'));const paid=f.ai.length;
+ assert.equal((await f.invoke()).status,200);assert.equal(f.ai.length,paid);assert.equal(f.rpc.at(-1),'final');
+});
+test('continued worker without comparator cannot announce completion',async()=>{
+ const f=await fixture({continued:true});await f.invoke();assert.equal((await f.invoke()).status,503);assert(!f.rpc.includes('final'));assert.equal(f.rpc.at(-1),'retry');
 });

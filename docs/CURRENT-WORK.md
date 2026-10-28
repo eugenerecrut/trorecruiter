@@ -31,3 +31,7 @@
 Прапорець SPLAV_ROOT_ZONE_CONTINUATION_V1 повинен лишатися false до погодженого приймання. Production-стан розгортання див. docs/SPLAV-PROGRESS.md.
 
 Додатковий запобіжник: _shared/splav-continuation-rollout.js має AUTO_ZONE_ROLLOUT_APPROVED=false. Навіть env=true не активує нову обробку. CLI secrets не налаштовані через відсутність access token; існуючі облікові дані не шукати й не виводити.
+
+Фактичне розгортання пакета root -> zone: PR #210 merged, process-id-document v34 ACTIVE/JWT=true, RPC встановлений, readback збігся, rollout=false. Наступний блокувальний крок — серверне зіставлення після завершення zone та узгоджений стан parent/child; лише потім повне приймання пакета і 83%. Реального AI не запускати.
+
+28.10: Наступний пакет у розробці: zone-crosscheck.mjs, серверний callback перед final, міграція 20261028040337 доповнює чинний zone_step без нового public RPC. Case fingerprints приватні; порівняння тільки для child, пов’язаних із root.result.continuation. Ручні/старі зональні jobs зберігають попередню поведінку. Нове auto-root продовження лишається вимкненим.

@@ -465,6 +465,29 @@ try{
  const childCount=(await db.query("select count(*)::int n from crm_private.splav_jobs where kind='zone' and document_id=$1",[id(200)])).rows[0].n;
  await actor(2);const skipped=await handoff();assert.equal(skipped.reason,'existing_zone_history');checks++;
  await owner();assert.equal((await db.query("select count(*)::int n from crm_private.splav_jobs where kind='zone' and document_id=$1",[id(200)])).rows[0].n,childCount);checks++;
+ // Finalize a continued child only after a fresh, case-bound comparison.
+ await owner();await db.exec(file('supabase/migrations/20261028040337_splav_post_zone_crosscheck.sql'));
+ await db.query("update crm_private.splav_jobs set result=jsonb_set(result,'{continuation}', $2::jsonb) where id=$1",[id(201),JSON.stringify(continued)]);
+ await db.query("update crm_private.splav_jobs set state='running',leased_by=$2,lease_token=$3,lease_until=now()+interval '10 minutes' where id=$1",[continued.job_id,id(2),id(203)]);
+ const finalStep=(op,data={})=>call('crm_splav_zone_step',[continued.job_id,id(203),op,data]);
+ await actor(2);const loaded=await finalStep('load');assert.equal(loaded.crosscheck_binding.parent_job_id,id(201));checks++;
+ const comparison={contract:'splav-post-zone-1',binding:loaded.crosscheck_binding,status:'needs_review',checked:1,issues:[{key:'birth_place',status:'conflict',source_ids:[id(200)]}]};
+ await assert.rejects(finalStep('final'),/crosscheck required/);checks++;
+ await owner();await db.query("update crm_private.zone_coordinators set snapshot=jsonb_set(snapshot,'{tasks}','[]') where id=(select coordinator_id from crm_private.splav_jobs where id=$1)",[continued.job_id]);
+ await actor(2);await assert.rejects(finalStep('final',{crosscheck:{...comparison,binding:{...comparison.binding,documents_revision:'stale'}}}),/crosscheck required/);checks++;
+ await owner();await db.query("update public.candidates set profile_data=profile_data||jsonb_build_object('manual_new','preserve') where id=$1",[id(10)]);
+ await actor(2);await assert.rejects(finalStep('final',{crosscheck:comparison}),/crosscheck required/);checks++;
+ const refreshed=await finalStep('load');comparison.binding=refreshed.crosscheck_binding;
+ await assert.rejects(finalStep('final',{crosscheck:{...comparison,status:'matched'}}),/crosscheck required/);checks++;
+ await assert.rejects(finalStep('final',{crosscheck:{...comparison,issues:[{key:'test',status:'conflict',source_ids:[id(999999)]}]}}),/Foreign crosscheck source/);checks++;
+ await owner();await db.query("update public.documents set notes='synthetic concurrent edit' where id=$1",[id(200)]);await actor(2);
+ await assert.rejects(finalStep('final',{crosscheck:comparison}),/crosscheck required/);checks++;comparison.binding=(await finalStep('load')).crosscheck_binding;
+ const final=await finalStep('final',{crosscheck:comparison});assert.equal(final.status,'complete_with_gaps');checks++;
+ await owner();const parentFinal=(await db.query('select result from crm_private.splav_jobs where id=$1',[id(201)])).rows[0].result;
+ assert.equal(parentFinal.continuation.state,'needs_review');assert.equal(parentFinal.continuation.crosscheck.issues[0].key,'birth_place');checks+=2;
+ assert.equal((await db.query('select state from crm_private.splav_jobs where id=$1',[continued.job_id])).rows[0].state,'needs_review');checks++;
+ assert.equal((await db.query("select profile_data->>'manual_new' value from public.candidates where id=$1",[id(10)])).rows[0].value,'preserve');checks++;
+ assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.splav_case_fingerprint(uuid)','EXECUTE') allowed")).rows[0].allowed,false);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
