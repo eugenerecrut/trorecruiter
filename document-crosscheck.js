@@ -163,6 +163,36 @@ function boundZone(report,document,context,binding){
  if(report?.review_only!==true||report.mode!=='zone'||s?.document_id!==document.id||!Number.isInteger(s.page)||s.page<1||s.page>context.pages||!b||!['x','y','w','h'].every(k=>Number.isFinite(b[k])&&b[k]>=0&&b[k]<=1)||b.w<=0||b.h<=0||b.x+b.w>1.000001||b.y+b.h>1.000001)return false;
  return s.file_sha256!==undefined?s.file_sha256===context.file_sha256:!!binding&&binding.document_id===document.id&&binding.file_sha256===context.file_sha256&&binding.revision===context.revision;
 }
+// Excluding another person's fields from candidate facts must not hide the
+// ambiguity from the final verdict. This is a review signal, never ownership.
+function compareZoneSubjects(documents,candidate,{reports=[],context,binding}={}){
+ if(obj(candidate.profile_data).merged_into||obj(obj(candidate.profile_data).workflow).archived_at||candidate.archived_at||candidate.deleted_at||candidate.merged_into||candidate.merged_into_id||candidate.merged_into_candidate_id||['archived','merged'].includes(candidate.status))return [];
+ const document=zoneSource(documents,candidate,context);if(!document)return [];
+ const evidence=[],seen=new Set(),clear=f=>f?.legibility==='clear'&&typeof f.value==='string'&&f.value.trim()&&(!Array.isArray(f.alternatives)||!f.alternatives.length);
+ const roleName=(role,name)=>{const whole=norm(role),person=norm(name),at=whole.indexOf(person);return at>=0&&(at===0||!/[\p{L}\p{N}]/u.test(whole[at-1]))&&(at+person.length===whole.length||!/[\p{L}\p{N}]/u.test(whole[at+person.length]));};
+ const relativeRoles=new Set(['мати','батько','mother','father','дружина','чоловік','син','дочка','донька','брат','сестра','дитина']);
+ for(const report of Array.isArray(reports)?reports:[]){
+  if(!boundZone(report,document,context,binding))continue;
+  for(const row of Array.isArray(report.rows)?report.rows:[]){
+   const fields=Array.isArray(row?.fields)?row.fields:[];
+   const explicitRelative=fields.some(f=>f?.key==='relationship'&&clear(f)&&relativeRoles.has(norm(f.value))&&norm(f.raw_text)===norm(f.value));
+   for(const field of fields){
+    if(field?.key!=='full_name')continue;
+    const value=typeof field.value==='string'&&field.value.trim()?field.value:field.raw_text;
+    if(typeof value!=='string'||!value.trim())continue;
+    const uncertain=!clear(field);
+    if(!uncertain&&(norm(value)===norm(candidate.full_name)||root.CRMNameHistory?.matches(value,candidate)))continue;
+    const explicitOther=fields.some(f=>['relative_name','signatory','recruiter_name'].includes(f?.key)&&clear(f)&&roleName(f.value,value));
+    if(!uncertain&&(explicitRelative||explicitOther))continue;
+    const s=report.source,signature=JSON.stringify([s.page,s.box,norm(value)]);if(seen.has(signature))continue;seen.add(signature);
+    evidence.push({key:'zone_subject',status:'needs_review',zone_crosscheck:true,learning_eligible:false,current:candidate.full_name,
+     reason:uncertain?'ПІБ у зональному читанні непевне або має альтернативи. Звірте особу, роль і видимий текст оригіналу; картка не змінена.':'У зональному читанні є ПІБ, що не відповідає кандидату або підтвердженій історії його імені. Це може бути інша особа чи помилка AI. Звірте роль і видимий текст оригіналу; належність документа не встановлюється автоматично.',
+     sources:[{document_id:document.id,document_type:document.document_type,file_name:document.file_name,value,raw_text:field.raw_text||null,page:s.page,box:{...s.box},fingerprint:context.file_sha256,verified:false,kind:'zone_reading'}]});
+   }
+  }
+ }
+ return evidence;
+}
 function compareZones(documents,candidate,{reports=[],context,binding}={}){
  const document=zoneSource(documents,candidate,context);if(!document)return [];
  const base=compare(documents,candidate),groups=new Map(),seen=new Set();
@@ -248,7 +278,7 @@ function compareZoneParents(documents,candidate,{reports=[],context,binding}={})
   return group;
  });
 }
-async function load(client,candidate,options){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return [...compare(r.data,candidate),...compareZones(r.data,candidate,options),...compareZoneParents(r.data,candidate,options)].map(entry=>({...entry,sources:entry.sources.map(source=>{
+async function load(client,candidate,options){const r=await client.from('documents').select('*').eq('candidate_id',candidate.id);if(r.error)throw r.error;if(!Array.isArray(r.data))throw Error('Не отримано пакет документів для звірки');return [...compare(r.data,candidate),...compareZones(r.data,candidate,options),...compareZoneParents(r.data,candidate,options),...compareZoneSubjects(r.data,candidate,options)].map(entry=>({...entry,sources:entry.sources.map(source=>{
  const document=r.data.find(d=>d.id===source.document_id);
  return {...source,navigation:document?{document_id:document.id,candidate_id:candidate.id,storage_path:document.storage_path,fingerprint:document.file_hash||document.storage_path,revision:document.ai_processed_at??null,version_group_id:document.version_group_id??null}:null};
  })}));}
@@ -258,5 +288,5 @@ function guard(report,evidence){report.crosscheck=evidence;const conflicts=evide
  for(const row of report.rows){if(row.action!=='fill'||!conflicts.some(e=>e.key===row.key)||!['candidate','profile'].includes(row.target))continue;row.action='conflict';row.reason='Розбіжність між документами кандидата';}
  report.selections=report.selections.filter(s=>!(['candidate','profile'].includes(s.target)&&conflicts.some(e=>e.key===s.key)));return report;
 }
-const api={compare,load,guard,dateRange,periodLinks,compareZones,compareZoneParents,maidenNameMatch};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={compare,load,guard,dateRange,periodLinks,compareZones,compareZoneParents,compareZoneSubjects,maidenNameMatch};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

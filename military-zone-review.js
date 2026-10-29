@@ -4,7 +4,7 @@
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const full={x:0,y:0,w:1,h:1};
 function cardValueHTML(evidence){
- if(!['rnokpp','birth_date','birth_place','relatives'].includes(evidence.key))return '';
+ if(!['rnokpp','birth_date','birth_place','relatives','zone_subject'].includes(evidence.key))return '';
  const value=evidence.current,display=typeof value==='string'&&value.trim()?value:typeof value==='number'&&Number.isFinite(value)?String(value):'Не заповнено';
  return '<p><strong>У картці зараз:</strong> '+esc(display)+(evidence.key==='relatives'&&typeof evidence.current_birth_date==='string'&&evidence.current_birth_date.trim()?' · дата народження: '+esc(evidence.current_birth_date):'')+'</p>';
 }
@@ -30,10 +30,14 @@ function evidenceValueHTML(evidence,source){
  const details=Object.entries(fields).filter(([key])=>{const v=source.display_fields?.[key];return typeof v==='string'&&v.trim()||typeof v==='number'&&Number.isFinite(v);}).map(([key,label])=>'<strong>'+esc(label)+':</strong> '+esc(source.display_fields[key]));
  return details.length?details.join('<br>'):esc(source.value);
 }
+function zoneSubjectWarningHTML(evidence){
+ const count=(Array.isArray(evidence)?evidence:[]).filter(e=>e.key==='zone_subject'&&e.status==='needs_review').length;
+ return count?'<div role="alert" data-zone-subject-warning><strong>Увага: у читанні є дані іншої або невизначеної особи.</strong><p>Фрагментів для звірки: '+count+'. AI міг помилитися або вигадати текст. Позначка «чітко прочитано» не підтверджує ці дані. Відкрийте зіставлення нижче й звірте оригінал; картка не змінена.</p></div>':'';
+}
 function evidenceCardHTML(e,ei){
  const labels={needs_review:'Ймовірний зв’язок — перевірити',conflict:'Розбіжність',corroborated:'Збігається в кількох документах',single_source:'Одне джерело',missing:'Немає придатних джерел'};
  const status=Object.hasOwn(labels,e.status)?labels[e.status]:'Статус не визначено — звірте';
- return '<p><strong>'+esc({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc(status)+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+parentCardEvidenceHTML(e)+evidenceReviewHTML(e)+e.sources.map((v,si)=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'" data-evidence-entry="'+ei+'" data-evidence-source="'+si+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('');
+ return '<p><strong>'+esc({zone_subject:'Особа у фрагменті',rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич · '+(e.subject||''),education_records:'Освіта',work_records:'Період роботи / служби'}[e.key]||e.key)+(e.zone_crosscheck?' · зональне читання':'')+'</strong> · '+esc(status)+'</p>'+cardValueHTML(e)+(e.reason?'<p>'+esc(e.reason)+'</p>':'')+parentCardEvidenceHTML(e)+evidenceReviewHTML(e)+e.sources.map((v,si)=>'<p>'+evidenceValueHTML(e,v)+(e.key==='relatives'&&typeof v.birth_date==='string'&&v.birth_date.trim()?' · дата народження: '+esc(v.birth_date):'')+(v.kind==='zone_reading'?' · зональне читання, сторінка '+esc(v.page):'')+' · <button data-evidence-document="'+esc(v.document_id)+'" data-evidence-entry="'+ei+'" data-evidence-source="'+si+'">'+esc(v.file_name||v.document_type)+'</button></p>').join('');
 }
 function crosscheckHTML(evidence){
  const entries=(Array.isArray(evidence)?evidence:[]).map((e,ei)=>({e,ei}));
@@ -487,6 +491,8 @@ async function open(doc,options={}){
   const c=await supabaseClient.from('candidates').select('*').eq('id',doc.candidate_id).single();if(c.error)throw c.error;
   const context={document_id:doc.id,file_sha256:originalDigest,pages:total,revision:doc.ai_processed_at||''},binding=reportBinding||coordinatorSession?.source;
   const evidence=await CRMDocumentCrosscheck.load(supabaseClient,c.data,{reports:reports.filter(r=>sourceTarget(r,context,binding)),context,binding});if(closed||version!==crosscheckVersion)return;
+  $('[data-result]').querySelector('[data-zone-subject-warning]')?.remove();
+  const warning=zoneSubjectWarningHTML(evidence);if(warning){const host=document.createElement('div');host.innerHTML=warning;$('[data-result]').prepend(host.firstElementChild);}
   const section=document.createElement('details');section.dataset.crosscheck='';
   section.innerHTML='<summary>Зіставлення з іншими документами</summary><p>Звірка збережених даних без AI. Картка не змінюється.</p>'+(reports.length&&!evidence.some(e=>e.zone_crosscheck)?'<p>Для зонального зіставлення придатних відомостей про особу або батьків немає.</p>':'')+crosscheckHTML(evidence);
   section.onclick=async event=>{const b=event.target.closest('[data-evidence-document]');if(!b||closed)return;try{
@@ -560,5 +566,5 @@ async function open(doc,options={}){
  }catch(e){if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено';dialog.querySelectorAll('p')[1].textContent='Не вдалося завершити відкриття документа. Перевірте повідомлення нижче.';status(e.message);lock(false)}}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,loadOriginalFile,readOpeningDocument,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,parentCardEvidenceHTML,readBackgroundStatus};
+window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,loadOriginalFile,readOpeningDocument,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,zoneSubjectWarningHTML,parentCardEvidenceHTML,readBackgroundStatus};
 })();

@@ -1,4 +1,11 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+test('saved foreign-subject reading has a visible alert without trusting clear OCR or changing receipts',()=>{
+ const ctx={window:{}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const api=ctx.window.CRMMilitaryZoneReview,evidence=[{key:'zone_subject',status:'needs_review',current:'Тестенко Іван',zone_crosscheck:true,reason:'Звірте оригінал',sources:[{value:'<script>інша особа</script>',document_id:'d',file_name:'x.pdf',kind:'zone_reading',page:1}]}],before=JSON.stringify(evidence);
+ assert.match(api.zoneSubjectWarningHTML(evidence),/role="alert"/);assert.match(api.zoneSubjectWarningHTML(evidence),/іншої або невизначеної особи/);assert.match(api.zoneSubjectWarningHTML(evidence),/чітко прочитано/);
+ const html=api.crosscheckHTML(evidence);assert.match(html,/Особа у фрагменті/);assert.match(html,/Тестенко Іван/);assert(!html.includes('<script>'));assert.match(html,/&lt;script&gt;/);assert.equal(JSON.stringify(evidence),before);
+ assert.equal(api.zoneSubjectWarningHTML([{key:'birth_date',status:'single_source'}]),'');
+});
 test('clear partial dates are explained separately while the saved gap verdict stays unchanged',()=>{
  const contract=require('../supabase/functions/_shared/military-zone.js'),ctx={window:{},CRMMilitaryZoneContract:contract};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
  const date=contract.projectField({key:'start_date',raw_text:'вересня 2023',value:'2023-09-01',legibility:'clear'}),relation={key:'relationship',raw_text:'мати',value:null,legibility:'uncertain'};
