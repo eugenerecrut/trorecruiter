@@ -189,6 +189,7 @@
           else{for(const issue of merged.conflicts)add(target,key,null,'conflict',issue,current);value=merged.value;structured=true;action=equal(current||[],value)?'leave':'fill';}
         }
         else if(!empty(protectedValue)){action=equal(key==='service_type'?service(protectedValue):protectedValue,value)?'leave':'conflict';reason=action==='conflict'?'Збережене значення має пріоритет':'';}
+        else if(recommendation&&target==='candidate'&&['phone','military_rank'].includes(key)){action='conflict';reason=key==='phone'?'Номер у рекомендаційному листі може належати контактній особі. Потрібно підтвердити телефон кандидата.':'Чинне військове звання потрібно підтвердити військово-обліковим документом. ШПК у рекомендаційному листі не є підтвердженням звання.';}
         else action='fill';
       }
       add(target,key,value,action,reason,protectedValue);
