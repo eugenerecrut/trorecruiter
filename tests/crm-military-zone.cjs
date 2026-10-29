@@ -1,5 +1,11 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{stripTypeScriptTypes}=require('node:module');
 const contract=require('../supabase/functions/_shared/military-zone.js');
+test('all document prompts state existing structural bounds and never ask for a populated sample',()=>{
+ for(const type of ['Копія рекомендаційного листа','Копія військового квитка','Автобіографія рукописна']){
+  const text=contract.prompt('zone',type);assert.match(text,/до 12 rows/);assert.match(text,/до 20 fields/);assert.match(text,/до 5 alternatives/);assert.match(text,/4000/);assert.match(text,/не зразок документа/);assert.match(text,/не обрізай факти/);
+ }
+ assert.throws(()=>contract.result('zone',{rows:Array.from({length:13},()=>({fields:[]}))},{}),/bounded result contract/);
+});
 test('document profiles cover handwriting and preserve explicit exclusions and ID-card distinction',()=>{
  for(const type of ['Автобіографія рукописна','Документи про трудову діяльність','Свідоцтво про народження','Копія свідоцтва про розірвання шлюбу','Копія диплома та атестата з додатками','Довідка ВЛК','Копія рекомендаційного листа','Копія посвідчення водія / інші посвідчення','Копія УБД'])assert(contract.family(type),type);
  for(const type of ['Додаток 13 (Картка обстеження та медичного огляду)','Довідка гінеколога','Сертифікат психологічного тестування','Фото 9×12'])assert.equal(contract.family(type),null,type);
