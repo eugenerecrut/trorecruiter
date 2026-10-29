@@ -38,3 +38,15 @@ test('two independent candidates never share mutable planner or actor state',asy
 
 
 test('server continuation eligibility blocks mismatched owners and unfinished OCR',async()=>{const c=context();for(const extra of [{ai_extracted:{full_name:'Another Person',birth_date:'1980-01-01'}},{processing_status:'AI помилка'},{deleted_at:'date'}]){const m=memory(person(),[document(undefined,extra)]);const r=await c.reconcileDocument(m.client,'d','revision');assert.equal(r.zone_eligible,false);}});
+
+test('matching recommendation owner with mixed printed codes can enter read-only zones without filling invalid fields',async()=>{
+ const c=context(),p=person(),d=document('Копія рекомендаційного листа',{ai_document_type:'Рекомендаційний лист',notes:'AI OK model=synthetic',ai_extracted:{full_name:p.full_name,birth_date:p.birth_date,rnokpp:p.rnokpp,shpk:'790037А/256',tariff_grade:'5/2'}}),m=memory(p,[d]),before=JSON.stringify(m.state.candidate);
+ assert.equal(c.CRMDocumentPolicy.normalize(d).type,'Копія рекомендаційного листа');
+ const r=await c.reconcileDocument(m.client,'d','revision');assert.equal(r.state,'needs_review');assert.equal(r.zone_eligible,true);assert(r.conflict_count>=2);assert.equal(JSON.stringify(m.state.candidate),before);assert.equal(m.state.docs[0].ai_extracted.shpk,'790037А/256');assert.equal(m.state.docs[0].ai_extracted.tariff_grade,'5/2');
+});
+
+test('recommendation aliases never bypass owner mismatch or an explicit review hold',async()=>{
+ for(const extra of [{notes:'AI REVIEW REQUIRED model=synthetic'},{ai_extracted:{full_name:'Інший Іван Петрович',birth_date:'1980-01-01',rnokpp:'0000000000'}}]){
+  const c=context(),p=person(),d=document('Копія рекомендаційного листа',{ai_document_type:'Рекомендаційний лист',...extra}),m=memory(p,[d]),before=JSON.stringify(m.state.candidate),r=await c.reconcileDocument(m.client,'d','revision');assert.equal(r.state,'needs_review');assert.equal(r.zone_eligible,false);assert.equal(JSON.stringify(m.state.candidate),before);
+ }
+});
