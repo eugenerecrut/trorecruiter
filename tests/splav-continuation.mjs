@@ -1,4 +1,4 @@
-import {AUTO_ZONE_ROLLOUT_APPROVED} from '../supabase/functions/_shared/splav-continuation-rollout.js';
+import {AUTO_ZONE_ROLLOUT_APPROVED,CONTROLLED_ZONE_RUN,continuationRolloutPolicy} from '../supabase/functions/_shared/splav-continuation-rollout.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {finishQueueWithContinuation,continuationPDFMetadata} from '../supabase/functions/_shared/splav-continuation.mjs';
@@ -21,3 +21,18 @@ test('metadata reads bounded original, counts every page and destroys parser wit
 });
 
 test('staged production package cannot activate automatically',()=>assert.equal(AUTO_ZONE_ROLLOUT_APPROVED,false));
+
+const controlJob='11111111-1111-4111-8111-111111111111',controlDoc='22222222-2222-4222-8222-222222222222';
+const scope={jobId:controlJob,documentId:controlDoc,notBefore:'2026-10-29T10:00:00Z',expiresAt:'2026-10-29T11:00:00Z'};
+const controlArgs={jobId:controlJob,documentId:controlDoc,control:scope,now:Date.parse('2026-10-29T10:30:00Z')};
+test('baseline cannot start a control and global env alone cannot enable rollout',()=>{
+ assert.equal(CONTROLLED_ZONE_RUN,null);
+ assert.equal(continuationRolloutPolicy({jobId:controlJob,documentId:controlDoc,globalEnabled:true}).enabled,false);
+});
+test('deployment scope allows exactly one root/document pair with one-page budget',()=>{
+ assert.deepEqual(continuationRolloutPolicy(controlArgs),{enabled:true,maxPages:1});
+ for(const extra of [{jobId:controlDoc},{documentId:controlJob},{jobId:undefined},{jobId:'root'},{control:null}])assert.equal(continuationRolloutPolicy({...controlArgs,...extra}).enabled,false);
+});
+test('expired, premature, malformed or unbounded control windows remain off',()=>{
+ for(const extra of [{now:Date.parse(scope.expiresAt)},{now:Date.parse(scope.notBefore)-1},{now:NaN},{control:{...scope,expiresAt:'wrong'}},{control:{...scope,expiresAt:'2026-11-01T00:00:00Z'}},{control:{...scope,expiresAt:scope.notBefore}}])assert.equal(continuationRolloutPolicy({...controlArgs,...extra}).enabled,false);
+});
