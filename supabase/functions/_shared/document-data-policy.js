@@ -21,6 +21,7 @@
     const extracted = structuredClone(doc.ai_extracted || {}), warnings = [], category = kind(doc, requirement);
     let type = doc.ai_document_type || doc.document_type;
     if (/^(?:витяг (?:з|із) )?резерв\+$/u.test(norm(type))) type = 'Військовий облік (витяг Резерв+ / приписне)';
+    if (/^(?:копія )?рекомендаційн(?:ий лист|ого листа)$/u.test(norm(type))) type = 'Копія рекомендаційного листа';
     if (category === 'ubd') type = 'Копія УБД';
     if (category === 'driver') type = 'Посвідчення водія';
     if (category === 'marriage') type = 'Актовий запис про шлюб';

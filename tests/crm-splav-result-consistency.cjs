@@ -49,6 +49,24 @@ test('Reserve+ alias retains the matching requirement without a false type revie
  const {state,run}=setup({requiredType:canonical,doc:{document_type:canonical,requirement_id:'r'},fetch:async()=>Response.json({document_type:'Витяг з Резерв+',confidence:1,extracted:{full_name:'Тестова Марія'}})});
  const r=await run();assert.equal(r.status,200);assert.equal(state.doc.requirement_id,'r');assert.equal(state.doc.document_type,canonical);assert.equal(r.body.review_required,false);assert(!state.doc.notes.includes('AI REVIEW REQUIRED'));
 });
+test('recommendation aliases keep the same requirement without falsely blocking continuation',async()=>{
+ const canonical='Копія рекомендаційного листа';
+ for(const alias of ['Рекомендаційний лист','Копія рекомендаційного листа','  РЕКОМЕНДАЦІЙНИЙ   ЛИСТ  ']){
+  const {state,run}=setup({requiredType:canonical,doc:{document_type:alias,requirement_id:'r'},fetch:async()=>Response.json({document_type:alias,confidence:.99,extracted:{full_name:'Тестова Марія',shpk:'790037А/256',tariff_grade:'5/2'}})});
+  const r=await run();assert.equal(r.status,200);assert.equal(state.doc.requirement_id,'r');assert.equal(state.doc.document_type,canonical);assert.equal(state.doc.ai_document_type,canonical);assert.equal(r.body.review_required,false);assert(!state.doc.notes.includes('AI REVIEW REQUIRED'));assert(!state.doc.ai_warnings.some(w=>w.includes('інший тип')));assert.equal(state.doc.ai_extracted.shpk,'790037А/256');assert.equal(state.doc.ai_extracted.tariff_grade,'5/2');
+ }
+});
+
+test('recommendation slot still rejects a genuinely different document type',async()=>{
+ const {state,run}=setup({requiredType:'Копія рекомендаційного листа',doc:{requirement_id:'r'},fetch:async()=>Response.json({document_type:'Паспорт',confidence:.99,extracted:{full_name:'Тестова Марія'}})});
+ const r=await run();assert.equal(r.status,200);assert.equal(r.body.review_required,true);assert(state.doc.notes.includes('AI REVIEW REQUIRED'));assert.equal(state.doc.requirement_id,null);
+});
+
+test('explicit provider review is preserved for a matching recommendation alias',async()=>{
+ const {state,run}=setup({requiredType:'Копія рекомендаційного листа',doc:{requirement_id:'r'},fetch:async()=>Response.json({document_type:'Рекомендаційний лист',confidence:.99,review_required:true,extracted:{full_name:'Тестова Марія'}})});
+ const r=await run();assert.equal(r.status,200);assert.equal(state.doc.requirement_id,'r');assert.equal(r.body.review_required,true);assert(state.doc.notes.includes('AI REVIEW REQUIRED'));assert.equal(state.doc.ai_extracted.meta.requires_review,true);
+});
+
 test('a real document type mismatch still requires review',async()=>{
  const {state,run}=setup({requiredType:'Військовий квиток',doc:{document_type:'Військовий квиток',requirement_id:'r'},fetch:async()=>Response.json({document_type:'Витяг з Резерв+',confidence:1,extracted:{full_name:'Тестова Марія'}})});
  const r=await run();assert.equal(r.status,200);assert.equal(r.body.review_required,true);assert(state.doc.notes.includes('AI REVIEW REQUIRED'));
