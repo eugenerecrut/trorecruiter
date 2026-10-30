@@ -208,7 +208,7 @@ async function confirmDocument(id){
 }
 async function makeDocumentInput(id,reqId='',replacementId=''){
   const old=document.getElementById('documentModal');if(old)old.remove();
-  const modal=document.createElement('dialog');modal.id='documentModal';modal.className='crm-dialog';modal.dataset.candidateId=id;modal.dataset.replacementId=replacementId;
+  const modal=document.createElement('dialog');modal.id='documentModal';modal.className='crm-dialog';modal.dataset.candidateId=id;modal.dataset.replacementId=replacementId;modal.dataset.autopilot='true';
   document.body.append(modal);
   return Promise.all([getDocumentRequirements(),supabaseClient.from('candidates').select('*').eq('id',id).single()]).then(([allReqs,cr])=>{
     if(!modal.isConnected)return;
@@ -216,6 +216,8 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     const reqs=allReqs.filter(r=>requirementCondition(r,cr.data)!==false);
     const options='<option value="">AI визначить тип автоматично</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId&&r.ai_enabled===false?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
     modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · СПЛАВ визначить типи документів, розпізнає та зіставить дані. Дочекайтеся підтвердження прийняття файлів. У фоновому режимі після цього вкладку можна закрити. Для документів без AI виберіть тип вручну.</p><details><summary>Додатково: указати тип вручну</summary><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label></details><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><label>Вибрати готові файли<input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label><small class="muted">JPG/JPEG автоматично перетворюються на PDF перед завантаженням. Один знімок — один PDF, зі збереженням пропорцій.</small><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
+    const notice=document.createElement('p');notice.className='crm-notice';notice.textContent='Завантаження доручає повний цикл СПЛАВ. Для кожного підтриманого односторінкового PDF: основне розпізнавання, за потреби до 13 зональних кроків і звірка. Можливі витрати AI; крок може мати кілька спроб сервісів. Початок зонального етапу дозволений протягом доби. Багатосторінкові файли проходять основне розпізнавання; їхні зони автоматично не запускаються. Ручні значення збережено.';modal.querySelector('#docUploadButton').parentElement.before(notice);
+    modal.querySelector('#docUploadButton').textContent='Завантажити й опрацювати';
     if(replacementId)modal.querySelector('#docFileInput').removeAttribute('multiple');
     const input=modal.querySelector('#docFileInput'),rootType=modal.querySelector('#docRequirement'),plan=modal.querySelector('#docFilePlan'),upload=modal.querySelector('#docUploadButton');
     const render=()=>{
@@ -287,9 +289,10 @@ if(ai.persistence_version!==1||ai.documentId!==documentId)throw new Error('По�
 return ai
 }
 const splavTrackedJobs=new Set();
-async function enqueueSplavDocument(documentId,candidateId){
- const result=await supabaseClient.rpc('crm_splav_enqueue',{document_id:documentId});
+async function enqueueSplavDocument(documentId,candidateId,{autopilot=false}={}){
+ const result=await supabaseClient.rpc(autopilot?'crm_splav_enqueue_autopilot':'crm_splav_enqueue',{document_id:documentId});
  if(result.error){
+  if(autopilot)throw new Error('Файл збережено, але повний цикл СПЛАВ не прийнято. Нове розпізнавання у браузері не запускалося. '+(result.error.code==='PGRST202'||result.error.code==='42883'?'Сервер ще не оновлено.':result.error.message?.includes('DISABLED')?'Фонову обробку вимкнено адміністратором.':'Оновіть справу й перевірте стан черги перед повтором.'));
   if(result.error.code==='PGRST202'||result.error.code==='42883'||result.error.message?.includes('SPLAV_QUEUE_DISABLED'))return null;
   throw new Error('Файл збережено, але черга СПЛАВ не прийняла завдання. '+(result.error.code==='40001'?'Документ підтверджено, замінено або його джерело змінилося. Потрібна звірка.':result.error.message||'Спробуйте пізніше.'));
  }
@@ -306,6 +309,13 @@ function trackSplavJob(jobId,candidateId,attempt=0){
   if(activeDocumentsCandidateId!==candidateId||activeDocumentsReadOnly){splavTrackedJobs.delete(jobId);return;}
   try{
    const result=await supabaseClient.rpc('crm_splav_job_status',{job_id:jobId});
+   if(activeDocumentsCandidateId!==candidateId||activeDocumentsReadOnly){splavTrackedJobs.delete(jobId);return;}
+   const child=result.data?.result?.continuation;
+   if(!result.error&&['completed','needs_review'].includes(result.data?.state)&&child&&['queued','running'].includes(child.state)&&typeof child.job_id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(child.job_id)&&child.job_id!==jobId){
+    const status=document.getElementById('docUploadStatus')||document.getElementById('docBatchStatus');
+    if(status)status.textContent='СПЛАВ: основне розпізнавання завершено, триває детальне читання та звірка. Вкладку можна закрити.';
+    splavTrackedJobs.delete(jobId);trackSplavJob(child.job_id,candidateId);return;
+   }
    if(!result.error&&result.data&&['completed','needs_review','uncertain','superseded'].includes(result.data.state)&&!CRMWorkspace.busy){
     const visible=document.getElementById('documentRows');
     if(visible?.dataset.splavCandidate===candidateId)await reloadDocumentView(candidateId);
@@ -339,7 +349,7 @@ if(/\bid\b|id[\s-]*карт/.test(type))return'ID';
 if(type.includes('паспорт'))return'passport';
 return null;
 }
-async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId,replacementId=null){
+async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId,replacementId=null,{autopilot=false}={}){
 if(CRMUploadPDF.isJPEG(file)){const status=document.getElementById('docUploadStatus');if(status)status.textContent='Перетворення JPEG у PDF: '+file.name;}
 file=await CRMUploadPDF.prepare(file);
 const name=String(file.name||'').toLowerCase(),mime=String(file.type||'').toLowerCase();
@@ -354,8 +364,8 @@ const baseDocument={replaces_document_id:replacementId||null,candidate_id:forced
 const{data:storedDocument,error:documentError}=await supabaseClient.from('documents').insert(baseDocument).select('id').single();
 if(documentError||!storedDocument?.id){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація документа: '+(documentError?.message||'не створено запис'))}
 if(!aiEnabled)return{file:file.name,type:tempType,confidence:0,warnings:[],skipped:true};
-const queued=await enqueueSplavDocument(storedDocument.id,forcedCandidateId);
-if(queued)return{file:file.name,type:tempType,confidence:0,warnings:['Файл прийнято. СПЛАВ опрацює його у фоні; вкладку можна закрити.'],queued:true,jobId:queued.id};
+const queued=await enqueueSplavDocument(storedDocument.id,forcedCandidateId,{autopilot});
+if(queued)return{file:file.name,type:tempType,confidence:0,warnings:[queued.zone_authorized?'Файл прийнято. СПЛАВ виконає розпізнавання, за потреби детальне читання та звірку; вкладку можна закрити.':'Файл прийнято. СПЛАВ опрацює його у фоні; вкладку можна закрити.'],queued:true,jobId:queued.id};
 // The authenticated server reads the original file. Browser OCR was unused and duplicated the work.
 const documentText='';
 let ai=null;
@@ -380,7 +390,7 @@ async function uploadSelectedDocuments(){
   const candidates=await getCandidates(),status=modal.querySelector('#docUploadStatus');
   CRMWorkspace.busy=true;window.__PSK_DOC_AI_ENABLED=true;
   modal.querySelectorAll('button,input,select').forEach(b=>b.disabled=true);
-  const results=[],hashes=new Set();
+  const results=[],hashes=new Set();let queuedCount=0;
   try{
     for(let i=0;i<files.length;i++){
       status.textContent='СПЛАВ · Документ '+(i+1)+' із '+files.length+': '+files[i].name;
@@ -388,7 +398,8 @@ async function uploadSelectedDocuments(){
         const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await files[i].arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
         if(hashes.has(digest)){results.push('↪ '+files[i].name+' — точний дублікат у цьому пакеті, пропущено.');continue;}
         hashes.add(digest);
-        const result=await processOneDocument(files[i],types[i],user,candidates,id,modal.dataset.replacementId||null);
+        const result=await processOneDocument(files[i],types[i],user,candidates,id,modal.dataset.replacementId||null,{autopilot:modal.dataset.autopilot==='true'});
+        if(result.queued)queuedCount++;
         results.push('✓ '+files[i].name+' — '+result.type+(result.skipped?' · без AI/OCR':result.queued?' · прийнято до фонової черги':result.syncState==='completed'?' · розпізнано й узгоджено':result.syncState==='needs_review'?' · розпізнано, потрібна звірка':result.syncState==='failed'?' · розпізнано, узгодження не завершено':result.syncState==='superseded'?' · стан документа вже оновлено':' · розпізнано')+(result.warnings.length?'\n  '+result.warnings.join('; '):''));
       }catch(e){results.push('✕ '+files[i].name+' — '+e.message)}
     }
@@ -396,7 +407,7 @@ async function uploadSelectedDocuments(){
     CRMWorkspace.busy=false;
     status.textContent=results.join('\n');
     modal.querySelector('#closeDocModal').disabled=false;
-    modal.querySelector('#docUploadButton').textContent='Обробку завершено';
+    modal.querySelector('#docUploadButton').textContent=queuedCount?'Передано СПЛАВ':'Завантаження завершено';
     modal.dataset.uploadComplete='true';
   }
 }

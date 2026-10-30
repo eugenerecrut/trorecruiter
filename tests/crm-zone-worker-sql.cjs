@@ -488,6 +488,41 @@ try{
  assert.equal((await db.query('select state from crm_private.splav_jobs where id=$1',[continued.job_id])).rows[0].state,'needs_review');checks++;
  assert.equal((await db.query("select profile_data->>'manual_new' value from public.candidates where id=$1",[id(10)])).rows[0].value,'preserve');checks++;
  assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.splav_case_fingerprint(uuid)','EXECUTE') allowed")).rows[0].allowed,false);checks++;
+ // New explicit upload consent never backfills or extends the old root queue.
+ await owner();const queueBeforeConsent=(await db.query('select id,state,result from crm_private.splav_jobs order by id')).rows;
+ await db.exec(file('supabase/migrations/20261029181027_splav_authorized_upload_continuation.sql'));
+ assert.deepEqual((await db.query('select id,state,result from crm_private.splav_jobs order by id')).rows,queueBeforeConsent);checks++;
+ await db.exec(`insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status,processing_status,mime_type,file_size)
+ values('${id(700)}','${id(10)}','consent-old.pdf','${id(700)}',1,'Автобіографія друкована','${id(30)}','{}','Не перевірено','AI очікує','application/pdf',100),
+ ('${id(701)}','${id(10)}','consent-new.pdf','${id(701)}',1,'Автобіографія друкована','${id(30)}','{}','Не перевірено','AI очікує','application/pdf',100);`);
+ const sourceBefore=(await db.query('select to_jsonb(d) data from public.documents d where id in ($1,$2) order by id',[id(700),id(701)])).rows;
+ for(const who of [2,3]){await actor(who);await assert.rejects(call('crm_splav_enqueue_autopilot',[id(701)]),/Human delegation/);checks++;}
+ await db.exec("reset role;set role anon;set request.jwt.claim.sub=''");await assert.rejects(call('crm_splav_enqueue_autopilot',[id(701)]),/permission denied/);checks++;
+ await actor(1);const legacy=await call('crm_splav_enqueue',[id(700)]);
+ const notUpgraded=await call('crm_splav_enqueue_autopilot',[id(700)]);assert.equal(notUpgraded.id,legacy.id);assert.equal(notUpgraded.zone_authorized,false);checks+=2;
+ await owner();assert.equal((await db.query('select result from crm_private.splav_jobs where id=$1',[legacy.id])).rows[0].result,null);checks++;
+ await db.exec('update crm_private.splav_settings set zones_enabled=false');await actor(1);
+ await assert.rejects(call('crm_splav_enqueue_autopilot',[id(701)]),/DISABLED/);checks++;
+ await owner();await db.exec('update crm_private.splav_settings set zones_enabled=true');await actor(1);
+ const authorized=await call('crm_splav_enqueue_autopilot',[id(701)]);assert.equal(authorized.zone_authorized,true);checks++;
+ await owner();const consentJob=(await db.query('select * from crm_private.splav_jobs where id=$1',[authorized.id])).rows[0];
+ const consent=consentJob.result.zone_authorization;
+ assert.equal(consent.actor_id,id(1));assert.equal(consent.job_id,authorized.id);assert.equal(consent.document_id,id(701));assert.equal(consent.max_pages,1);assert.equal(consent.budget,13);checks+=5;
+ assert.equal(Date.parse(consent.expires_at)-Date.parse(consent.granted_at),86400000);checks++;
+ assert.equal((await db.query("select count(*)::int n from crm_private.splav_events where job_id=$1 and operation='zone_continuation_authorized'",[authorized.id])).rows[0].n,1);checks++;
+ await actor(1);assert.equal((await call('crm_splav_enqueue_autopilot',[id(701)])).id,authorized.id);checks++;
+ await owner();assert.deepEqual((await db.query('select result from crm_private.splav_jobs where id=$1',[authorized.id])).rows[0].result,consentJob.result);checks++;
+ assert.equal((await db.query('select count(*)::int n from crm_private.splav_jobs where document_id=$1',[id(701)])).rows[0].n,1);checks++;
+ assert.deepEqual((await db.query('select to_jsonb(d) data from public.documents d where id in ($1,$2) order by id',[id(700),id(701)])).rows,sourceBefore);checks++;
+ await db.query("update crm_private.splav_jobs set state='running',leased_by=$2,lease_token=$3,lease_until=now()+interval '10 minutes' where id=$1",[authorized.id,id(2),id(702)]);
+ await actor(2);assert.deepEqual((await call('crm_splav_validate',[authorized.id,id(702)])).zone_authorization,consent);checks++;
+ await assert.rejects(call('crm_splav_validate',[authorized.id,id(999)]),/Invalid or expired/);checks++;
+ await owner();await db.query("update crm_private.splav_jobs set result=jsonb_set(result,'{zone_authorization,source_key}','\"wrong\"') where id=$1",[authorized.id]);await actor(2);
+ assert.equal((await call('crm_splav_validate',[authorized.id,id(702)])).zone_authorization,null);checks++;
+ await owner();await db.query('update crm_private.splav_jobs set result=$2 where id=$1',[authorized.id,consentJob.result]);
+ await db.query('update public.crm_staff set active=false where user_id=$1',[id(1)]);await actor(2);
+ await assert.rejects(call('crm_splav_validate',[authorized.id,id(702)]),/Delegation revoked/);checks++;
+ await owner();assert.equal((await db.query("select has_function_privilege('anon','public.crm_splav_enqueue_autopilot(uuid)','EXECUTE') allowed")).rows[0].allowed,false);checks++;
  console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -6,7 +6,7 @@ const clone=v=>structuredClone(v),good=()=>new Response(JSON.stringify({document
 function setup(options={}){
  const state={doc:{id:'d',candidate_id:'c',storage_path:'c/a.pdf',document_type:'Обробка AI',requirement_id:null,version_group_id:'g',version_number:1,deleted_at:null,verified_at:null,verification_status:'Не перевірено',ai_processed_at:null,ai_extracted:{old:'preserve'}},profile:{manual:'preserve',service_type:'За мобілізацією'},writes:[],attempts:[],requests:0,reconciliations:[],background:[],newer:!!options.newer};
  Object.assign(state.doc,options.doc);state.rpcs=[];let handler,revision=0;
- const client={rpc:async(name,args)=>{state.rpcs.push({name,args});if(name==='crm_splav_validate')return options.invalidLease?{error:{message:'denied'}}:{data:{document_id:state.doc.id,stage:options.queueStage||'waiting'}};if(name==='crm_splav_persist'){Object.assign(state.doc,clone(args.patch),{ai_processed_at:'queue-revision'});state.writes.push(clone(args.patch));return {data:{id:'d',ai_processed_at:'queue-revision'}};}if(name==='crm_splav_continue_zone')return options.handoffFailure?{error:{message:'handoff unavailable'}}:{data:{state:'queued',job_id:'child',budget:26}};if(name==='crm_splav_finish'||name==='crm_splav_release_waiting')return {};throw Error(name);},auth:{getUser:async()=>({data:{user:options.unauthorized?null:{id:'u'}}})},from(table){const filters=[];let patch,one=false,limit=Infinity;
+ const client={rpc:async(name,args)=>{state.rpcs.push({name,args});if(name==='crm_splav_validate')return options.invalidLease?{error:{message:'denied'}}:{data:{document_id:state.doc.id,stage:options.queueStage||'waiting',zone_authorization:options.authorization}};if(name==='crm_splav_persist'){Object.assign(state.doc,clone(args.patch),{ai_processed_at:'queue-revision'});state.writes.push(clone(args.patch));return {data:{id:'d',ai_processed_at:'queue-revision'}};}if(name==='crm_splav_continue_zone')return options.handoffFailure?{error:{message:'handoff unavailable'}}:{data:{state:'queued',job_id:'child',budget:26}};if(name==='crm_splav_finish'||name==='crm_splav_release_waiting')return {};throw Error(name);},auth:{getUser:async()=>({data:{user:options.unauthorized?null:{id:'u'}}})},from(table){const filters=[];let patch,one=false,limit=Infinity;
   const q={select(){return q},update(x){patch=x;return q},eq(k,v){filters.push(d=>d[k]===v);return q},is(k,v){filters.push(d=>(d[k]??null)===v);return q},gt(k,v){filters.push(d=>d[k]>v);return q},limit(n){limit=n;return q},single(){one=true;return run()},maybeSingle(){one=true;return run()},then(a,b){return run().then(a,b)}};
   async function run(){let data=table==='crm_staff'?[{user_id:'u',active:!options.inactive,role:options.processor?'processor':'recruiter'}]:table==='candidates'?[{id:'c',profile_data:state.profile}]:table==='document_requirements'?[{id:'r',document_type:options.requiredType||'Диплом',active:true,ai_enabled:!options.disabled}]:options.hidden?[]:[state.doc,...(state.newer?[{id:'new',version_group_id:'g',version_number:2}]:[])];data=data.filter(d=>filters.every(fn=>fn(d))).slice(0,limit);
    if(patch){state.attempts.push(clone(patch));if(options.writeError)return {error:{message:'write failed'},data:null};if(state.newer&&data.includes(state.doc))return {error:{message:'Архівна версія'},data:null};for(const d of data){Object.assign(d,clone(patch));d.ai_processed_at='2026-10-23T00:00:'+String(++revision).padStart(2,'0')+'.000Z';state.writes.push(clone(patch));}}
@@ -109,4 +109,17 @@ for (const pages of [1,2]) test('actual scoped control with global rollout off e
  assert.equal(state.requests,0);assert.deepEqual(state.profile,before);
  if(pages===1){assert.equal(r.body.sync_result.continuation.state,'queued');assert.equal(state.rpcs.at(-1).name,'crm_splav_continue_zone');assert.equal(state.rpcs.at(-1).args.p_pages,1);}
  else {assert.equal(state.rpcs.at(-1).name,'crm_splav_finish');assert(!state.rpcs.some(x=>x.name==='crm_splav_continue_zone'));}
+});
+
+test('actual handler trusts only queue-issued one-page authorization, never request-body opt-in',async()=>{
+ const jobId='11111111-1111-4111-8111-111111111111',documentId='22222222-2222-4222-8222-222222222222';
+ const authorization={contract:'splav-zone-authorization-1',job_id:jobId,document_id:documentId,max_pages:1,budget:13,granted_at:new Date(Date.now()-60000).toISOString(),expires_at:new Date(Date.now()+3600000).toISOString()};
+ for(const mode of ['issued','body-only','expired','multiple-pages']){
+  const options={processor:true,pdfPages:mode==='multiple-pages'?2:1,review:true,eligible:true,queueStage:'ocr_saved',doc:{id:documentId,processing_status:'AI оброблено',ai_processed_at:'saved',ai_extracted:{},mime_type:'application/pdf'}};
+  if(mode!=='body-only')options.authorization=mode==='expired'?{...authorization,expires_at:new Date(Date.now()-1).toISOString()}:authorization;
+  const {state,run}=setup(options),r=await run({job_id:jobId,lease_token:'lease',zone_authorization:authorization});
+  assert.equal(state.requests,0);assert.equal(r.body.sync_result.state,'needs_review');
+  assert.equal(state.rpcs.some(x=>x.name==='crm_splav_continue_zone'),mode==='issued');
+  if(mode==='expired')assert.equal(r.body.sync_result.continuation.reason,'zone_authorization_unavailable_or_expired');
+ }
 });

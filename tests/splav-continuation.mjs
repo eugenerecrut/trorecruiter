@@ -36,3 +36,12 @@ test('deployment scope allows exactly one root/document pair with one-page budge
 test('expired, premature, malformed or unbounded control windows remain off',()=>{
  for(const extra of [{now:Date.parse(scope.expiresAt)},{now:Date.parse(scope.notBefore)-1},{now:NaN},{control:{...scope,expiresAt:'wrong'}},{control:{...scope,expiresAt:'2026-11-01T00:00:00Z'}},{control:{...scope,expiresAt:scope.notBefore}}])assert.equal(continuationRolloutPolicy({...controlArgs,...extra}).enabled,false);
 });
+
+const authorization={contract:'splav-zone-authorization-1',job_id:controlJob,document_id:controlDoc,max_pages:1,budget:13,granted_at:scope.notBefore,expires_at:scope.expiresAt};
+test('only exact bounded human delegation opts a new root into automatic continuation',()=>{
+ const args={jobId:controlJob,documentId:controlDoc,authorization,now:controlArgs.now};
+ assert.deepEqual(continuationRolloutPolicy(args),{enabled:true,maxPages:1});
+ for(const patch of [{contract:'other'},{job_id:controlDoc},{document_id:controlJob},{max_pages:4},{budget:52},{budget:'13'},{granted_at:'wrong'},{expires_at:'2026-11-01T00:00:00Z'}])assert.equal(continuationRolloutPolicy({...args,authorization:{...authorization,...patch}}).enabled,false);
+ for(const now of [Date.parse(scope.notBefore)-1,Date.parse(scope.expiresAt),NaN])assert.equal(continuationRolloutPolicy({...args,now}).enabled,false);
+ assert.equal(continuationRolloutPolicy({...args,authorization:undefined,globalEnabled:true}).enabled,false);
+});
