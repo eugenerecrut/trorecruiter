@@ -490,7 +490,7 @@ try{
  assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.splav_case_fingerprint(uuid)','EXECUTE') allowed")).rows[0].allowed,false);checks++;
  // New explicit upload consent never backfills or extends the old root queue.
  await owner();const queueBeforeConsent=(await db.query('select id,state,result from crm_private.splav_jobs order by id')).rows;
- await db.exec(file('supabase/migrations/20261029181027_splav_authorized_upload_continuation.sql'));
+ await db.exec(file('supabase/migrations/20261030035134_splav_authorized_upload_continuation.sql'));
  assert.deepEqual((await db.query('select id,state,result from crm_private.splav_jobs order by id')).rows,queueBeforeConsent);checks++;
  await db.exec(`insert into public.documents(id,candidate_id,storage_path,version_group_id,version_number,document_type,requirement_id,ai_extracted,verification_status,processing_status,mime_type,file_size)
  values('${id(700)}','${id(10)}','consent-old.pdf','${id(700)}',1,'Автобіографія друкована','${id(30)}','{}','Не перевірено','AI очікує','application/pdf',100),
