@@ -91,7 +91,7 @@
           return '<tr><td><button type="button" class="crm-name-link" data-dashboard-card="'+esc(c.id)+'">'+esc(c.name_nominative||c.full_name)+'</button><small>'+esc(CRMWorkflow.profile(c).service_type||'Вид оформлення не уточнено')+'</small></td><td>'+esc(documentStatus(s))+'<small>'+esc(serviceDataLabel(serviceData.get(c.id)))+'</small></td><td>'+s.review+' документів на перевірку · '+s.errors+' помилок AI'+(s.excludedReview||s.excludedErrors||s.excludedProcessing?'<small>Поза поточним комплектом: '+(s.excludedReview||0)+' неперевірених'+(s.excludedErrors?' · '+s.excludedErrors+' помилок AI':'')+(s.excludedProcessing?' · '+s.excludedProcessing+' опрацьовується AI':'')+'</small>':'')+'</td><td>'+esc(CRMResponsibility.name(c.responsible_recruiter_id))+'</td><td>'+s.verified+'/'+s.total+(s.unknown?'<small>Уточнити: '+s.unknown+'</small>':'')+'</td><td><button type="button" data-dashboard-plan="'+esc(c.id)+'">Справа</button><button type="button" data-dashboard-docs="'+esc(c.id)+'">Документи</button></td></tr>';
         }).join('');
         content.querySelector('[data-dashboard-empty]').hidden=selected.length>0;
-        host.querySelector('[data-dashboard-status]').textContent='Справ: '+base.length+' · Без відповідального: '+base.filter(c=>!c.responsible_recruiter_id).length+' · '+date(day);
+        const dStat = host.querySelector('[data-dashboard-status]'); if(dStat) dStat.textContent='Справ: '+base.length+' · Без відповідального: '+base.filter(c=>!c.responsible_recruiter_id).length+' · '+date(day);
       }
       ownerInput.onchange=()=>{owner=ownerInput.value;render();};
       content.querySelector('[data-dashboard-search]').oninput=render;content.querySelector('[data-dashboard-mode]').onchange=render;

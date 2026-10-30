@@ -83,8 +83,8 @@
       try { if (photoDoc) photo = await CRMWorkspace.photo(photoDoc); }
       catch { /* A missing photo remains visible in the review; never invent it. */ }
       photoReady = true;
-      d.querySelector('[data-photo-status]').textContent = photo ? 'Фото з CRM буде вписане у рамку 3×4 см без розтягування.' : 'Фото недоступне в CRM. У PDF залишиться місце для фото.';
-      if (rl && rl.verification_status !== 'Підтверджено') d.querySelector('[data-status]').textContent = 'РЛ ще не перевірений. Звірте звання та ВЧ перед друком.';
+      const ps = d.querySelector('[data-photo-status]'); if(ps) ps.textContent = photo ? 'Фото з CRM буде вписане у рамку 3×4 см без розтягування.' : 'Фото недоступне в CRM. У PDF залишиться місце для фото.';
+      if (rl && rl.verification_status !== 'Підтверджено') { const ds = d.querySelector('[data-status]'); if(ds) ds.textContent = 'РЛ ще не перевірений. Звірте звання та ВЧ перед друком.'; }
       d.querySelector('form').onsubmit = async ev => {
         ev.preventDefault(); if (!photoReady) return;
         const button = d.querySelector('[type=submit]'), status = d.querySelector('[data-status]');

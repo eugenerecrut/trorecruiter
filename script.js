@@ -284,12 +284,12 @@ function showNewCandidateForm() {
   mode.addEventListener('change', () => {
     CRMCandidateConditions.applyNewCaseMode(document.getElementById('candidateForm'));
     newForm.dispatchEvent(new Event('change',{bubbles:true}));
-    document.getElementById('newCaseModeHint').textContent = mode.value === 'unit' ? 'ВЧ оформлює справу. Тут тільки РЛ, припис про направлення та реєстр кандидата.' : 'Повна особова справа.';
+    const modeHint = document.getElementById('newCaseModeHint'); if(modeHint) modeHint.textContent = mode.value === 'unit' ? 'ВЧ оформлює справу. Тут тільки РЛ, припис про направлення та реєстр кандидата.' : 'Повна особова справа.';
   });
   document.getElementById('createCandidateManually').onclick = () => {
     document.getElementById('candidateStage').classList.remove('hidden');
-    document.querySelector('#candidateStage h3').textContent = 'Дані кандидата';
-    document.querySelector('#candidateStage h3 + div').textContent = 'Внесіть відомі дані. Обов’язкове поле — ПІБ.';
+    const csH3 = document.querySelector('#candidateStage h3'); if(csH3) csH3.textContent = 'Дані кандидата';
+    const csDiv = document.querySelector('#candidateStage h3 + div'); if(csDiv) csDiv.textContent = 'Внесіть відомі дані. Обов’язкове поле — ПІБ.';
     CRMCandidateConditions.applyNewCaseMode(document.getElementById('candidateForm'));
     document.querySelector('#candidateForm [name="full_name"]').focus();
   };

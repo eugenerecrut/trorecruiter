@@ -127,13 +127,13 @@ async function showDocuments(id,options={}){
   if(embedded){content.querySelector('#docBackCard').hidden=true;content.querySelector('.page-subtitle').hidden=true;const title=content.querySelector('.page-title');if(title)title.hidden=true;}
   content.querySelectorAll('button').forEach(b=>b.type='button');
   const totals=CRMDocumentState.summary(c,reqs,docs);
-  content.querySelector('#docProgressText').textContent='Комплект: '+totals.verified+' із '+totals.total+' перевірено · '+totals.copies+' електронних копій · '+totals.paper+' без файла'+(totals.unknown?' · Уточнити умов: '+totals.unknown:'');
-  content.querySelector('#docProgress > div').style.width=(totals.total?Math.round(totals.verified/totals.total*100):0)+'%';
+  const pText = content.querySelector('#docProgressText'); if (pText) pText.textContent='Комплект: '+totals.verified+' із '+totals.total+' перевірено · '+totals.copies+' електронних копій · '+totals.paper+' без файла'+(totals.unknown?' · Уточнити умов: '+totals.unknown:'');
+  const pBar = content.querySelector('#docProgress > div'); if (pBar) pBar.style.width=(totals.total?Math.round(totals.verified/totals.total*100):0)+'%';
   const packageState=CRMDocumentState.packageState(c,docs);
   const packageInfo=document.createElement('details');packageInfo.className='crm-package-readiness';
   packageInfo.innerHTML='<summary>PDF «Анкета»: '+(packageState.ready?'готовий до формування':'потрібно уточнити '+packageState.missing.length+' пунктів')+'</summary>'+packageState.rows.map(r=>'<p><b>'+esc(r.title)+'</b> · '+esc(r.state)+'</p>').join('');
-  content.querySelector('#docProgress').after(packageInfo);
-  content.querySelector('#docBatchStatus').textContent='Комплектність враховує обов’язкові файли та позначки «Є в наявності». Для PDF-пакета потрібні електронні копії.';
+  content.querySelector('#docProgress')?.after(packageInfo);
+  const bStatus = content.querySelector('#docBatchStatus'); if (bStatus) bStatus.textContent='Комплектність враховує обов’язкові файли та позначки «Є в наявності». Для PDF-пакета потрібні електронні копії.';
   if(excludedDocs.length&&!CRMCandidateConditions.isUnit(c)){
     const details=document.createElement('details');details.className='card';details.style.marginBottom='18px';
     details.innerHTML='<summary>Раніше завантажені документи, які зараз не потрібні ('+excludedDocs.length+')</summary>'+excludedDocs.map(d=>'<p>'+esc(d.document_type)+' · '+esc(d.file_name)+' <button type="button" data-excluded-open="'+esc(d.id)+'">Відкрити</button>'+(d.ai_extracted?' <button type="button" data-excluded-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button><button type="button" data-excluded-data="'+esc(d.id)+'">Дані AI / перенесення</button>':'')+manualZoneButtonHtml(d,reqs.find(r=>r.id===d.requirement_id||r.document_type===d.document_type),esc)+excludedDocumentRetryHtml(d,reqs,esc)+savedReviewButtonHtml(d,esc)+'</p>'+documentProcessingMetricsHtml(d,esc)).join('');
@@ -157,8 +157,8 @@ async function showDocuments(id,options={}){
       await CRMDocumentPresence.set(supabaseClient,c,r,box.checked);
       saved=true;
       await reloadDocumentView(id);
-      document.querySelector('#docBatchStatus').textContent=box.checked?'Документ є в наявності та перевірений. Електронну копію можна додати пізніше.':'Позначку знято. Завантажені файли залишилися без змін.';
-    }catch(error){if(!saved&&box.isConnected)box.checked=before;content.querySelector('#docBatchStatus').textContent=(saved?'Позначку збережено, але список не оновився. Оновіть сторінку: ':'Не збережено: ')+error.message;}
+      const bs1 = document.querySelector('#docBatchStatus') || content?.querySelector('#docBatchStatus'); if (bs1) bs1.textContent = box.checked?'Документ є в наявності та перевірений. Електронну копію можна додати пізніше.':'Позначку знято. Завантажені файли залишилися без змін.';
+    }catch(error){if(!saved&&box.isConnected)box.checked=before;const bs2 = content?.querySelector('#docBatchStatus') || document.querySelector('#docBatchStatus'); if (bs2) bs2.textContent = (saved?'Позначку збережено, але список не оновився. Оновіть сторінку: ':'Не збережено: ')+error.message;}
     finally{CRMWorkspace.busy=false;content.querySelectorAll('[data-doc-presence]').forEach(el=>el.disabled=false);}
   });
   body.addEventListener('click',async e=>{
@@ -193,7 +193,7 @@ async function showDocuments(id,options={}){
       tr.hidden=(key!=='all'&&tr.dataset[key]!=='true')||!!query&&!((title+' '+files).toLocaleLowerCase('uk').includes(query));
     });
     content.querySelectorAll('[data-doc-filter]').forEach(b=>{b.classList.toggle('active',b.dataset.docFilter===key);b.setAttribute('aria-pressed',String(b.dataset.docFilter===key))});
-    content.querySelector('#docEmpty').hidden=[...body.querySelectorAll('tr')].some(tr=>!tr.hidden);
+    const docEmpty = content.querySelector('#docEmpty'); if (docEmpty) docEmpty.hidden=[...body.querySelectorAll('tr')].some(tr=>!tr.hidden);
   };
   content.querySelector('#docSearch').addEventListener('input',()=>filter(activeFilter));
   content.querySelector('#docFilters').addEventListener('click',e=>{const key=e.target.closest('[data-doc-filter]')?.dataset.docFilter;if(key)filter(key)});filter('all');
@@ -204,7 +204,7 @@ async function confirmDocument(id){
   const {data,error}=await supabaseClient.from('documents').update({verification_status:'Підтверджено',verified_by:user.id,verified_at:new Date().toISOString()}).eq('id',id).select('id,candidate_id,ai_extracted');
   if(error)throw error;if(!data?.length)throw new Error('Документ не підтверджено. Перевірте права доступу до цього файла.');
   await reloadDocumentView(data[0].candidate_id);
-  document.querySelector('#docBatchStatus').textContent='Документ перевірений. Натисніть на поле документа, щоб розгорнути деталі та кнопки.';
+  const bs3 = document.querySelector('#docBatchStatus'); if (bs3) bs3.textContent = 'Документ перевірений. Натисніть на поле документа, щоб розгорнути деталі та кнопки.';
 }
 async function makeDocumentInput(id,reqId='',replacementId=''){
   const old=document.getElementById('documentModal');if(old)old.remove();

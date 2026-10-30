@@ -4,8 +4,17 @@
   'use strict';
 
   function getSupabase(){
-    if(typeof supabaseClient !== 'undefined') return supabaseClient;
     if(typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+    if(typeof supabaseClient !== 'undefined' && supabaseClient) {
+      if(typeof window !== 'undefined') window.supabaseClient = supabaseClient;
+      return supabaseClient;
+    }
+    if(typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function') {
+      const url = window.SUPABASE_URL || 'https://vhfysipxorlhuiaatxqi.supabase.co';
+      const key = window.SUPABASE_KEY || 'sb_publishable_o8ZTKE4Ek0m58zq1q0QpFQ_domIX0Yz';
+      window.supabaseClient = window.supabase.createClient(url, key);
+      return window.supabaseClient;
+    }
     return null;
   }
 

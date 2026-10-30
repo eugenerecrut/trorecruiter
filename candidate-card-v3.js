@@ -351,9 +351,9 @@
       }catch(error){factHost.textContent='Діагностика джерел недоступна. Чинні перевірки CRM працюють.';console.error('Facts shadow reader failed');}
     }
     const historyContent = history.querySelector('.cc-v3-history-content');
-    historyContent.textContent = '';
-    if (!events) historyContent.textContent = 'Журнал зараз недоступний. Редагування картки працює.';
-    else if (!events.length) historyContent.textContent = 'Змін поки немає.';
+    if(historyContent) historyContent.textContent = '';
+    if (!events && historyContent) historyContent.textContent = 'Журнал зараз недоступний. Редагування картки працює.';
+    else if (!events.length && historyContent) historyContent.textContent = 'Змін поки немає.';
     else events.slice(0,25).forEach(event => {
       const details = document.createElement('details'); const summary = document.createElement('summary');
       summary.textContent = CRMResponsibility.date(event.occurred_at)+' · '+(event.actor_name || 'Працівник CRM');
