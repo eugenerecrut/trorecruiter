@@ -29,8 +29,24 @@ function model(c,pf={}){
  const rank=rankOrders.length===1?rankOrders[0]:null;
  add('rank_order','Наказ про присвоєння звання',0,[156.3,262,326.5,309.7],rank?[rank.order_issuer,rank.order_number&&'№'+rank.order_number,date(rank.order_date)].filter(Boolean).join(' '):'');
  const eduYear=e=>Number(e.graduation_year||String(e.study_end_date||'').slice(0,4)||9999),eduStart=e=>Number(String(e.study_start_date||'').slice(0,4)||0);
+ const eduRank=e=>{
+  if(!e)return 0;
+  const d=String(e.degree||e.degree_raw||'').toLowerCase(),i=String(e.institution||'').toLowerCase(),q=String(e.qualification||'').toLowerCase();
+  if(/доктор|аспірант|науковий ступінь|phd/u.test(d+' '+q))return 50;
+  if(/магістр/u.test(d))return 44;
+  if(/спеціаліст/u.test(d))return 43;
+  if(/бакалавр/u.test(d)&&!/молодший/u.test(d))return 42;
+  if(/вищ|студент/u.test(d)||/університет|академі|інститут|консерваторі/u.test(i))return 40;
+  if(/фахов|молодший|середня спеціальна/u.test(d)||/коледж|технікум/u.test(i))return 30;
+  if(/професійн|профтех|кваліфікований робітник|робітнич/u.test(d+' '+q)||/професійн|пту|центр професійної|професійний ліцей/u.test(i))return 20;
+  if(/середн/u.test(d)||/школа|зош|сзш|гімназі|ліцей|нвк|колегіум/u.test(i))return 10;
+  return 5;
+ };
+ const eduRecords=printable(p.education_records);
+ const bestEdu=eduRecords.length?eduRecords.slice().sort((a,b)=>eduRank(b)-eduRank(a)||eduYear(b)-eduYear(a)||eduStart(b)-eduStart(a))[0]:null;
+ const eduCivil=bestEdu?[bestEdu.institution,eduRank(bestEdu)<=10||bestEdu.degree==='середня'?null:bestEdu.specialty,eduRank(bestEdu)<=10||bestEdu.degree==='середня'?null:bestEdu.qualification,bestEdu.graduation_year&&bestEdu.graduation_year+' р.'].filter(Boolean).join(', '):[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ');
  const y=[29,70,125.2,230.8,326.7,372.5,435.3,806];
- const personal=[['birth_date','Дата народження',words(c.birth_date)],['birth_place','Місце народження',String(c.birth_place??'').trim()?c.birth_place:pf.birth_place],['education_civil','Цивільна освіта',(Array.isArray(p.education_records)?p.education_records:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out).slice().sort((a,b)=>eduYear(a)-eduYear(b)||eduStart(a)-eduStart(b)).map(e=>[e.institution,e.degree==='середня'?null:e.specialty,e.degree==='середня'?null:e.qualification,e.graduation_year&&e.graduation_year+' р.'].filter(Boolean).join(', ')).join('\n')||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ')],['education_military','Військова освіта',p.military_education||''],['languages','Іноземні мови',p.foreign_languages||p.languages||''],['scientific_degree','Науковий ступінь і вчене звання',p.scientific_degree||''],['scientific_works','Наукові праці й винаходи',p.scientific_works||'']];
+ const personal=[['birth_date','Дата народження',words(c.birth_date)],['birth_place','Місце народження',String(c.birth_place??'').trim()?c.birth_place:pf.birth_place],['education_civil','Цивільна освіта',eduCivil],['education_military','Військова освіта',p.military_education||''],['languages','Іноземні мови',p.foreign_languages||p.languages||''],['scientific_degree','Науковий ступінь і вчене звання',p.scientific_degree||''],['scientific_works','Наукові праці й винаходи',p.scientific_works||'']];
  personal.forEach(([k,l,v],i)=>add(k,l,1,[238,y[i],510,y[i+1]],v,'Освіта та особисті відомості'));
  const worked=bool(c.worked_before??p.worked_before),served=bool(c.served_before??p.served_before);
  const periods=(Array.isArray(p.work_records)?p.work_records:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out);

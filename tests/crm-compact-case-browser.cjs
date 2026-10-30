@@ -32,7 +32,7 @@ const {chromium}=require('C:/Users/eugen/.cache/codex-runtimes/codex-primary-run
     if(factsShadow){await page.locator('.cc-facts-shadow > summary').click();for(const section of await page.locator('.cc-facts-shadow details > summary').all())await section.click();}
     if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile horizontal overflow');
     for(const tab of await page.getByRole('tab').all())if(!await tab.isVisible())throw Error('Hidden primary action');
-    await page.screenshot({path:path.join(root,'tmp/issue-71-compact-mobile.png'),fullPage:true});
+    await page.screenshot({path:path.join(require('node:os').tmpdir(),'issue-71-compact-mobile.png'),fullPage:true});
    }
    if(errors.length)throw Error(errors.join('; '));console.log('PASS compact='+compact+', factsShadow='+factsShadow+': shared-save fixture, CAS, header order, browser errors; '+result);await page.close();
   }

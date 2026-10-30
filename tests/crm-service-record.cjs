@@ -36,12 +36,30 @@ assert.equal(value(state,'parents'),'Батько: ТЕСТЕНКО Петро',
 assert.equal(state.issues.length,2,'Ambiguous parent role is reported alongside ambiguous rank order');
 
 
-// Chronological education ordering: ongoing/unfinished higher education without graduation_year sorts after completed education
+// Education hierarchy: print only one education, the highest in the hierarchy
 {
  const eduCandidate={full_name:'ТЕСТЕНКО Микита Сергійович',profile_data:{education_records:[
   {institution:'Дніпровський аграрно-економічний університет',specialty:'Агрономія',graduation_year:null,study_start_date:'2023-09',requires_review:false},
   {institution:'ЗОШ №2 в м. Вільнянськ',degree:'середня',graduation_year:'2019',requires_review:false},
   {institution:'Федорівський центр професійної освіти',specialty:'Слюсар',graduation_year:'2023',requires_review:false}
  ]}};
- assert.equal(value(model(eduCandidate,{}),'education_civil'),'ЗОШ №2 в м. Вільнянськ, 2019 р.\nФедорівський центр професійної освіти, Слюсар, 2023 р.\nДніпровський аграрно-економічний університет, Агрономія');
+ assert.equal(value(model(eduCandidate,{}),'education_civil'),'Дніпровський аграрно-економічний університет, Агрономія');
+
+ const vocCandidate={full_name:'ТЕСТЕНКО Петро',profile_data:{education_records:[
+  {institution:'ЗОШ №1',degree:'середня',graduation_year:'2015',requires_review:false},
+  {institution:'Федорівський центр професійної освіти',degree:'професійна',specialty:'Слюсар',graduation_year:'2023',requires_review:false}
+ ]}};
+ assert.equal(value(model(vocCandidate,{}),'education_civil'),'Федорівський центр професійної освіти, Слюсар, 2023 р.');
+
+ const higherCandidate={full_name:'ТЕСТЕНКО Анна',profile_data:{education_records:[
+  {institution:'Політехнічний коледж',degree:'фаховий молодший бакалавр',graduation_year:'2018',requires_review:false},
+  {institution:'КПІ',degree:'бакалавр',specialty:'Інженерія',graduation_year:'2022',requires_review:false},
+  {institution:'КПІ',degree:'магістр',specialty:'Комп’ютерні науки',graduation_year:'2024',requires_review:false}
+ ]}};
+ assert.equal(value(model(higherCandidate,{}),'education_civil'),'КПІ, Комп’ютерні науки, 2024 р.');
+
+ const schoolCandidate={full_name:'ТЕСТЕНКО Олег',profile_data:{education_records:[
+  {institution:'Гімназія №5',degree:'середня',specialty:'Спеціальність ігнорується',graduation_year:'2020',requires_review:false}
+ ]}};
+ assert.equal(value(model(schoolCandidate,{}),'education_civil'),'Гімназія №5, 2020 р.');
 }
