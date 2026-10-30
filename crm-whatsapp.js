@@ -524,6 +524,100 @@
     loadMessages();
   }
 
+  async function openPortalShareModal(cand){
+    if(!cand) return;
+    let token = cand.portal_token;
+    if(!token && cand.id){
+      const sb = getSupabase();
+      if(sb){
+        try{
+          const { data } = await sb.from('candidates').select('portal_token').eq('id', cand.id).maybeSingle();
+          if(data?.portal_token) {
+            token = data.portal_token;
+            cand.portal_token = token;
+          }
+        }catch(e){
+          console.warn('Failed to load portal token', e);
+        }
+      }
+    }
+    if(!token){
+      alert('У кандидата не згенеровано токен доступу до кабінету.');
+      return;
+    }
+    const origin = window.location.origin + window.location.pathname.replace(/[^\/]+$/, '');
+    const portalUrl = origin + 'candidate.html?token=' + token;
+    const name = getCandidateName(cand);
+    const targetPhone = cand.phone || cand.profile_data?.phone_secondary;
+
+    const dialog = document.createElement('dialog');
+    dialog.className = 'crm-dialog crm-portal-share-dialog';
+    dialog.style.maxWidth = '560px';
+    dialog.style.width = '95%';
+
+    const waText = 'Доброго дня, ' + name + '! Для зручного завантаження фото документів прямо з камери телефону та відстеження статусу Вашої справи створено Ваш персональний кабінет:\n' +
+      portalUrl + '\n\n' +
+      'Перейдіть за посиланням — вхід без пароля.';
+
+    dialog.innerHTML = '' +
+      '<div class="crm-dialog-header" style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span style="font-size:22px">🔗</span>' +
+          '<div>' +
+            '<h3 style="margin:0;font-size:16px">Особистий кабінет кандидата</h3>' +
+            '<small style="color:#64748b">' + escapeHtml(cand.name_nominative || cand.full_name) + '</small>' +
+          '</div>' +
+        '</div>' +
+        '<button type="button" class="btn secondary" data-share-close style="padding:4px 8px;font-size:16px">✕</button>' +
+      '</div>' +
+
+      '<div style="font-size:13px;color:#334155;margin-bottom:14px">' +
+        '<p style="margin:0 0 8px 0">Персональне безпечне посилання для кандидата (вхід без логіну та пароля):</p>' +
+        '<div style="display:flex;gap:6px;margin-bottom:14px">' +
+          '<input type="text" data-portal-link value="' + escapeHtml(portalUrl) + '" readonly style="flex:1;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:#f8fafc;font-family:monospace">' +
+          '<button type="button" class="btn secondary" data-copy-link style="white-space:nowrap;font-size:12px">📋 Скопіювати</button>' +
+        '</div>' +
+
+        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:14px">' +
+          '<div style="font-weight:600;color:#166534;margin-bottom:4px">💬 Надіслати посилання у WhatsApp</div>' +
+          '<p style="font-size:12px;color:#475569;margin:0 0 10px 0">Кандидат отримає повідомлення з посиланням та зможе завантажити документи прямо зі свого смартфона.</p>' +
+          '<button type="button" class="btn" data-send-portal-wa style="background:#25D366;color:#fff;font-weight:600;font-size:13px;width:100%;padding:9px;border:none;border-radius:6px;cursor:pointer">🚀 Відправити запрошення у WhatsApp (wa.me)</button>' +
+        '</div>' +
+
+        '<div style="text-align:right">' +
+          '<button type="button" class="btn secondary" data-open-preview style="font-size:12px">🌐 Відкрити кабінет для перевірки →</button>' +
+        '</div>' +
+      '</div>';
+
+    document.body.append(dialog);
+    dialog.showModal();
+
+    dialog.querySelector('[data-share-close]').onclick = () => { dialog.close(); dialog.remove(); };
+    dialog.addEventListener('cancel', () => { dialog.close(); dialog.remove(); });
+
+    dialog.querySelector('[data-copy-link]').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(portalUrl);
+        const b = dialog.querySelector('[data-copy-link]');
+        b.textContent = '✓ Скопійовано!';
+        setTimeout(() => { b.textContent = '📋 Скопіювати'; }, 1500);
+      } catch(e) {
+        dialog.querySelector('[data-portal-link]').select();
+        document.execCommand('copy');
+      }
+    };
+
+    dialog.querySelector('[data-send-portal-wa]').onclick = () => {
+      openWaMe(targetPhone, waText);
+      dialog.close();
+      dialog.remove();
+    };
+
+    dialog.querySelector('[data-open-preview]').onclick = () => {
+      window.open(portalUrl, '_blank', 'noopener,noreferrer');
+    };
+  }
+
   function escapeHtml(str){
     return String(str??'').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
@@ -535,6 +629,7 @@
     openTemplateModal,
     openChatDialog,
     openSettingsModal,
+    openPortalShareModal,
     getSupabase
   };
 

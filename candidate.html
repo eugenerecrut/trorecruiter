@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Кабінет кандидата — PSK_RECRUTER</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230f172a'/><text x='16' y='21' font-size='14' font-weight='bold' fill='%2338bdf8' text-anchor='middle'>PSK</text></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --primary: #0284c7;
+      --primary-dark: #0369a1;
+      --success: #16a34a;
+      --warning: #f59e0b;
+      --danger: #dc2626;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .portal-container {
+      max-width: 540px;
+      margin: 0 auto;
+      padding: 16px 16px 60px;
+    }
+    header.portal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .portal-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .portal-brand-badge {
+      background: #0f172a;
+      color: #38bdf8;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .portal-brand-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .candidate-card-top {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .candidate-name {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--text);
+    }
+    .candidate-meta {
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 4px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-stage { background: #e0f2fe; color: #0369a1; }
+    .badge-success { background: #dcfce7; color: #15803d; }
+    .badge-warning { background: #fef3c7; color: #b45309; }
+    .badge-danger { background: #fee2e2; color: #b91c1c; }
+
+    .progress-bar-wrap {
+      margin-top: 14px;
+    }
+    .progress-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .progress-track {
+      background: #e2e8f0;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      background: linear-gradient(90deg, #0284c7, #16a34a);
+      height: 100%;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    .recruiter-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+      padding: 12px 14px;
+    }
+    .recruiter-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .recruiter-avatar {
+      width: 38px;
+      height: 38px;
+      background: #16a34a;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .recruiter-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-wa { background: #25D366; color: #fff; }
+    .btn-phone { background: #0284c7; color: #fff; }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 18px 0 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .filter-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      background: #0f172a;
+      color: #fff;
+      border-color: #0f172a;
+    }
+
+    .checklist-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .checklist-item:last-child { border-bottom: none; }
+    .checklist-item-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .doc-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .doc-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .upload-btn-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0284c7;
+      color: #fff;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      align-self: flex-start;
+      margin-top: 4px;
+    }
+    .upload-btn-label input { display: none; }
+    .uploaded-info {
+      font-size: 12px;
+      color: #16a34a;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 500;
+    }
+
+    .tip-box {
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 14px;
+    }
+    .tip-box b { color: var(--text); }
+
+    .loading-screen {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #0284c7;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="portal-container" id="portalApp">
+    <div class="loading-screen" id="loadingState">
+      <div class="spinner"></div>
+      <p>Завантажуємо Вашу справу…</p>
+    </div>
+  </div>
+
+  <script src="candidate-portal.js?v=1.2.143"></script>
+</body>
+</html>
