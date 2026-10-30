@@ -360,7 +360,7 @@ const ext=(name.match(/\.[a-z0-9]+$/i)||[''])[0].toLowerCase();
 const safeName=Date.now()+'_'+Math.random().toString(36).slice(2,10)+ext;
 const path=forcedCandidateId+'/incoming/'+safeName;
 const upload=await supabaseClient.storage.from(DOC_BUCKET).upload(path,file,{upsert:false,contentType:mime||'application/octet-stream'});if(upload.error)throw new Error('Завантаження: '+upload.error.message);
-const baseDocument={replaces_document_id:replacementId||null,candidate_id:forcedCandidateId,requirement_id:forced?.id||null,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:aiEnabled?'AI обробка':'Завантажено',ai_warnings:[]};
+const baseDocument={replaces_document_id:replacementId||null,candidate_id:forcedCandidateId,requirement_id:forced?.id||null,document_type:tempType,document_name:tempType,storage_path:path,file_name:file.name,file_size:file.size,mime_type:mime||null,uploaded_by:user.id,status:'Завантажено',verification_status:'Не перевірено',processing_status:aiEnabled?(autopilot?'AI очікує':'AI обробка'):'Завантажено',ai_warnings:[]};
 const{data:storedDocument,error:documentError}=await supabaseClient.from('documents').insert(baseDocument).select('id').single();
 if(documentError||!storedDocument?.id){await supabaseClient.storage.from(DOC_BUCKET).remove([path]);throw new Error('Реєстрація документа: '+(documentError?.message||'не створено запис'))}
 if(!aiEnabled)return{file:file.name,type:tempType,confidence:0,warnings:[],skipped:true};

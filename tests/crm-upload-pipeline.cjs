@@ -90,6 +90,9 @@ test('explicit upload delegation queues the complete bounded pipeline without br
 test('missing autopilot server leaves the original saved and never silently falls back to paid browser processing',async()=>{
  const {state,upload}=setup({autopilot:true});const message=await upload(['birth.pdf']);
  assert.equal(state.docs.length,1);assert.equal(state.autopilotRequests,1);assert.equal(state.calls.length,0);assert.equal(state.automations,0);assert.match(message,/Сервер ще не оновлено/);assert.match(message,/не запускалося/);
+ assert.equal(state.docs[0].processing_status,'AI очікує');
+ const context=vm.createContext({window:{}});vm.runInContext(read('document-state.js'),context);
+ assert.equal(context.window.CRMDocumentState.fileState(state.docs[0]),'Очікує опрацювання СПЛАВ');
 });
 test('UI waits for the queued child instead of reporting root completion as the final result',async()=>{
  const source=read('documents.js'),timers=[],calls=[],status={textContent:''},rootId='11111111-1111-4111-8111-111111111111',childId='22222222-2222-4222-8222-222222222222';let reloads=0;
