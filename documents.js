@@ -329,15 +329,19 @@ function trackSplavJob(jobId,candidateId,attempt=0){
 }
 async function resumeSplavJobs(candidateId){
  if(activeDocumentsReadOnly)return;
- const result=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:candidateId});
- if(result.error||!Array.isArray(result.data)||activeDocumentsCandidateId!==candidateId)return;
- for(const job of result.data)if(['queued','running'].includes(job.state))trackSplavJob(job.id,candidateId);
+ let result;
+ try{result=await supabaseClient.rpc('crm_splav_candidate_jobs',{candidate_id:candidateId});}catch(_){result={error:true};}
+ if(activeDocumentsReadOnly||activeDocumentsCandidateId!==candidateId)return;
  const status=document.getElementById('docBatchStatus'),rows=document.getElementById('documentRows');
- if(status&&rows?.dataset.splavCandidate===candidateId){
-  const pending=result.data.filter(j=>['queued','running'].includes(j.state)).length;
-  const review=result.data.filter(j=>['needs_review','uncertain'].includes(j.state)).length;
-  status.textContent=pending||review?'СПЛАВ · У фоновій черзі: '+pending+' · Потребують звірки: '+review:'';
+ const visible=status&&rows?.dataset.splavCandidate===candidateId;
+ if(result?.error||!Array.isArray(result?.data)){
+  if(visible)status.textContent='СПЛАВ: стан фонової черги тимчасово недоступний. Оновіть справу пізніше; повторно запускати AI не потрібно.';
+  return;
  }
+ const pending=result.data.filter(job=>job&&['queued','running'].includes(job.state));
+ for(const job of pending)trackSplavJob(job.id,candidateId);
+ // Job outcomes are historical; current field questions belong to document review.
+ if(visible)status.textContent=pending.length?'СПЛАВ · У фоновій черзі: '+pending.length+'. Результати та поточні питання — у документах.':'СПЛАВ: активних фонових завдань немає. Результати та поточні питання — у документах.';
 }
 function acceptedServerReconciliation(ai,documentId){const r=ai?.sync_result;return r?.version===1&&r.document_id===documentId&&ai.document_revision&&r.source_revision===ai.document_revision&&['completed','needs_review','superseded','failed'].includes(r.state)?r:null;}
 function normName(s){return String(s||'').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi,'')}
