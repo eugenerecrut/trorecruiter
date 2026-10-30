@@ -6,9 +6,18 @@
     const user=await getCurrentUser();if(!user)throw new Error('Увійдіть у CRM.');
     const e=structuredClone(d.ai_extracted||{}),esc=docEscape;
     const fields=[['Тип документа','document_type',d.ai_document_type||d.document_type],['ПІБ власника','full_name',e.full_name],['Дата народження','birth_date',e.birth_date,'date'],['Серія документа','document_series',e.document_series],['Номер документа','document_number',e.document_number],['Дата видачі','document_date',e.document_date,'date'],['Орган видачі','document_issuer',e.document_issuer]];
+    const docType=String(d.ai_document_type||d.document_type||'');
+    if(!CRMDocumentPolicy.isChildBirth(d)){
+      fields.push(['РНОКПП','rnokpp',e.rnokpp||e.personal?.rnokpp],['Місце народження','birth_place',e.birth_place||e.personal?.birth_place]);
+    }
+    if(/паспорт|id[\s-]*карт/iu.test(docType)){
+      fields.push(['Дійсний до','passport_expiry_date',e.passport_expiry_date||e.personal?.passport_expiry_date,'date'],['УНЗР','unzr',e.unzr||e.personal?.unzr],['ПІБ у родовому відмінку','name_genitive',e.name_genitive||e.personal?.name_genitive||e.name_cases?.genitive]);
+    }
+    if(/рекомендац/iu.test(docType)){
+      fields.push(['Телефон','phone',e.phone||e.personal?.phone],['Військове звання','military_rank',e.military_rank||e.service?.military_rank],['Бажана посада','desired_position',e.desired_position||e.service?.desired_position],['ВОС','military_specialty',e.military_specialty||e.service?.military_specialty],['ШПК','shpk',e.shpk||e.service?.shpk],['Тарифний розряд','tariff_grade',e.tariff_grade||e.service?.tariff_grade],['Військова частина','military_unit',e.military_unit||e.service?.military_unit],['Підрозділ / центр','desired_unit',e.desired_unit||e.service?.desired_unit],['Рекомендуючий підрозділ','recommender_unit',e.recommender_unit||e.service?.recommender_unit],['Підписант','signatory',e.signatory||e.service?.signatory],['Рекрутер','recruiter_name',e.recruiter_name||e.service?.recruiter_name]);
+    }
     const kind=CRMDocumentPolicy.kind(d);
-    if(!CRMDocumentPolicy.isChildBirth(d)&&/(?:свідоцтво|акт(?:овий|ового) запис|витяг).{0,35}народження/iu.test(String(d.ai_document_type||d.document_type))){
-      fields.push(['Місце народження','birth_place',e.birth_place]);
+    if(!CRMDocumentPolicy.isChildBirth(d)&&/(?:свідоцтво|акт(?:овий|ового) запис|витяг).{0,35}народження/iu.test(docType)){
       (e.relatives||[]).forEach((r,i)=>fields.push(['Родич '+(i+1)+' · ПІБ ('+(r.relationship||'не вказано')+')','relatives.'+i+'.full_name',r.full_name]));
     }
     if(kind==='education'){
@@ -33,7 +42,7 @@
         if(key==='document_type'){documentType=value;continue;}
         if(key==='driver_license_categories'){extracted[key]=value?value.split(/[,;\s]+/).filter(Boolean):null;continue;}
         if(key.includes('.')){const parts=key.split('.');let target=extracted;for(const part of parts.slice(0,-1))target=target[part];target[parts.at(-1)]=value||null;}
-        else extracted[key]=value||null;
+        else{extracted[key]=value||null;for(const s of ['personal','service'])if(extracted[s]&&typeof extracted[s]==='object'&&Object.prototype.hasOwnProperty.call(extracted[s],key))extracted[s][key]=value||null;if(key==='name_genitive'&&extracted.name_cases&&typeof extracted.name_cases==='object')extracted.name_cases.genitive=value||null;}
       }
       if(!documentType){status.textContent='Вкажіть тип документа.';return;}
       if(extracted.driver_license_categories?.some(v=>!['A1','A','B1','B','C1','C','D1','D','BE','C1E','CE','D1E','DE','T'].includes(v.toUpperCase()))){status.textContent='Перевірте категорії водія.';return;}
@@ -48,7 +57,7 @@
         let query=supabaseClient.from('documents').update({document_type:policy.type,document_name:policy.type,ai_document_type:policy.type,ai_extracted:policy.extracted,ai_processed_at:processedAt,ai_warnings:[...new Set([...(d.ai_warnings||[]),...policy.warnings,'Реквізити уточнено після звірки з оригіналом; початкову відповідь AI збережено.'])]});
         query=d.ai_processed_at?query.eq('ai_processed_at',d.ai_processed_at):query.is('ai_processed_at',null);
         const saved=await query.eq('id',id).select('id');if(saved.error)throw saved.error;if(!saved.data?.length)throw new Error('Результат змінився. Відкрийте уточнення знову.');
-        dialog.close();dialog.remove();await showDocuments(d.candidate_id);
+        dialog.close();dialog.remove();if(document.getElementById('candidateCardV2')&&typeof window.openCandidateCard==='function')await window.openCandidateCard(d.candidate_id);else await showDocuments(d.candidate_id);
       }catch(err){status.textContent='Не збережено: '+err.message;dialog.querySelectorAll('button,input').forEach(el=>el.disabled=false);}
       finally{CRMWorkspace.busy=false;}
     };

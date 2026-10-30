@@ -24,6 +24,7 @@ assert.equal(v3.tabs.length,3);
  assert.equal(queued,1);assert.equal(refreshed,1,'Other form actions retain their existing refresh');
  assert(html.includes('ПІБ &lt;тест&gt;'));
  assert(html.includes('Уточніть &amp; збережіть'));
+ assert(v3.readinessDetails({readiness:{serviceRecord:{ready:false,missing:[{fieldId:'employment.absence',label:'Працював / не працював',text:'Уточніть'}]}}}) .includes('data-case-jump="employment.absence"'));
  assert(!html.includes('<тест>'));assert.equal(JSON.stringify(view),before);
  assert(v3.readinessDetails({readiness:{serviceRecord:{ready:true,missing:[]}}}).includes('основні дані заповнені'));
  for(const value of [{},{readiness:{serviceRecord:{ready:null,missing:[]}}},{readiness:{serviceRecord:{ready:true}}}])

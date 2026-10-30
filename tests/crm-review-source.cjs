@@ -171,3 +171,15 @@ test('held fill explains source review and conflict headings receive candidate c
  const controls=new Map(),host={innerHTML:'',querySelector(key){if(!controls.has(key))controls.set(key,{});return controls.get(key);},querySelectorAll(){return []}};
  await f.c.CRMIntake.review(host,f.candidate,[f.doc]);assert(host.innerHTML.includes('Потрібно уточнити: Тестова Олена · Дата народження'));
 });
+
+test('ordinary conflicts with empty current allow keep decision while valid non-identity conflicts allow guarded card accept',async()=>{
+ const f=fixture(),r=f.c.CRMReviewDecision;
+ assert.equal(r.keepKind({action:'conflict',target:'profile',key:'tariff_grade',current:null,incoming:'7/6',reason:'Некоректне OCR-значення'}),'ordinary');
+ assert.equal(r.keepKind({action:'conflict',target:'candidate',key:'phone',current:'',incoming:'+380999780631',reason:'Номер у рекомендаційному листі може належати контактній особі.'}),'ordinary');
+ assert.equal(r.keepKind({action:'conflict',target:'candidate',key:'birth_date',current:null,incoming:'1991-02-02',reason:'Дата народження іншої особи'}),null);
+ assert.equal(r.canAcceptConflict({action:'conflict',target:'candidate',key:'phone',current:null,incoming:'+380999780631',reason:'Номер у рекомендаційному листі може належати контактній особі.'}),true);
+ assert.equal(r.canAcceptConflict({action:'conflict',target:'candidate',key:'military_rank',current:null,incoming:'солдат',reason:'Чинне військове звання потрібно підтвердити військово-обліковим документом.'}),true);
+ assert.equal(r.canAcceptConflict({action:'conflict',target:'profile',key:'passport_issuer',current:null,incoming:'1231, 05.05.2021',reason:'ID-картка потребує перевірки реквізитів'}),false);
+ assert.equal(r.canAcceptConflict({action:'conflict',target:'profile',key:'passport_issuer',current:null,incoming:'1231',reason:'ID-картка потребує перевірки реквізитів'}),true);
+ assert.equal(r.canAcceptConflict({action:'conflict',target:'candidate',key:'full_name',current:'Тест Іван',incoming:'Інший Іван',reason:'Збережене значення має пріоритет'}),false);
+});
