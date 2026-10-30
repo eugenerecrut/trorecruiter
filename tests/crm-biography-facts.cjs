@@ -134,3 +134,13 @@ test('held single source details never print or overwrite independent marital st
   const valid=Object.fromEntries(c.CRMServiceRecord.model(person).fields.map(f=>[f.key,f.value]));assert(valid.oath.includes('02.01.2020'));assert(valid.discharge.includes('TEST-D'));assert(valid.family.includes('TEST-M'));assert.equal(c.CRMServiceReadiness.review(person).ready,true);
  }
 });
+
+test('autobiography institution with Dniprovskyi spelling deduplicates against Dnipropetrovskyi diploma',()=>{
+ const p={
+  education_records:[{institution:'Дніпропетровський державний університет внутрішніх справ',specialty:'Право',qualification:'Бакалавр права',degree:'бакалавр',graduation_year:'2023',requires_review:false}],
+  bio_education_claims:[{institution:'Дніпровський Державний університет внутрішніх справ',specialty:'Право',end_date:{value:'2023-06'},source_document_id:'bio',requires_review:false}]
+ };
+ const out=facts.profile(p);
+ assert.equal(out.education_records.length,1);
+ assert.equal(out.education_records[0].qualification,'Бакалавр права');
+});

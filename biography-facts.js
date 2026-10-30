@@ -3,6 +3,7 @@
 'use strict';
 const list=v=>Array.isArray(v)?v:[],norm=v=>String(v||'').normalize('NFKC').toLocaleLowerCase('uk-UA').replace(/[«»"']/g,'').replace(/\s+/g,' ').trim();
 const employerKey=v=>norm(v).replace(/^(?:товариство з обмеженою відповідальністю|тов|приватне акціонерне товариство|публічне акціонерне товариство|акціонерне товариство|прат|пат|ат|приватне підприємство|державне підприємство|комунальне підприємство|фоп|фізична особа[\s-]*підприємець)\s+/u,'').trim()||norm(v);
+const institutionKey=v=>norm(v).replace(/(^|\s)дніпропетровськ(ий|ого|ому|им|ій|а|ої|у|ою)(?=\s|$)/gu,'$1дніпровськ$2');
 function partial(v){
  const value=typeof v==='object'&&v?v.value:v;if(typeof value!=='string')return null;
  if(/^\d{4}$/.test(value))return {value,min:value+'-01-01',max:value+'-12-31'};
@@ -23,7 +24,7 @@ function profile(input={}){
  for(const r of list(p.bio_education_claims)){
   if(!usable(r)||!r.institution)continue;
   const accepted=education.filter(e=>e&&!e.requires_review),year=partial(r.end_date)?.value.slice(0,4);
-  if(accepted.some(e=>norm(e.institution)===norm(r.institution)&&(!e.graduation_year||!year||String(e.graduation_year)===year)))continue;
+  if(accepted.some(e=>institutionKey(e.institution)===institutionKey(r.institution)&&(!e.graduation_year||!year||String(e.graduation_year)===year)))continue;
   // An incomplete existing diploma cannot safely be distinguished from the biography claim.
   if(accepted.some(e=>!e.degree&&!e.graduation_year))continue;
   const end=partial(r.end_date);education.push({...r,study_start_date:partial(r.start_date)?.value||null,study_end_date:end?.value||null,graduation_year:end?.value.slice(0,4)||null,source_type:'autobiography'});

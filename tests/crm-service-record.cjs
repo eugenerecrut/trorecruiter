@@ -34,3 +34,14 @@ audited.profile_data.relatives.push({relationship:'Мати',full_name:'ІНША
 state=model(audited,{});
 assert.equal(value(state,'parents'),'Батько: ТЕСТЕНКО Петро','Ambiguous mother is held while unambiguous father prints');
 assert.equal(state.issues.length,2,'Ambiguous parent role is reported alongside ambiguous rank order');
+
+
+// Chronological education ordering: ongoing/unfinished higher education without graduation_year sorts after completed education
+{
+ const eduCandidate={full_name:'ТЕСТЕНКО Микита Сергійович',profile_data:{education_records:[
+  {institution:'Дніпровський аграрно-економічний університет',specialty:'Агрономія',graduation_year:null,study_start_date:'2023-09',requires_review:false},
+  {institution:'ЗОШ №2 в м. Вільнянськ',degree:'середня',graduation_year:'2019',requires_review:false},
+  {institution:'Федорівський центр професійної освіти',specialty:'Слюсар',graduation_year:'2023',requires_review:false}
+ ]}};
+ assert.equal(value(model(eduCandidate,{}),'education_civil'),'ЗОШ №2 в м. Вільнянськ, 2019 р.\nФедорівський центр професійної освіти, Слюсар, 2023 р.\nДніпровський аграрно-економічний університет, Агрономія');
+}
