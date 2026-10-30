@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Кабінет кандидата — PSK_RECRUTER</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230f172a'/><text x='16' y='21' font-size='14' font-weight='bold' fill='%2338bdf8' text-anchor='middle'>PSK</text></svg>">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -30,20 +30,23 @@
       line-height: 1.5;
     }
     .portal-container {
-      max-width: 540px;
+      max-width: 560px;
       margin: 0 auto;
       padding: 16px 16px 60px;
+      transition: max-width 0.2s ease;
     }
     header.portal-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
     }
     .portal-brand {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
     }
     .portal-brand-badge {
       background: #0f172a;
@@ -55,10 +58,22 @@
       letter-spacing: 0.5px;
     }
     .portal-brand-title {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       color: var(--text);
     }
+    .device-indicator {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #f1f5f9;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+
     .card {
       background: var(--card);
       border-radius: var(--radius);
@@ -191,6 +206,7 @@
       font-weight: 500;
       cursor: pointer;
       white-space: nowrap;
+      transition: all 0.15s ease;
     }
     .tab-btn.active {
       background: #0f172a;
@@ -202,10 +218,20 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      padding: 12px 0;
-      border-bottom: 1px solid #f1f5f9;
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      background: #fff;
+      border: 1px solid var(--border);
+      transition: all 0.2s ease;
     }
-    .checklist-item:last-child { border-bottom: none; }
+    .checklist-item:last-child { margin-bottom: 0; }
+    .checklist-item.drag-over {
+      background: #f0f9ff !important;
+      border-color: #0284c7 !important;
+      border-style: dashed !important;
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+    }
     .checklist-item-header {
       display: flex;
       align-items: flex-start;
@@ -228,13 +254,17 @@
       gap: 6px;
       background: #0284c7;
       color: #fff;
-      padding: 7px 12px;
+      padding: 7px 13px;
       border-radius: 8px;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       align-self: flex-start;
       margin-top: 4px;
+      transition: background 0.15s ease;
+    }
+    .upload-btn-label:hover {
+      background: #0369a1;
     }
     .upload-btn-label input { display: none; }
     .uploaded-info {
@@ -245,6 +275,16 @@
       gap: 4px;
       font-weight: 500;
     }
+    .drag-hint {
+      display: none;
+      font-size: 11px;
+      color: #0284c7;
+      font-weight: 500;
+      margin-left: 6px;
+    }
+    body.is-desktop .drag-hint {
+      display: inline;
+    }
 
     .tip-box {
       background: #f8fafc;
@@ -254,6 +294,7 @@
       font-size: 12px;
       color: var(--text-muted);
       margin-top: 14px;
+      line-height: 1.5;
     }
     .tip-box b { color: var(--text); }
 
@@ -272,6 +313,34 @@
       margin: 0 auto 14px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Desktop layout enhancement */
+    @media (min-width: 860px) {
+      .portal-container {
+        max-width: 1020px;
+        padding: 24px 28px 80px;
+      }
+      .portal-grid {
+        display: grid;
+        grid-template-columns: 330px 1fr;
+        gap: 22px;
+        align-items: start;
+      }
+      .portal-sidebar {
+        position: sticky;
+        top: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .portal-main {
+        display: flex;
+        flex-direction: column;
+      }
+      .candidate-name {
+        font-size: 20px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -282,6 +351,6 @@
     </div>
   </div>
 
-  <script src="candidate-portal.js?v=1.2.148"></script>
+  <script src="candidate-portal.js?v=1.2.149"></script>
 </body>
 </html>
