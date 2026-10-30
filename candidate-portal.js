@@ -175,17 +175,30 @@
         '</div>' +
       '</div>' +
 
-      '<div class="card recruiter-card">' +
-        '<div class="recruiter-info">' +
-          '<div class="recruiter-avatar">Р</div>' +
-          '<div>' +
-            '<div style="font-size:11px;color:#15803d;font-weight:600">Ваш рекрутер</div>' +
-            '<div style="font-size:14px;font-weight:700;color:#0f172a">' + escapeHtml(c.recruiter_name) + '</div>' +
+      '<div class="card" style="padding:14px;background:#fff;border:1px solid #e2e8f0">' +
+        // Блок 1: Представник ВЧ з РЛ
+        '<div style="display:flex;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:1px solid #f1f5f9">' +
+          '<div style="width:38px;height:38px;background:#0284c7;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">ВЧ</div>' +
+          '<div style="flex:1">' +
+            '<div style="font-size:11px;color:#0284c7;font-weight:700;letter-spacing:0.3px">Військова частина (' + escapeHtml(c.military_unit || 'ВЧ') + ')</div>' +
+            '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px">' + escapeHtml(c.unit_representative || c.unit_signatory || 'Представник ВЧ за РЛ') + '</div>' +
+            (c.unit_signatory && c.unit_signatory !== c.unit_representative ? '<div style="font-size:11px;color:#64748b;margin-top:1px">Підписант РЛ: ' + escapeHtml(c.unit_signatory) + '</div>' : '') +
           '</div>' +
         '</div>' +
-        '<div class="recruiter-actions">' +
-          (c.recruiter_phone ? '<a class="btn-icon btn-phone" href="tel:' + escapeHtml(c.recruiter_phone) + '" title="Зателефонувати">📞</a>' : '') +
-          (c.recruiter_phone ? '<a class="btn-icon btn-wa" href="https://wa.me/' + escapeHtml(c.recruiter_phone.replace(/\D/g,'')) + '" target="_blank" title="Написати у WhatsApp">💬 WhatsApp</a>' : '') +
+
+        // Блок 2: Рекрутер 4 Центру Рекрутингу (з CRM)
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px">' +
+          '<div style="display:flex;align-items:center;gap:12px">' +
+            '<div style="width:38px;height:38px;background:#16a34a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">4ЦР</div>' +
+            '<div>' +
+              '<div style="font-size:11px;color:#16a34a;font-weight:700;letter-spacing:0.3px">Рекрутер 4 Центру Рекрутингу</div>' +
+              '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px">' + escapeHtml(c.center_recruiter_name || c.recruiter_name || 'Рекрутер 4 Центру') + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="recruiter-actions" style="display:flex;gap:6px">' +
+            (c.recruiter_phone ? '<a class="btn-icon btn-phone" href="tel:' + escapeHtml(c.recruiter_phone) + '" title="Зателефонувати">📞</a>' : '') +
+            (c.recruiter_phone ? '<a class="btn-icon btn-wa" href="https://wa.me/' + escapeHtml(c.recruiter_phone.replace(/\\D/g,'')) + '" target="_blank" title="Написати у WhatsApp">💬 WhatsApp</a>' : '') +
+          '</div>' +
         '</div>' +
       '</div>' +
 
