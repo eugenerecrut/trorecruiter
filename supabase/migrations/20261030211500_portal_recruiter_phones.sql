@@ -1,4 +1,4 @@
--- Update crm_portal_get_case to return unit_phone and center_recruiter_phone
+-- Update crm_portal_get_case to return unit_phone and center_recruiter_phone and fix boolean string casting
 ALTER TABLE public.crm_staff ADD COLUMN IF NOT EXISTS phone TEXT;
 
 -- Seed default center recruiter phone if null
@@ -23,6 +23,8 @@ DECLARE
     v_verified INT := 0;
     v_service_type TEXT;
     v_has_children BOOLEAN;
+    v_served_before BOOLEAN;
+    v_worked_before BOOLEAN;
     v_marital TEXT;
     v_staff_name TEXT;
     v_staff_phone TEXT;
@@ -42,7 +44,22 @@ BEGIN
         v_cand.profile_data->'service'->>'service_type',
         'За контрактом'
     );
-    v_has_children := COALESCE(v_cand.has_children, (v_cand.profile_data->>'has_children')::boolean, false);
+    
+    v_has_children := COALESCE(
+        v_cand.has_children,
+        CASE WHEN v_cand.profile_data->>'has_children' IN ('true', 't', '1', 'yes') THEN true ELSE false END
+    );
+
+    v_served_before := COALESCE(
+        v_cand.served_before,
+        CASE WHEN v_cand.profile_data->>'served_before' IN ('true', 't', '1', 'yes') THEN true ELSE false END
+    );
+
+    v_worked_before := COALESCE(
+        v_cand.worked_before,
+        CASE WHEN v_cand.profile_data->>'worked_before' IN ('true', 't', '1', 'yes') THEN true ELSE false END
+    );
+
     v_marital := LOWER(COALESCE(v_cand.marital_status, v_cand.profile_data->>'marital_status', ''));
 
     IF v_cand.responsible_recruiter_id IS NOT NULL THEN
@@ -106,10 +123,10 @@ BEGIN
           OR (
               v_cand.profile_data->'blanks_sent' IS NOT NULL
               AND (
-                  (v_cand.profile_data->'blanks_sent'->>dr.document_type)::boolean = true
-                  OR (dr.document_type = 'Заява на контракт' AND (v_cand.profile_data->'blanks_sent'->>'contract_application')::boolean = true)
-                  OR (dr.document_type LIKE 'Згода на обробку даних%' AND (v_cand.profile_data->'blanks_sent'->>'data_consent')::boolean = true)
-                  OR (dr.document_type LIKE 'Розписка%' AND (v_cand.profile_data->'blanks_sent'->>'receipt')::boolean = true)
+                  (v_cand.profile_data->'blanks_sent'->>dr.document_type) IN ('true', 't', '1')
+                  OR (dr.document_type = 'Заява на контракт' AND (v_cand.profile_data->'blanks_sent'->>'contract_application') IN ('true', 't', '1'))
+                  OR (dr.document_type LIKE 'Згода на обробку даних%' AND (v_cand.profile_data->'blanks_sent'->>'data_consent') IN ('true', 't', '1'))
+                  OR (dr.document_type LIKE 'Розписка%' AND (v_cand.profile_data->'blanks_sent'->>'receipt') IN ('true', 't', '1'))
               )
           )
       )
@@ -118,15 +135,15 @@ BEGIN
           OR dr.condition_field = ''
           OR (
               (dr.condition_field = 'served_before' AND (
-                  (v_cand.served_before = true AND dr.condition_value = 'true')
-                  OR ((v_cand.served_before = false OR v_cand.served_before IS NULL) AND dr.condition_value = 'false')
+                  (v_served_before = true AND dr.condition_value = 'true')
+                  OR (v_served_before = false AND dr.condition_value = 'false')
               ))
               OR (dr.condition_field = 'worked_before' AND (
-                  (v_cand.worked_before = true AND dr.condition_value = 'true')
-                  OR ((v_cand.worked_before = false OR v_cand.worked_before IS NULL) AND dr.condition_value = 'false')
+                  (v_worked_before = true AND dr.condition_value = 'true')
+                  OR (v_worked_before = false AND dr.condition_value = 'false')
               ))
               OR (dr.condition_field = 'has_children' AND (
-                  (v_cand.has_children = true AND dr.condition_value = 'true')
+                  (v_has_children = true AND dr.condition_value = 'true')
               ))
               OR (dr.condition_field = 'marital_status' AND (
                   (dr.condition_value = 'married' AND (v_marital LIKE '%одруж%' OR v_marital = 'married'))
@@ -187,10 +204,10 @@ BEGIN
               OR (
                   v_cand.profile_data->'blanks_sent' IS NOT NULL
                   AND (
-                      (v_cand.profile_data->'blanks_sent'->>dr.document_type)::boolean = true
-                      OR (dr.document_type = 'Заява на контракт' AND (v_cand.profile_data->'blanks_sent'->>'contract_application')::boolean = true)
-                      OR (dr.document_type LIKE 'Згода на обробку даних%' AND (v_cand.profile_data->'blanks_sent'->>'data_consent')::boolean = true)
-                      OR (dr.document_type LIKE 'Розписка%' AND (v_cand.profile_data->'blanks_sent'->>'receipt')::boolean = true)
+                      (v_cand.profile_data->'blanks_sent'->>dr.document_type) IN ('true', 't', '1')
+                      OR (dr.document_type = 'Заява на контракт' AND (v_cand.profile_data->'blanks_sent'->>'contract_application') IN ('true', 't', '1'))
+                      OR (dr.document_type LIKE 'Згода на обробку даних%' AND (v_cand.profile_data->'blanks_sent'->>'data_consent') IN ('true', 't', '1'))
+                      OR (dr.document_type LIKE 'Розписка%' AND (v_cand.profile_data->'blanks_sent'->>'receipt') IN ('true', 't', '1'))
                   )
               )
           )
@@ -199,15 +216,15 @@ BEGIN
               OR dr.condition_field = ''
               OR (
                   (dr.condition_field = 'served_before' AND (
-                      (v_cand.served_before = true AND dr.condition_value = 'true')
-                      OR ((v_cand.served_before = false OR v_cand.served_before IS NULL) AND dr.condition_value = 'false')
+                      (v_served_before = true AND dr.condition_value = 'true')
+                      OR (v_served_before = false AND dr.condition_value = 'false')
                   ))
                   OR (dr.condition_field = 'worked_before' AND (
-                      (v_cand.worked_before = true AND dr.condition_value = 'true')
-                      OR ((v_cand.worked_before = false OR v_cand.worked_before IS NULL) AND dr.condition_value = 'false')
+                      (v_worked_before = true AND dr.condition_value = 'true')
+                      OR (v_worked_before = false AND dr.condition_value = 'false')
                   ))
                   OR (dr.condition_field = 'has_children' AND (
-                      (v_cand.has_children = true AND dr.condition_value = 'true')
+                      (v_has_children = true AND dr.condition_value = 'true')
                   ))
                   OR (dr.condition_field = 'marital_status' AND (
                       (dr.condition_value = 'married' AND (v_marital LIKE '%одруж%' OR v_marital = 'married'))
