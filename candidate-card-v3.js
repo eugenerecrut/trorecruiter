@@ -137,7 +137,7 @@
     const header = document.createElement('section'); header.className = 'cc-v3-header'; header.setAttribute('aria-label','Кандидат');
     const syncTop = () => { header.style.top = (document.querySelector('.header')?.getBoundingClientRect().height || 0)+'px';header.style.setProperty('--v3-sticky-top',header.style.top); };
     syncTop(); window.addEventListener('resize',syncTop);
-    header.innerHTML = '<div class="cc-v3-photo"></div><div class="cc-v3-identity"><h1 data-v3-name></h1><a data-v3-phone></a><span data-v3-stage></span></div><div class="cc-v3-context"><span>Бажана посада</span><b data-v3-position></b><span>Військова частина</span><b data-v3-unit></b></div><div class="cc-v3-owner"></div><div class="cc-v3-indicators"></div><div class="cc-v3-tools"></div>';
+    header.innerHTML = '<div class="cc-v3-photo"></div><div class="cc-v3-identity"><h1 data-v3-name></h1><div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px"><a data-v3-phone></a><button type="button" class="cc-v3-wa-btn" data-v3-wa style="display:none;align-items:center;gap:3px;background:#25D366;color:#fff;border:none;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;line-height:1.4" title="Написати кандидату у WhatsApp">💬 WhatsApp</button></div><span data-v3-stage></span></div><div class="cc-v3-context"><span>Бажана посада</span><b data-v3-position></b><span>Військова частина</span><b data-v3-unit></b></div><div class="cc-v3-owner"></div><div class="cc-v3-indicators"></div><div class="cc-v3-tools"></div>';
     form.prepend(header);
     const overview=form.querySelector('[data-card-photo]');
     const modes=document.createElement('div');modes.className='cc-v3-modes';
@@ -270,6 +270,19 @@
       decorate(); conditional();CRMWorkflow.protectCard?.(form,candidate); select(active);
       header.querySelector('[data-v3-name]').textContent = value('name_nominative') || 'Кандидат';
       const phone = header.querySelector('[data-v3-phone]'); phone.textContent = value('phone') || 'Телефон не вказаний'; phone.href = 'tel:'+value('phone');
+      const waBtn = header.querySelector('[data-v3-wa]');
+      if (waBtn) {
+        const phoneVal = value('phone') || candidate.phone;
+        if (phoneVal) {
+          waBtn.style.display = 'inline-flex';
+          waBtn.onclick = (e) => {
+            e.preventDefault(); e.stopPropagation();
+            window.CRMWhatsApp?.openTemplateModal(candidate, phoneVal, documents, CRMWorkspace?.card?.requirements);
+          };
+        } else {
+          waBtn.style.display = 'none';
+        }
+      }
       header.querySelector('[data-v3-position]').textContent = value('desired_position') || 'Не вказана';
       header.querySelector('[data-v3-unit]').textContent = parse(candidate.profile_data).military_unit || value('military_unit') || candidate.recommender_unit || 'Не вказана';
       header.querySelector('[data-v3-stage]').textContent = value('case_mode') === 'unit' ? 'Оформлює ВЧ' : CRMWorkflow.label(candidate);

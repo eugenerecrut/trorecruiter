@@ -38,7 +38,7 @@
   }
 
   function input(label, name, value, type = 'text', cls = '') {
-    if(name==='phone'||name==='phone_secondary'){value=window.CRMPhone.normalize(value);type='tel';}
+    if(name==='phone'||name==='phone_secondary'){value=window.CRMPhone.normalize(value);type='tel';const waAction=value?` <a href="#" onclick="event.preventDefault();window.CRMWhatsApp?.openTemplateModal(CRMWorkspace?.card?.candidate||{},'${esc(value)}',CRMWorkspace?.card?.documents,CRMWorkspace?.card?.requirements);" style="color:#25D366;font-size:11px;font-weight:600;text-decoration:none;margin-left:6px" title="Написати у WhatsApp">💬 WhatsApp</a>`:'';return `<div class="cc-field ${cls}"><label>${esc(label)}${waAction}</label><input name="${esc(name)}" ${name==='full_name'?'autocomplete="off"':''} type="${type}" value="${esc(value ?? '')}"></div>`;}
     return `<div class="cc-field ${cls}"><label>${esc(label)}</label><input name="${esc(name)}" ${name==='full_name'?'autocomplete="off"':''} type="${type}" value="${esc(value ?? '')}"></div>`;
   }
 
