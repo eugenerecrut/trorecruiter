@@ -226,19 +226,26 @@ function showNewCandidateForm() {
           <div><label>Військова частина</label><input name="military_unit"></div>
           <div><label>Підрозділ / центр</label><input name="desired_unit"></div>
 
-          <div style="grid-column:1/-1"><label>Запланована посада</label><input name="desired_position"></div>
+          <div><label>Запланована посада</label><input name="desired_position"></div>
+          <div><label>Вид оформлення</label><select name="service_type" required><option value="">Оберіть вид оформлення</option><option>За контрактом</option><option>За мобілізацією</option></select></div>
+          <div><label>ІПН / РНОКПП</label><input name="rnokpp"></div>
+          <div><label>Військове звання кандидата</label><input name="military_rank"></div>
+
+
+
+          <details style="grid-column:1/-1;border-top:1px solid #e5eaec;padding-top:14px"><summary style="cursor:pointer;font-weight:800;color:#45525a">Додаткові реквізити РЛ та обліку (ШПК, ВОС, тариф, підписант, ТЦК)</summary><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;margin-top:14px">
 
           <div><label>ШПК</label><input name="shpk" placeholder="наприклад: солдат"></div>
           <div><label>ВОС</label><input name="military_specialty"></div>
 
           <div><label>Тарифний розряд</label><input name="tariff_grade"></div>
-          <div><label>Вид оформлення</label><select name="service_type" required><option value="">Оберіть вид оформлення</option><option>За контрактом</option><option>За мобілізацією</option></select></div>
+
 
           <div><label>Рекомендуючий підрозділ</label><input name="recommender_unit"></div>
           <div><label>Підписант</label><input name="signatory"></div>
 
-          <div><label>ІПН / РНОКПП</label><input name="rnokpp"></div>
-          <div><label>Військове звання кандидата</label><input name="military_rank"></div>
+
+
 
           <div><label>ТЦК</label><input name="tcc"></div>
           <div><label>Статус ВЛК</label><input name="vlk_status" placeholder="не проходив / придатний / уточнення"></div>
@@ -248,7 +255,7 @@ function showNewCandidateForm() {
             <div style="font-size:11px;font-weight:900;color:#6f8b28;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Службова інформація CRM</div>
           </div>
 
-          <div><label>Рекрутер за рекомендаційним листом</label><input name="recruiter_name"></div>
+          <div style="grid-column:1/-1"><label>Рекрутер за рекомендаційним листом</label><input name="recruiter_name"></div></div></details>
 
           <div style="grid-column:1/-1">
             <label>Примітки рекрутера</label>

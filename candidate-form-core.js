@@ -227,7 +227,7 @@
         )}
         ${section('12. Примітки рекрутера','Додаткова інформація щодо роботи зі справою',textarea('Примітки рекрутера','notes',c.notes,'cc-wide'))}
         <section class="cc-section" data-section="13"><div class="cc-section-head"><div><h3>13. Близькі родичі</h3><small>Батько, мати, чоловік/дружина, діти, брати, сестри та інші близькі родичі.</small></div><span class="cc-badge">${relatives.length} запис(ів)</span></div>
-          <div id="ccRelatives">${(relatives.length ? relatives : [{},{}]).map((r,i)=>relativeRow(r,i)).join('')}</div>
+          <div id="ccRelatives">${(relatives.length ? relatives : [{}]).map((r,i)=>relativeRow(r,i)).join('')}</div>
           <button type="button" id="ccAddRelative" class="cc-relative-add">＋ Додати родича</button>
         </section>
         <section class="cc-section" data-section="14"><div class="cc-section-head"><div><h3>14. Документи кандидата</h3><small>Завантажені документи та їхній поточний статус.</small></div><span class="cc-badge">${docs.length} документ(ів)</span></div><div class="cc-docs">${documentRows}</div></section>
@@ -241,7 +241,7 @@
 
     await CRMResponsibility.mountCard(c,content);
     const formForNavigation=content.querySelector('#candidateCardV2');
-    if(!CRMWorkflow.readOnly(c))CRMCandidateName.bind(formForNavigation);
+    if(!CRMWorkflow.readOnly?.(c))CRMCandidateName.bind(formForNavigation);
     const updateConditions=CRMCandidateConditions.bind(formForNavigation);
     const updateEducation=()=>{
       const secondary=formForNavigation.elements.education_level?.value==='середня';
@@ -462,14 +462,14 @@
       return true;
     };
     cardState.save=()=>{
-      if(CRMWorkflow.readOnly(c)){content.querySelector('#ccStatus').textContent='Спочатку поверніть справу з архіву в роботу.';return Promise.resolve(false);}
+      if(CRMWorkflow.readOnly?.(c)){content.querySelector('#ccStatus').textContent='Спочатку поверніть справу з архіву в роботу.';return Promise.resolve(false);}
       if(cardState.saving)return cardState.saving;
       CRMWorkspace.busy=true;const button=formForNavigation.querySelector('[type=submit]');button.disabled=true;
       cardState.saving=saveCard({preventDefault(){},target:formForNavigation}).catch(err=>{content.querySelector('#ccStatus').textContent='Помилка збереження: '+err.message;return false}).finally(()=>{cardState.saving=null;CRMWorkspace.busy=false;button.disabled=false});
       return cardState.saving;
     };
     formForNavigation.addEventListener('submit',event=>{event.preventDefault();cardState.save()});
-    CRMWorkflow.protectCard(formForNavigation,c);
+    CRMWorkflow.protectCard?.(formForNavigation,c);
 
   }
 

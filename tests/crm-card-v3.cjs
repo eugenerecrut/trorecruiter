@@ -43,6 +43,11 @@ events.unshift({action:'documents_update',source_document_id:'wrong',changes:{ph
 assert.equal(v3.provenance(events).get('phone').id,null,'Document metadata is not a candidate field transfer');
 assert(v3.advanced.has('passport_data'));
 assert(v3.advanced.has('work_order_number'));
+for (const field of ['citizenship','children_info','combat_days','military_service_history','blood_data_in_passport','vlk_commission','vlk_next_date','vlk_notes','motivation','has_management_experience','organizational_skills']) assert(v3.advanced.has(field), field);
+assert(read('candidate-card-v3.js').includes("window.CRMFeatureFlags?.compactCaseView !== false && typeof window.CRMCandidateCaseView?.build === 'function'"));
+assert(read('candidate-card-v3.js').includes('documentsButton.hidden=true'));
+assert(!read('candidate-card-v3.js').includes("caseButton.textContent='Особова справа'"));
+assert(read('candidate-card-v3.js').includes("service=tools?.querySelector('[data-service]'),card13=tools?.querySelector('[data-card13]')"));
 const v2 = read('candidate-form-core.js');
 assert(v2.includes("if (!unit && typeof form.__crmEducationRecords === 'function') oldProfile.education_records = form.__crmEducationRecords();"));
 assert(v2.includes("candidateQuery.eq('updated_at',cardState.expectedUpdatedAt)"));

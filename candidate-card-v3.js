@@ -14,7 +14,7 @@
   }
   let opening = false, fieldSequence = 0;
   const tabs = [['documents','ДОДАТИ ДОКУМЕНТИ',[14]],['review','ВИРІШИТИ ПИТАННЯ',[1,2,3,4,5,6,7,8,9,10,11,12,13,16]],['case','СФОРМУВАТИ СПРАВУ',[]]];
-  const advanced = new Set(('name_genitive unzr birth_certificate shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status candidate_source recruiter_name recruitment_notes psychiatric_record_info work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
+  const advanced = new Set(('name_genitive unzr birth_certificate citizenship children_info shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education combat_days military_service_history military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status blood_data_in_passport vlk_commission vlk_next_date vlk_notes candidate_source recruiter_name motivation recruitment_notes psychiatric_record_info has_management_experience organizational_skills work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
   const educationFields = {
     degree:['Рівень освіти','text'], institution:['Заклад освіти','text'], specialty:['Спеціальність','text'], qualification:['Кваліфікація','text'],
     graduation_year:['Рік закінчення','number'], study_start_date:['Початок навчання','date'], study_end_date:['Завершення навчання','date'],
@@ -76,7 +76,7 @@
       : [date(value('work_start_date')) || '…', date(value('work_end_date')) || '…', value('work_employer') || 'Новий період', value('work_position')];
     const summary = details.querySelector(':scope > summary');
     if (summary.textContent !== title.filter(Boolean).join(' · ')) summary.textContent = title.filter(Boolean).join(' · ');
-    advancedControl(details.querySelector('.cc-v3-record-body'));
+    if (kind === 'relative') row.querySelectorAll('[name="birth_place"],[name="citizenship"],[name="workplace"],[name="position"],[name="notes"]').forEach(el => { const f = el.closest('.cc-field'); if (f) f.dataset.v3Advanced = 'true'; }); advancedControl(details.querySelector('.cc-v3-record-body'));
   }
   async function sourceButton(label, doc) {
     const button = hint(label, 'Джерело: '+(doc.document_name || doc.document_type || doc.file_name || 'Документ'), '✦');
@@ -128,7 +128,7 @@
   }
   async function mountV3(form, id) {
     const root = form.closest('.content'); root.classList.add('cc-v3'); form.dataset.cardVersion = 'v3';
-    const compact = window.CRMCandidateCaseView?.enabled() === true;
+    const compact = window.CRMFeatureFlags?.compactCaseView !== false && typeof window.CRMCandidateCaseView?.build === 'function';
     root.classList.toggle('cc-compact-case', compact);
     const cleanup = new MutationObserver(() => {
       if (!form.isConnected) { root.classList.remove('cc-v3','cc-compact-case'); window.removeEventListener('resize',syncTop); cleanup.disconnect(); }
@@ -235,11 +235,11 @@
       });
       form.querySelector('[data-card-photo]').hidden = true;
       activeTabs.set(id,active);manager.hidden=active!=='documents';reviewHost.hidden=active!=='review';manual.hidden=active!=='review';caseHost.hidden=active!=='case';
-      if(active==='review'&&CRMWorkflow.readOnly(candidate)){reviewLoaded=true;reviewHost.textContent='Архівна справа: дані доступні для перегляду. Для перенесення полів або підтвердження документів поверніть справу в роботу.';manual.textContent='Переглянути картку';}
+      if(active==='review'&&CRMWorkflow.readOnly?.(candidate)){reviewLoaded=true;reviewHost.textContent='Архівна справа: дані доступні для перегляду. Для перенесення полів або підтвердження документів поверніть справу в роботу.';manual.textContent='Переглянути картку';}
       if(active==='review'&&!reviewLoaded&&candidate.id){reviewLoaded=true;reviewHost.textContent='Звіряємо документи…';CRMIntake.review(reviewHost,candidate,documents).catch(e=>{reviewHost.textContent='Перевірку не завершено: '+e.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=()=>{reviewLoaded=false;select('review');};reviewHost.append(retry);});}
       if(active==='case'&&!caseLoaded&&candidate.id){caseLoaded=true;CRMWorkflow.mount(candidate,caseHost.parentElement).then(()=>{
-        const tools=caseHost.querySelector('.wf-tools'),full=tools?.querySelector('[data-full-package]');
-        if(full){const actions=document.createElement('div');actions.className='crm-case-primary';full.classList.add('primary');actions.append(full);tools.before(actions);tools.querySelector('summary').textContent='Окремі бланки та додаткові дії';}
+        const tools=caseHost.querySelector('.wf-tools'),full=tools?.querySelector('[data-full-package]'),service=tools?.querySelector('[data-service]'),card13=tools?.querySelector('[data-card13]');
+        if(full){const actions=document.createElement('div');actions.className='crm-case-primary';if(service)actions.append(service);if(card13)actions.append(card13);full.classList.add('primary');actions.append(full);tools.before(actions);tools.querySelector('summary').textContent='Окремі бланки та додаткові дії';}
         if(compact){const planning=caseHost.querySelector('.wf-panel');if(planning){
           // Generators are nested in the legacy stage panel. Move their existing
           // nodes/handlers out before folding stages, otherwise PDF actions disappear.
@@ -267,7 +267,7 @@
     let candidate = {}, documents = [], sources = new Map();
     function refresh() {
       if (!form.isConnected) return;
-      decorate(); conditional();CRMWorkflow.protectCard(form,candidate); select(active);
+      decorate(); conditional();CRMWorkflow.protectCard?.(form,candidate); select(active);
       header.querySelector('[data-v3-name]').textContent = value('name_nominative') || 'Кандидат';
       const phone = header.querySelector('[data-v3-phone]'); phone.textContent = value('phone') || 'Телефон не вказаний'; phone.href = 'tel:'+value('phone');
       header.querySelector('[data-v3-position]').textContent = value('desired_position') || 'Не вказана';
@@ -290,8 +290,8 @@
       if(header.querySelector('.cc-v3-indicators').innerHTML!==indicators)header.querySelector('.cc-v3-indicators').innerHTML=indicators;
 
     }
-    const documentsButton=[...header.querySelectorAll('.quick-actions button')].find(b=>b.textContent.trim()==='Документи');if(documentsButton)documentsButton.onclick=()=>select('documents');
-    const caseButton=document.createElement('button');caseButton.type='button';caseButton.textContent='Особова справа';caseButton.onclick=()=>select('case');header.querySelector('.quick-actions')?.append(caseButton);
+    const documentsButton=[...header.querySelectorAll('.quick-actions button')].find(b=>b.textContent.trim()==='Документи');if(documentsButton){documentsButton.onclick=()=>select('documents');documentsButton.hidden=true;}
+
     header.addEventListener('click',event => { const tab = event.target.closest('[data-indicator]')?.dataset.indicator; if (tab) select(tab==='documents'?'documents':'review'); });
     form.addEventListener('submit',()=>{CRMWorkspace.card?.saving?.then(saved=>{if(saved){managerLoaded=false;refresh();}});});
     form.addEventListener('input',event => {
