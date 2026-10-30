@@ -63,6 +63,9 @@
       return true;
     });
 
+    const standardItems = filteredItems.filter(it => !it.is_template_blank);
+    const templateItems = filteredItems.filter(it => it.is_template_blank);
+
     app.innerHTML = '' +
       '<header class="portal-header">' +
         '<div class="portal-brand">' +
@@ -122,12 +125,24 @@
       '</div>' +
 
       '<div class="card" style="padding:4px 16px">' +
-        (filteredItems.length === 0 ? '' +
+        (standardItems.length === 0 ? '' +
           '<div style="text-align:center;padding:24px 10px;color:#64748b;font-size:13px">' +
             (currentFilter === 'missing' ? '🎉 Усі обов’язкові документи завантажено! Рекрутер перевіряє Вашу справу.' : 'Немає документів у цьому списку.') +
           '</div>' : '') +
-        filteredItems.map(it => renderChecklistItem(it, c.id)).join('') +
+        standardItems.map(it => renderChecklistItem(it, c.id)).join('') +
       '</div>' +
+
+      (templateItems.length > 0 ? '' +
+        '<div class="card" style="padding:14px 16px;margin-top:16px;background:#f0f9ff;border:1px solid #bae6fd">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+            '<span style="font-size:18px">📝</span>' +
+            '<div style="font-size:14px;font-weight:700;color:#0369a1">Бланки для друку та підпису</div>' +
+          '</div>' +
+          '<p style="font-size:12px;color:#0369a1;margin:0 0 12px 0;line-height:1.4">' +
+            'Потрібні за умови, якщо рекрутер надіслав Вам бланки або Ви завантажили шаблони нижче, роздрукували та заповнили власноруч:' +
+          '</p>' +
+          templateItems.map(it => renderChecklistItem(it, c.id)).join('') +
+        '</div>' : '') +
 
       '<details class="card" style="padding:12px 16px;margin-top:14px">' +
         '<summary style="font-size:13px;font-weight:700;color:#0284c7;cursor:pointer">＋ Надіслати додатковий документ</summary>' +
@@ -163,17 +178,20 @@
   function renderChecklistItem(item, candidateId){
     const hasDoc = item.has_document;
     const isVerified = item.status === 'Підтверджено' || item.status === 'verified';
+    const isTemplate = item.is_template_blank;
 
     return '' +
-      '<div class="checklist-item" data-req-id="' + escapeHtml(item.requirement_id) + '">' +
+      '<div class="checklist-item" data-req-id="' + escapeHtml(item.requirement_id) + '" style="' + (isTemplate ? 'background:#fff;border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid #bae6fd;' : '') + '">' +
         '<div class="checklist-item-header">' +
           '<div>' +
             '<div class="doc-title">' + escapeHtml(item.document_type) + '</div>' +
+            (item.template_url ? '<div style="margin:4px 0 2px 0"><a href="' + escapeHtml(item.template_url) + '" target="_blank" download style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#0284c7;font-weight:600;text-decoration:none">📥 Завантажити чистий бланк PDF</a></div>' : '') +
             (item.condition_note ? '<div class="doc-note">' + escapeHtml(item.condition_note) + '</div>' : '') +
           '</div>' +
           '<div>' +
             (isVerified ? '<span class="badge badge-success">✓ Перевірено</span>' :
              hasDoc ? '<span class="badge badge-stage">⏳ На перевірці</span>' :
+             isTemplate && !item.is_required ? '<span class="badge badge-stage" style="background:#e2e8f0;color:#475569">Якщо є шаблони</span>' :
              '<span class="badge badge-warning">Потрібно надати</span>') +
           '</div>' +
         '</div>' +

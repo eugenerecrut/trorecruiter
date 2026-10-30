@@ -26,6 +26,8 @@ assert.ok(portalJs.includes('crm_portal_get_case'), 'candidate-portal.js must ca
 assert.ok(portalJs.includes('crm_portal_submit_document'), 'candidate-portal.js must call crm_portal_submit_document RPC');
 assert.ok(portalJs.includes('candidate-documents'), 'candidate-portal.js must upload to candidate-documents bucket');
 assert.ok(portalJs.includes('badge-service'), 'candidate-portal.js must render service type badge');
+assert.ok(portalJs.includes('is_template_blank'), 'candidate-portal.js must support printable template blanks');
+assert.ok(portalJs.includes('template_url'), 'candidate-portal.js must render clean template PDF download links');
 assert.ok(portalJs.includes('extraDocInput'), 'candidate-portal.js must support voluntary additional document upload');
 console.log('✓ candidate-portal.js syntax, RPC calls and service type filter verified');
 
@@ -54,6 +56,9 @@ assert.ok(migrationSql.includes('crm_portal_get_case'), 'Migration must create c
 assert.ok(migrationSql.includes('crm_portal_submit_document'), 'Migration must create crm_portal_submit_document function');
 assert.ok(migrationSql.includes('v_is_mob'), 'Migration must filter requirements by mobilization vs contract');
 assert.ok(migrationSql.includes('v_is_unit'), 'Migration must filter requirements by case mode (unit vs full)');
+assert.ok(migrationSql.includes('is_template_blank'), 'Migration must flag printable contract template blanks');
+assert.ok(migrationSql.includes('templates_sent'), 'Migration must check templates_sent status');
+assert.ok(migrationSql.includes('Додаток 13'), 'Migration must exclude medical board Dodatok 13 and VLK');
 console.log('✓ Supabase migration file verified');
 
 console.log('\nAll Candidate Portal tests passed successfully!');

@@ -21,6 +21,7 @@ DECLARE
     v_is_mob BOOLEAN;
     v_is_unit BOOLEAN;
     v_marital TEXT;
+    v_templates_sent BOOLEAN;
 BEGIN
     IF p_token IS NULL THEN
         RETURN jsonb_build_object('error', 'Token is required');
@@ -41,19 +42,52 @@ BEGIN
     v_is_mob := (v_service_type ILIKE '%мобілізац%');
     v_is_unit := (COALESCE(v_cand.profile_data->>'case_mode', '') = 'unit');
     v_marital := LOWER(COALESCE(v_cand.marital_status, ''));
+    v_templates_sent := (COALESCE(v_cand.profile_data->>'templates_sent', 'false') = 'true');
 
     SELECT 
         jsonb_agg(to_jsonb(r_item)), 
-        COUNT(*), 
-        COUNT(CASE WHEN r_item.has_document = true THEN 1 END), 
-        COUNT(CASE WHEN r_item.status IN ('Підтверджено', 'verified') THEN 1 END)
+        COUNT(CASE WHEN r_item.is_required = true THEN 1 END), 
+        COUNT(CASE WHEN r_item.is_required = true AND r_item.has_document = true THEN 1 END), 
+        COUNT(CASE WHEN r_item.is_required = true AND r_item.status IN ('Підтверджено', 'verified') THEN 1 END)
     INTO v_reqs, v_total, v_uploaded, v_verified
     FROM (
         SELECT 
             dr.id AS requirement_id,
             dr.document_type,
-            COALESCE(dr.is_required, true) AS is_required,
-            dr.condition_note,
+            CASE 
+                WHEN dr.document_type IN (
+                    'Заява на контракт',
+                    'Згода на обробку даних',
+                    'Згода на обробку даних для психологічного тестування',
+                    'Розписка кандидата на військову службу за контрактом'
+                ) THEN (v_templates_sent = true OR d.id IS NOT NULL)
+                ELSE COALESCE(dr.is_required, true)
+            END AS is_required,
+            CASE 
+                WHEN dr.document_type IN (
+                    'Заява на контракт',
+                    'Згода на обробку даних',
+                    'Згода на обробку даних для психологічного тестування',
+                    'Розписка кандидата на військову службу за контрактом'
+                ) THEN true
+                ELSE false
+            END AS is_template_blank,
+            CASE dr.document_type
+                WHEN 'Заява на контракт' THEN 'templates/contract-application-blank.pdf'
+                WHEN 'Згода на обробку даних' THEN 'templates/consent-processing-blank.pdf'
+                WHEN 'Згода на обробку даних для психологічного тестування' THEN 'templates/consent-collection-processing-blank.pdf'
+                WHEN 'Розписка кандидата на військову службу за контрактом' THEN 'templates/candidate-receipt-blank.pdf'
+                ELSE NULL
+            END AS template_url,
+            CASE 
+                WHEN dr.document_type IN (
+                    'Заява на контракт',
+                    'Згода на обробку даних',
+                    'Згода на обробку даних для психологічного тестування',
+                    'Розписка кандидата на військову службу за контрактом'
+                ) THEN 'Потрібно за наявності надісланих або роздрукованих шаблонів. Роздрукуйте, підпишіть та сфотографуйте.'
+                ELSE dr.condition_note
+            END AS condition_note,
             dr.sort_order,
             CASE WHEN d.id IS NOT NULL THEN true ELSE false END AS has_document,
             d.id AS document_id,
@@ -79,8 +113,14 @@ BEGIN
               'Перелік документів',
               'Титульний аркуш',
               'Наказ про зарахування до ВЧ',
-              'Характеристика'
+              'Характеристика',
+              'Додаток 13 (Картка обстеження та медичного огляду)',
+              'Довідка ВЛК',
+              'Сертифікат психологічного тестування (перша сторінка)',
+              'Картка соціально-психологічного вивчення',
+              'Анкета на контракт'
           )
+          AND dr.document_type !~* 'додаток 13|довідка ВЛК|сертифікат психологічного|картка соціально-психологічного|анкета на контракт'
           AND (
               -- Case mode unit: only recommendation letter
               (v_is_unit AND dr.document_type ILIKE '%рекомендаційн%')
@@ -89,7 +129,7 @@ BEGIN
               (NOT v_is_unit AND (
                   -- MOBILIZATION:
                   (v_is_mob AND (
-                      dr.document_type ~* 'паспорт|ідентифікаційн|Фото |довідка ВЛК|додаток 13|групи крові|місце проживання|довідка з МВС|сертифікат психологічного|диплом|рекомендаційн|довідка з банку'
+                      dr.document_type ~* 'паспорт|ідентифікаційн|Фото |групи крові|місце проживання|довідка з МВС|диплом|рекомендаційн|довідка з банку'
                       OR (dr.document_type ~* 'гінеколог' AND v_cand.sex = 'female')
                       OR (dr.document_type ~* 'трудов' AND COALESCE(v_cand.worked_before, true) = true)
                       OR (dr.document_type ~* 'військов.*квит' AND v_cand.served_before = true)

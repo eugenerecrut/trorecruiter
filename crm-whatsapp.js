@@ -584,6 +584,11 @@
           '<button type="button" class="btn" data-send-portal-wa style="background:#25D366;color:#fff;font-weight:600;font-size:13px;width:100%;padding:9px;border:none;border-radius:6px;cursor:pointer">🚀 Відправити запрошення у WhatsApp (wa.me)</button>' +
         '</div>' +
 
+        '<label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:14px;cursor:pointer;background:#f8fafc;border:1px solid #e2e8f0;padding:8px 10px;border-radius:6px">' +
+          '<input type="checkbox" data-templates-toggle ' + (cand.profile_data?.templates_sent ? 'checked' : '') + '> ' +
+          '<span>Шаблони бланків (Заява, Розписка, Згоди) вислані кандидату для друку</span>' +
+        '</label>' +
+
         '<div style="text-align:right">' +
           '<button type="button" class="btn secondary" data-open-preview style="font-size:12px">🌐 Відкрити кабінет для перевірки →</button>' +
         '</div>' +
@@ -616,6 +621,21 @@
     dialog.querySelector('[data-open-preview]').onclick = () => {
       window.open(portalUrl, '_blank', 'noopener,noreferrer');
     };
+
+    const tgl = dialog.querySelector('[data-templates-toggle]');
+    if (tgl) {
+      tgl.onchange = async () => {
+        const sb = getSupabase();
+        if (!sb || !cand.id) return;
+        cand.profile_data = cand.profile_data || {};
+        cand.profile_data.templates_sent = tgl.checked;
+        try {
+          await sb.from('candidates').update({ profile_data: cand.profile_data }).eq('id', cand.id);
+        } catch(e) {
+          console.warn('Failed to update templates_sent', e);
+        }
+      };
+    }
   }
 
   function escapeHtml(str){
