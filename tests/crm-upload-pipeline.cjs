@@ -2,6 +2,29 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{webcrypto}=require('node:crypto');
 const root=path.join(__dirname,'..'),read=f=>fs.readFileSync(path.join(root,f),'utf8');
 const name='ТЕСТЕНКО Іван Петрович';
+function queueView(rpc){
+ const status={textContent:'Початковий стан'},tracked=[];
+ const c=vm.createContext({activeDocumentsCandidateId:'a',activeDocumentsReadOnly:false,supabaseClient:{rpc},document:{getElementById:id=>id==='docBatchStatus'?status:id==='documentRows'?{dataset:{splavCandidate:'a'}}:null},trackSplavJob:(...args)=>tracked.push(args)});
+ const src=read('documents.js');vm.runInContext(src.slice(src.indexOf('async function resumeSplavJobs('),src.indexOf('function acceptedServerReconciliation(')),c);
+ return {c,status,tracked};
+}
+test('resumed queue separates historical outcomes from current document questions',async()=>{
+ const {c,status,tracked}=queueView(async()=>({data:[{id:'old',state:'needs_review'},{id:'old2',state:'uncertain'},{id:'new',state:'running'}]}));
+ await c.resumeSplavJobs('a');assert.deepEqual(tracked,[['new','a']]);assert.match(status.textContent,/У фоновій черзі: 1/);assert(!status.textContent.includes('Потребують звірки:'));
+});
+test('finished jobs do not become active questions on reopening',async()=>{
+ const {c,status,tracked}=queueView(async()=>({data:[{id:'old',state:'needs_review'}]}));await c.resumeSplavJobs('a');assert.match(status.textContent,/активних фонових завдань немає/);assert.equal(tracked.length,0);
+});
+test('RPC failures and malformed results show unknown queue state without retrying AI',async()=>{
+ for(const reply of [()=>{throw Error('offline')},()=>({error:{message:'denied'}}),()=>({data:null})]){
+  const {c,status,tracked}=queueView(async()=>reply());await c.resumeSplavJobs('a');assert.match(status.textContent,/тимчасово недоступний/);assert(!status.textContent.includes('завдань немає'));assert.equal(tracked.length,0);
+ }
+});
+test('late queue response cannot update a different or newly archived view',async()=>{
+ for(const change of [c=>{c.activeDocumentsCandidateId='b'},c=>{c.activeDocumentsReadOnly=true}]){
+  let resolve;const {c,status,tracked}=queueView(()=>new Promise(r=>resolve=r));const request=c.resumeSplavJobs('a');change(c);resolve({data:[{id:'new',state:'queued'}]});await request;assert.equal(status.textContent,'Початковий стан');assert.equal(tracked.length,0);
+ }
+});
 function setup(options={}){
  const state={candidate:{id:'c',full_name:name,birth_date:'1990-01-01',rnokpp:'1234567890',worked_before:true,served_before:false,profile_data:{service_type:'За мобілізацією'}},docs:[],uploads:[],calls:[],browserPatches:[],automations:0,rpcs:0};
  const responses={
