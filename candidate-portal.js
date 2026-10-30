@@ -215,7 +215,59 @@
         '</div>' : '');
 
     // Right Column / Main content (checklist, blanks, additional docs, tips)
-    const mainHtml = '' +
+    const guideHtml = '' +
+      '<div class="candidate-guide">' +
+        '<div class="candidate-guide-header">' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<span class="candidate-guide-badge">📋 Пам’ятка</span>' +
+            '<span class="candidate-guide-title">Вимоги до фотографій та документів для особової справи</span>' +
+          '</div>' +
+          '<span style="font-size:11px;color:#0284c7;font-weight:700">ЗСУ / ТрО</span>' +
+        '</div>' +
+
+        '<div class="guide-rules-grid">' +
+          '<div class="guide-rule-item">' +
+            '<span class="guide-rule-icon">📐</span>' +
+            '<div class="guide-rule-text">' +
+              '<b>Усі 4 кути документа в кадрі</b>' +
+              '<span>Покладіть документ рівно на однотонну поверхню. Тримайте телефон прямо над аркушем, не обрізайте краї.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="guide-rule-item">' +
+            '<span class="guide-rule-icon">☀️</span>' +
+            '<div class="guide-rule-text">' +
+              '<b>Денне світло БЕЗ спалаху</b>' +
+              '<span>Знімайте при доброму світлі. Спалах створює білі відблиски, через які неможливо розпізнати текст і печатки.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="guide-rule-item">' +
+            '<span class="guide-rule-icon">🔍</span>' +
+            '<div class="guide-rule-text">' +
+              '<b>100% чіткість та різкість</b>' +
+              '<span>Текст, серія, номер, печатки та підписи мають бути абсолютно чіткими без розмиття чи тремтіння камери.</span>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="guide-rule-item">' +
+            '<span class="guide-rule-icon">📑</span>' +
+            '<div class="guide-rule-text">' +
+              '<b>Повний комплект і додатки</b>' +
+              '<span>Паспорт: всі розвороти з відмітками (ID-картка: 2 боки + Витяг). Диплом: обов’язково разом із додатком оцінок.</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="guide-warning-banner">' +
+          '<span style="font-size:18px">⚠️</span>' +
+          '<div>' +
+            '<b>Зверніть увагу:</b> розмиті, темні, обрізані фото або знімки з пальцями в кадрі <b>не приймаються комісією</b> та повертаються на перефотографування.' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const mainHtml = '' + guideHtml +
       '<div class="section-title">' +
         '<div>' +
           '<span style="font-size:16px">Необхідні документи</span>' +
