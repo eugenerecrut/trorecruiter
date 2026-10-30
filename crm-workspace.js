@@ -180,8 +180,16 @@ supabaseClient.auth.onAuthStateChange((event,session)=>{
     // Auth refresh must never replace a candidate, editor or unsaved form.
     if(CRMWorkspace.navigating||CRMWorkspace.busy||CRMWorkspace.card?.form?.isConnected||CRMWorkspace.workflow?.form?.isConnected)return;
     if(!document.querySelector('.content .cards, .content [data-dashboard]'))return;
-    if(typeof updateDashboard!=='function'||typeof getDocumentRequirements!=='function')return;
-    Promise.all([updateDashboard(),CRMWorkspace.loadHome()]).catch(error=>{console.error(error);const content=document.querySelector('.content');if(content?.querySelector('.cards')){const notice=document.createElement('p');notice.className='crm-notice';notice.setAttribute('role','alert');notice.textContent='Не вдалося завантажити огляд: '+error.message;content.prepend(notice)}});
+    const startupError=message=>{
+      const content=document.querySelector('.content');
+      if(!content||!document.querySelector('.content .cards, .content [data-dashboard]'))return;
+      const notice=document.createElement('p');notice.className='crm-notice';notice.setAttribute('role','alert');notice.textContent=message+' Дані ще не отримані; це не означає, що база порожня. ';
+      const retry=document.createElement('button');retry.type='button';retry.textContent='Перезавантажити CRM';retry.onclick=()=>location.reload();notice.append(retry);content.prepend(notice);
+    };
+    if(typeof updateDashboard!=='function'||typeof getDocumentRequirements!=='function'||typeof CRMWorkspace.loadHome!=='function'){
+      startupError('Не вдалося завантажити основні модулі CRM.');return;
+    }
+    Promise.resolve().then(()=>Promise.all([updateDashboard(),CRMWorkspace.loadHome()])).catch(error=>{console.error(error);startupError('Не вдалося завантажити огляд.');});
   },0);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',refresh,{once:true});
   else refresh();
