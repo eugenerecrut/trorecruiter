@@ -124,6 +124,20 @@ test('UI waits for the queued child instead of reporting root completion as the 
  c.trackSplavJob(rootId,'c');await timers.shift()();assert.equal(reloads,0);assert.equal(timers.length,1);assert.match(status.textContent,/триває детальне читання/);
  await timers.shift()();assert.deepEqual(calls,[rootId,childId]);assert.equal(reloads,1);assert.equal(timers.length,0);assert.match(status.textContent,/потрібна звірка/);
 });
+test('completion reload cannot append its result to another or newly archived case',async()=>{
+ for(const change of [c=>{c.activeDocumentsCandidateId='b'},c=>{c.activeDocumentsReadOnly=true}]){
+  const timers=[],status={textContent:'Інша справа'},source=read('documents.js');let release,started;const reloading=new Promise(r=>started=r);
+  const c=vm.createContext({activeDocumentsCandidateId:'a',activeDocumentsReadOnly:false,CRMWorkspace:{busy:false},setTimeout:fn=>timers.push(fn),document:{getElementById:id=>id==='documentRows'?{dataset:{splavCandidate:'a'}}:status},reloadDocumentView:()=>{started();return new Promise(r=>release=r)},supabaseClient:{rpc:async()=>({data:{state:'completed'}})}});
+  vm.runInContext(source.slice(source.indexOf('const splavTrackedJobs='),source.indexOf('async function resumeSplavJobs')),c);
+  c.trackSplavJob('job','a');const turn=timers.shift()();await reloading;change(c);release();await turn;assert.equal(status.textContent,'Інша справа');assert.equal(timers.length,0);
+ }
+});
+test('tracking limit explains stopped UI polling without scheduling or invoking AI',()=>{
+ for(const active of [true,false]){
+  let calls=0;const status={textContent:'Поточний стан'},c=vm.createContext({activeDocumentsCandidateId:active?'a':'b',activeDocumentsReadOnly:false,setTimeout:()=>calls++,document:{getElementById:()=>status}}),source=read('documents.js');
+  vm.runInContext(source.slice(source.indexOf('const splavTrackedJobs='),source.indexOf('async function resumeSplavJobs')),c);c.trackSplavJob('job','a',180);assert.equal(calls,0);assert.equal(vm.runInContext('splavTrackedJobs.size',c),0);if(active)assert.match(status.textContent,/автооновлення екрана призупинено/);else assert.equal(status.textContent,'Поточний стан');
+ }
+});
 test('late queue response cannot update a different candidate or start tracking its child',async()=>{
  const source=read('documents.js'),timers=[],status={textContent:'unchanged'};let resolve,reloads=0;const pending=new Promise(r=>resolve=r);
  const c=vm.createContext({activeDocumentsCandidateId:'a',activeDocumentsReadOnly:false,CRMWorkspace:{busy:false},setTimeout:fn=>timers.push(fn),reloadDocumentView:async()=>reloads++,document:{getElementById:()=>status},supabaseClient:{rpc:async()=>pending}});

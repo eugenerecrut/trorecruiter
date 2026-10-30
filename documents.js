@@ -302,7 +302,14 @@ async function enqueueSplavDocument(documentId,candidateId,{autopilot=false}={})
 }
 function trackSplavJob(jobId,candidateId,attempt=0){
  if(typeof setTimeout!=='function')return;
- if(attempt>=180){splavTrackedJobs.delete(jobId);return;}
+ if(attempt>=180){
+  splavTrackedJobs.delete(jobId);
+  if(activeDocumentsCandidateId===candidateId&&!activeDocumentsReadOnly){
+   const status=document.getElementById('docUploadStatus')||document.getElementById('docBatchStatus');
+   if(status)status.textContent+='\nСПЛАВ: автооновлення екрана призупинено після тривалого очікування. Відкрийте справу повторно, щоб перевірити стан на сервері. Повторно запускати AI не потрібно.';
+  }
+  return;
+ }
  if(attempt===0&&splavTrackedJobs.has(jobId))return;
  splavTrackedJobs.add(jobId);
  setTimeout(async()=>{
@@ -319,6 +326,7 @@ function trackSplavJob(jobId,candidateId,attempt=0){
    if(!result.error&&result.data&&['completed','needs_review','uncertain','superseded'].includes(result.data.state)&&!CRMWorkspace.busy){
     const visible=document.getElementById('documentRows');
     if(visible?.dataset.splavCandidate===candidateId)await reloadDocumentView(candidateId);
+    if(activeDocumentsCandidateId!==candidateId||activeDocumentsReadOnly){splavTrackedJobs.delete(jobId);return;}
     const status=document.getElementById('docUploadStatus');
     if(status)status.textContent+='\nСПЛАВ: '+(result.data.state==='completed'?'розпізнавання та узгодження завершено.':result.data.state==='superseded'?'документ уже змінено; показано чинні дані.':'потрібна звірка. Збережені значення залишено без змін.');
     splavTrackedJobs.delete(jobId);return;
