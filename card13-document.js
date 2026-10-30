@@ -88,7 +88,7 @@
       d.querySelector('form').onsubmit = async ev => {
         ev.preventDefault(); if (!photoReady) return;
         const button = d.querySelector('[type=submit]'), status = d.querySelector('[data-status]');
-        button.disabled = true; status.textContent = 'Формуємо PDF…';
+        if (button) button.disabled = true; if (status) status.textContent = 'Формуємо PDF…';
         try {
           const values = Object.fromEntries(new FormData(ev.target));
           if (!values.category || !values.name_identifier) throw Error('Уточніть категорію та ПІБ.');
@@ -97,8 +97,8 @@
           if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(new Blob([result], { type:'application/pdf' }));
           const frame = d.querySelector('iframe'); frame.src = url; frame.hidden = false;
           const a = d.querySelector('[data-download]'); a.href = url; a.download = 'Картка_13.pdf'; a.hidden = false;
-          status.textContent = 'PDF готовий. Для двох окремих аркушів оберіть односторонній друк, 1 сторінка на аркуші.';
-        } catch (error) { status.textContent = error.message; }
+          if (status) status.textContent = 'PDF готовий. Для двох окремих аркушів оберіть односторонній друк, 1 сторінка на аркуші.';
+        } catch (error) { if (status) status.textContent = error.message; }
         finally { button.disabled = false; }
       };
     } catch (error) { alert('Не вдалося відкрити Картку 13: ' + error.message); }

@@ -29,7 +29,9 @@ assert.ok(portalJs.includes('badge-service'), 'candidate-portal.js must render s
 assert.ok(portalJs.includes('is_template_blank'), 'candidate-portal.js must support printable template blanks');
 assert.ok(portalJs.includes('template_url'), 'candidate-portal.js must render clean template PDF download links');
 assert.ok(portalJs.includes('extraDocInput'), 'candidate-portal.js must support voluntary additional document upload');
-console.log('✓ candidate-portal.js syntax, RPC calls and service type filter verified');
+assert.ok(portalJs.includes('unit_phone'), 'candidate-portal.js must display military unit representative phone');
+assert.ok(portalJs.includes('center_recruiter_phone'), 'candidate-portal.js must display 4th Center recruiter phone');
+console.log('✓ candidate-portal.js syntax, RPC calls, service type filter and recruiter phones verified');
 
 // 3. Verify WhatsApp Portal link generation in crm-whatsapp.js
 const waContext = { window: {}, URL, encodeURIComponent };

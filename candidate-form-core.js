@@ -220,7 +220,7 @@
           select('Група крові та резус зазначені в паспорті','blood_data_in_passport',boolValue(profile.blood_data_in_passport),[['','Не визначено'],['true','Так'],['false','Ні']])+input('Номер довідки ВЛК','vlk_certificate_number',profile.vlk_certificate_number)+input('Дата проходження ВЛК','vlk_date',profile.vlk_date,'date')+input('Комісія / установа ВЛК','vlk_commission',profile.vlk_commission,'text','cc-wide')+input('Висновок','vlk_conclusion',profile.vlk_conclusion)+input('Категорія придатності','vlk_category',profile.vlk_category)+input('Дата наступного огляду','vlk_next_date',profile.vlk_next_date,'date')+input('Статус ВЛК','vlk_status',c.vlk_status)+textarea('Примітки ВЛК','vlk_notes',profile.vlk_notes,'cc-wide')
         )}
         ${section('10. Рекрутингові дані','Внутрішня робота рекрутера',
-          input('Джерело кандидата','candidate_source',profile.candidate_source)+input('Хто прийняв кандидата','recruiter_name',profile.recruiter_name)+input('Напрям','desired_unit',c.direction)+input('Бажана посада','desired_position',c.desired_position)+textarea('Мотивація кандидата','motivation',profile.motivation)+textarea('Додаткова інформація','recruitment_notes',profile.recruitment_notes,'cc-wide')+input('Відомості про судимість','criminal_record_info',profile.criminal_record_info)+input('Відомості про психіатричний облік','psychiatric_record_info',profile.psychiatric_record_info)+select('Займав / займала керівну посаду','has_management_experience',boolValue(profile.has_management_experience),[['','Не визначено'],['true','Так'],['false','Ні']])+textarea('Організаторські здібності','organizational_skills',profile.organizational_skills,'cc-wide')
+          input('Джерело кандидата','candidate_source',profile.candidate_source)+input('Хто прийняв кандидата (представник ВЧ з РЛ)','recruiter_name',profile.recruiter_name)+input('Телефон представника ВЧ (з РЛ)','unit_phone',profile.unit_phone || profile.recruiter_phone || '')+input('Напрям','desired_unit',c.direction)+input('Бажана посада','desired_position',c.desired_position)+textarea('Мотивація кандидата','motivation',profile.motivation)+textarea('Додаткова інформація','recruitment_notes',profile.recruitment_notes,'cc-wide')+input('Відомості про судимість','criminal_record_info',profile.criminal_record_info)+input('Відомості про психіатричний облік','psychiatric_record_info',profile.psychiatric_record_info)+select('Займав / займала керівну посаду','has_management_experience',boolValue(profile.has_management_experience),[['','Не визначено'],['true','Так'],['false','Ні']])+textarea('Організаторські здібності','organizational_skills',profile.organizational_skills,'cc-wide')
         )}
         ${section('11. Контракт / оформлення','Етап оформлення',
           select('Вид контракту','contract_type',profile.contract_type || '',[['','Не визначено'],['мотиваційний','Мотиваційний контракт'],['звичайний','Звичайний контракт'],['інший','Інший']])+input('Дата підписання','contract_date',profile.contract_date,'date')+input('Строк, місяців','contract_term_months',profile.contract_term_months,'number')+select('Статус оформлення','contract_status',profile.contract_status || '',[['','Не визначено'],['підготовка','Підготовка'],['подано','Подано'],['погодження','На погодженні'],['підписано','Підписано'],['відмова','Відмова']])+textarea('Примітки щодо контракту','contract_notes',profile.contract_notes,'cc-wide')
@@ -354,21 +354,22 @@
       if(CRMWorkflow.wf(c).archived_at||CRMWorkflow.wf(c).archive_lock){const ccStatus=content?.querySelector('#ccStatus')||document.getElementById('ccStatus');if(ccStatus)ccStatus.textContent='Справа в архіві або заблокована. Спочатку поверніть її в роботу.';return false;}
       const form = event.target;
       if(!form.reportValidity())return false;
-      const status = document.getElementById('ccStatus');
+      const status = content?.querySelector('#ccStatus') || document.getElementById('ccStatus') || {};
+      const setStatus = msg => { status.textContent = msg; };
       const fd = new FormData(form);
       const workflowDraft=CRMWorkspace.workflow?.dirty?new FormData(CRMWorkspace.workflow.form):null;
       const unit=fd.get('case_mode')==='unit';
-      if(!['За контрактом','За мобілізацією'].includes(fd.get('service_type'))){status.textContent='Оберіть вид оформлення: за контрактом або за мобілізацією.';return;}
+      if(!['За контрактом','За мобілізацією'].includes(fd.get('service_type'))){setStatus('Оберіть вид оформлення: за контрактом або за мобілізацією.');return;}
       const nom = nameNominative(fd.get('name_nominative'));
-      if (!nom) { status.textContent = 'Потрібно вказати ПІБ у називному відмінку.'; return; }
-      status.textContent = 'Зберігаємо дані...';
+      if (!nom) { setStatus('Потрібно вказати ПІБ у називному відмінку.'); return; }
+      setStatus('Зберігаємо дані...');
       const parseBool = v => v === '' ? null : v === 'true';
       const oldProfile = { ...profile, workflow: CRMWorkflow.wf(c) };
       const profileKeys = [
         'citizenship','unzr','birth_certificate','phone_secondary','messenger','registered_address','region','locality','street','house','apartment','postal_code',
         'identity_document_type','passport_series','passport_number','passport_issuer','passport_issue_date','passport_expiry_date','education_level','education_institution','education_specialty','education_qualification','education_year','education_specialty_code','education_start_date','education_end_date','education_diploma_series','education_diploma_number','education_diploma_issue_date','education_supplement_number','education_supplement_issue_date',
         'shpk','tariff_grade','signatory','service_type','military_specialty','military_unit','military_position','service_start_date','service_end_date','combat_days','military_document_number','military_registration_date','military_registration_category','military_registration_status','military_document_type','military_registry_number','military_document_expiry_date','military_data_updated_at','military_deferment_type','military_deferment_until','military_registration_removal_reason','military_training_status',
-        'blood_data_in_passport','vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','has_management_experience','candidate_source','recruiter_name','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
+        'blood_data_in_passport','vlk_certificate_number','vlk_date','vlk_conclusion','vlk_category','vlk_next_date','vlk_commission','vlk_notes','criminal_record_info','psychiatric_record_info','organizational_skills','has_management_experience','candidate_source','recruiter_name','unit_phone','motivation','recruitment_notes','contract_type','contract_date','contract_term_months','contract_status','contract_notes','name_genitive','has_children','worked_before','served_before','sex','marital_status','children_info'
       ];
       profileKeys.forEach(k => { if ((!unit||k==='military_unit'||k==='service_type')&&fd.has(k)) oldProfile[k] = fd.get(k); });
 
@@ -390,7 +391,7 @@
         if(Object.keys(sources).length)saved.field_sources=sources;
         return saved;
       }).filter(r => r.full_name||r.relationship);
-      if(!unit&&savedRelatives.some(r=>r.deceased!==false&&r.death_date&&!CRMBiography.partial(r.death_date))){status.textContent='Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.';return false;}
+      if(!unit&&savedRelatives.some(r=>r.deceased!==false&&r.death_date&&!CRMBiography.partial(r.death_date))){setStatus('Дата смерті: YYYY, YYYY-MM або YYYY-MM-DD.');return false;}
       if(!unit)oldProfile.relatives = savedRelatives;
       CRMNameHistory.save(fd,c,oldProfile);
       const existingWork=Array.isArray(oldProfile.work_records)?oldProfile.work_records:[];
@@ -399,7 +400,7 @@
         const base=row.dataset.workIndex!==undefined?existingWork[Number(row.dataset.workIndex)]||{}:{};
         return {...base,kind:get('kind'),employer:get('employer'),employer_code:get('employer_code'),position:get('position'),start_date:get('start_date'),end_date:get('end_date'),termination_reason:get('termination_reason'),order_number:get('order_number'),order_date:get('order_date'),end_order_number:get('end_order_number'),end_order_date:get('end_order_date')};
       });
-      if(!unit&&workRows.some(r=>!r.employer||!r.start_date||(r.end_date&&r.end_date<r.start_date))){status.textContent='У періодах діяльності вкажіть організацію й початок; завершення не може бути раніше початку.';return false;}
+      if(!unit&&workRows.some(r=>!r.employer||!r.start_date||(r.end_date&&r.end_date<r.start_date))){setStatus('У періодах діяльності вкажіть організацію й початок; завершення не може бути раніше початку.');return false;}
       if(!unit&&form.querySelector('[data-work-rows]'))oldProfile.work_records=workRows;
       const workSummary=CRMWork.summary(workRows);
       const workSummaryEl = form.querySelector('[data-work-summary]'); if (workSummaryEl) workSummaryEl.textContent='Підтверджені завершені періоди роботи: '+workSummary.days+' календарних днів. Неповних періодів: '+workSummary.incomplete+'. Це не розрахунок страхового стажу.';
@@ -438,7 +439,7 @@
       let candidateQuery=supabaseClient.from('candidates').update(candidatePatch).eq('id',candidateId);
       candidateQuery=cardState.expectedUpdatedAt?candidateQuery.eq('updated_at',cardState.expectedUpdatedAt):candidateQuery.is('updated_at',null);
       const {data:savedCandidate,error:ce}=await candidateQuery.select('*').maybeSingle();
-      if(ce){status.textContent='Помилка збереження кандидата: '+ce.message;return false;}
+      if(ce){setStatus('Помилка збереження кандидата: '+ce.message);return false;}
       if(!savedCandidate){status.textContent='Картку вже змінив інший працівник. Ваші зміни залишені у формі. Оновіть справу після звірки.';return false;}
       Object.assign(c,savedCandidate);profile=savedCandidate.profile_data||candidatePatch.profile_data;cardState.expectedUpdatedAt=savedCandidate.updated_at;
 
@@ -455,8 +456,8 @@
         updated_at: new Date().toISOString()
       };
       const { data: savedPersonalFile, error: pe } = unit?{data:null,error:null}:await savePersonalFileCAS(supabaseClient, candidateId, pfPatch, personalFileExists ? pf : null);
-      if (pe) { status.textContent = 'Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message; return false; }
-      status.textContent = 'Готово. Дані кандидата оновлено.';
+      if (pe) { setStatus('Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message); return false; }
+      setStatus('Готово. Дані кандидата оновлено.');
       if(!unit){Object.assign(pf,savedPersonalFile);personalFileExists=true;}profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;
       if(workflowDraft){const progress=CRMWorkspace.workflow.form;for(const input of progress.elements){if(!input.name)continue;if(input.type==='checkbox')input.checked=workflowDraft.has(input.name);else input.value=workflowDraft.get(input.name)||'';}progress.dispatchEvent(new Event('change',{bubbles:true}));}
       return true;

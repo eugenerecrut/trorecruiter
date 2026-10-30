@@ -1,5 +1,18 @@
 # Поточна робота — СПЛАВ
 
+## Завершено — номери телефонів рекрутерів у Кабінеті кандидата та фікс textContent
+
+30.10.2026: 100% (4/4), залишок 0% цього пакета. CRM 1.2.152/build 638. Додано прямі номери телефонів та зв'язок для обох сторін у кабінеті кандидата, усунено помилку «Cannot set properties of null (setting 'textContent')»:
+1. **Номери телефонів у Кабінеті кандидата**:
+   - Військова частина: виведено прямий телефон представника ВЧ з РЛ (`unit_phone`) із швидким клікабельним дзвінком (`tel:`).
+   - Рекрутер 4 Центру: виведено телефон закріпленого рекрутера з CRM (`center_recruiter_phone`) із кнопками виклику 📞 та чату WhatsApp 💬.
+   - Оновлено функцію `crm_portal_get_case` у Supabase та додано колонку `phone` у `crm_staff`.
+   - У картці кандидата CRM (candidate-form-core.js) додано поле введення «Телефон представника ВЧ (з РЛ)» у розділ 10.
+2. **Виправлено помилку `Cannot set properties of null (setting 'textContent')`**:
+   - У `candidate-form-core.js` впроваджено безпечний об'єкт статусу `status = content?.querySelector('#ccStatus') || document.getElementById('ccStatus') || {}`.
+   - Захищено всі присвоєння `textContent` у `documents.js`, `crm-workflow.js`, `crm-workspace.js`, `document-ai-sync.js`, `card13-document.js` та `military-zone-review.js`.
+   - Оновлено версії всіх скриптів у `index.html` та `candidate.html` до `?v=1.2.152` для скидання кешу браузера.
+
 ## Завершено — виразна та інформативна пам'ятка-інструкція в Кабінеті кандидата
 
 30.10.2026: 100% (4/4), залишок 0% цього пакета. CRM 1.2.151/build 637. Створено привабливий, акцентний блок вимог до документів у Кабінеті кандидата (`candidate.html` / `candidate-portal.js`):

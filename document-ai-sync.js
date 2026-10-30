@@ -337,8 +337,8 @@
     dialog.querySelector('[data-apply]').disabled=!report.selections.length;
     dialog.querySelector('[data-apply]').onclick=async()=>{
       dialog.dataset.busy='1';dialog.querySelectorAll('button').forEach(b=>b.disabled=true);
-      try{await apply(client,report);dialog.querySelector('[role=status]').textContent='Поля збережено. Конфлікти записано у попередження документа.';}
-      catch(err){dialog.querySelector('[role=status]').textContent='Зміни не застосовано: '+err.message+' Оновіть перегляд.';}
+      try{await apply(client,report);const rs1 = dialog.querySelector('[role=status]'); if (rs1) rs1.textContent='Поля збережено. Конфлікти записано у попередження документа.';}
+      catch(err){const rs2 = dialog.querySelector('[role=status]'); if (rs2) rs2.textContent='Зміни не застосовано: '+err.message+' Оновіть перегляд.';}
       finally{delete dialog.dataset.busy;dialog.querySelector('[data-close]').disabled=false;}
     };
     return report;
