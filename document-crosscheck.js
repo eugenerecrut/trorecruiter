@@ -10,7 +10,7 @@ function birthplaceTokens(value){
  const labels={'обл':'область','області':'область','р-н':'район','району':'район','село':'с','місто':'м'};
  const tokens=norm(value).replace(/[,.;:]/gu,' ').split(/\s+/u).filter(Boolean).map(t=>Object.hasOwn(labels,t)?labels[t]:t);
  for(let i=1;i<tokens.length;i++)if(['область','район'].includes(tokens[i])){
-  tokens[i-1]=tokens[i-1].replace(/ської$/u,'ська').replace(/ського$/u,'ський');
+  tokens[i-1]=tokens[i-1].replace(/(сь|ць|зь)кої$/u,'$1ка').replace(/(сь|ць|зь)кого$/u,'$1кий');
  }
  return tokens.sort();
 }

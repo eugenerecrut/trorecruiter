@@ -72,6 +72,9 @@ test('explicit birthplace labels and administrative case endings allow review wi
  assert.deepEqual(entry.sources.map(s=>s.value),inputs);assert.equal(JSON.stringify([docs,candidate]),before);
  const run=(a,b)=>x.compare([place('a',a),place('b',b)],c).find(e=>e.key==='birth_place').status;
  assert.equal(run('м. Київ, Україна','місто Київ, Україна'),'needs_review');
+ assert.equal(run('Україна, Запорізька область, Вільнянський район, місто Вільнянськ','м. Вільнянськ Запорізької області'),'needs_review');
+ assert.equal(run('Україна, Полтавська область, Кременчуцький район, м. Кременчук','м. Кременчук, Кременчуцького району, Полтавської області'),'needs_review');
+ assert.equal(run('Україна, Запорізька область, Запорізький район, м. Запоріжжя','м. Запоріжжя, Запорізького району, Запорізької області'),'needs_review');
  for(const other of [
   'село Миколаївка, Київська область, Петропавлівський район',
   'село Миколаївка, Дніпропетровська область, Синельниківський район',

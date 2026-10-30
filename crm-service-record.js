@@ -23,6 +23,7 @@ function model(c,pf={}){
  const printable=rows=>(Array.isArray(rows)?rows:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out);
  const printableObject=value=>{const record=obj(value);return record&&typeof record==='object'&&!Array.isArray(record)&&!record.requires_review&&!record.crossed_out?record:{};};
  const normalize=v=>String(v||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
+ const cleanPosition=v=>{const parts=String(v??'').split(/\s*,\s*/).filter(Boolean);return parts.filter((part,idx)=>idx===0||normalize(part)!==normalize(parts[idx-1])).join(', ');};
  const rankMatches=printable(p.military_rank_records).filter(r=>(r.confirmed_by_user===true||r.accepted_by_ai===true)&&!r.requires_review&&normalize(r.rank)===normalize(c.military_rank)&&normalize(c.military_rank));
  const rankOrders=[...new Map(rankMatches.map(r=>[JSON.stringify([r.order_issuer||'',r.order_number||'',r.order_date||'']),r])).values()];
  const rank=rankOrders.length===1?rankOrders[0]:null;
@@ -36,7 +37,7 @@ function model(c,pf={}){
  if(worked===false)add('not_worked','Відомості про роботу',2,[85.4,126.2,571.1,152.5],c.sex==='female'?'Не працювала':'Не працював','Трудова діяльність',true);
  else employment.forEach((r,i)=>{
   const cols=[85.4,156.9,228.4,493.1,571.1],top=126.2+i*(573.8/Math.max(employment.length,1)),bottom=126.2+(i+1)*(573.8/Math.max(employment.length,1));
-  [stacked(r.start_date),stacked(r.end_date),[r.employer,r.locality||r.location].filter(Boolean).join(', '),r.position].forEach((v,j)=>add('work_'+i+'_'+j,['Початок','Завершення','Підприємство та місцевість','Посада'][j]+' · '+(i+1),2,[cols[j],top,cols[j+1],bottom],v,'Трудова діяльність'));
+  [stacked(r.start_date),stacked(r.end_date),[r.employer,r.locality||r.location].filter(Boolean).join(', '),cleanPosition(r.position)].forEach((v,j)=>add('work_'+i+'_'+j,['Початок','Завершення','Підприємство та місцевість','Посада'][j]+' · '+(i+1),2,[cols[j],top,cols[j+1],bottom],v,'Трудова діяльність'));
  });
  const oath=printableObject(p.military_oath),discharge=printableObject(p.military_discharge);
  add('callup','Призов / початок служби',3,[222.6,39,510.3,70.7],served===false?'':p.service_start_date?words(p.service_start_date)+(p.previous_service_type?' '+p.previous_service_type:''):'','Військова служба');
@@ -70,7 +71,8 @@ function model(c,pf={}){
  add('elected_bodies','Виборчі органи',8,[85.4,498,566.9,573.3],p.elected_bodies||'','Додаткові відомості');
  add('captivity','Полон, заручники, інтернування',8,[85.4,625,566.9,770.3],p.captivity||'','Додаткові відомості');
  const relativeName=v=>window.CRMCandidateName?.proper(v)??v;
- const relatives=printable(p.relatives),parents=['Батько','Мати'].flatMap(role=>relatives.filter(r=>normalize(r.relationship||r.relation)===normalize(role)).map(r=>role+': '+relativeName(r.full_name)+(r.address?'. '+r.address:'')));
+ const relatives=printable(p.relatives),parentRoles=['Батько','Мати'],ambiguousParents=parentRoles.filter(role=>new Set(relatives.filter(r=>normalize(r.relationship||r.relation)===normalize(role)).map(r=>normalize(r.full_name)).filter(Boolean)).size>1);
+ const parents=parentRoles.flatMap(role=>{const rows=relatives.filter(r=>normalize(r.relationship||r.relation)===normalize(role));return new Set(rows.map(r=>normalize(r.full_name)).filter(Boolean)).size>1?[]:rows.slice(0,1).map(r=>role+': '+relativeName(r.full_name)+(r.address?'. '+r.address:''));});
  add('parents','Батько та мати',9,[241.4,28.6,517.4,91.1],parents.join('\n'),'Родина');
  const spouses=relatives.filter(r=>['дружина','чоловік'].includes(normalize(r.relationship||r.relation))),m=printableObject(p.marriage_record),children=bool(c.has_children??p.has_children)===false?[]:relatives.filter(r=>/^(?:Син|Донька|Дочка|Дитина)$/iu.test(r.relationship||r.relation||''));
  const family=[c.marital_status||p.marital_status,...spouses.map(r=>[r.full_name,r.birth_date&&r.birth_date.slice(0,4)+' р.н.'].filter(Boolean).join(', ')),m.certificate_number&&'Свідоцтво '+m.certificate_number+(m.registration_date?' від '+date(m.registration_date):''),m.registration_authority,...children.map(r=>[r.full_name,date(r.birth_date)].filter(Boolean).join(', ')),p.dependants].filter(Boolean).join('\n');
@@ -83,7 +85,7 @@ function model(c,pf={}){
  const printWarnings=[];
  for(const f of fields)if(typeof p.service_record_print?.[f.key]==='string'){const override=p.service_record_print[f.key];if(override!==f.value)printWarnings.push('Друкована правка «'+f.label+'» відрізняється від картки. Звірте перед формуванням.');f.source_value=f.value;f.print_override=true;f.value=override;}
  for(const field of fields)if(field.key.startsWith('work_')){field.center=true;field.verticalCenter=true;}
- return {fields,worked,served,name:c.name_nominative||c.full_name,issues:[...printWarnings,...(rankOrders.length>1?['Для чинного звання є кілька різних наказів. Звірте поле «Наказ про присвоєння звання» за документами.']:[])]};
+ return {fields,worked,served,name:c.name_nominative||c.full_name,issues:[...printWarnings,...(rankOrders.length>1?['Для чинного звання є кілька різних наказів. Звірте поле «Наказ про присвоєння звання» за документами.']:[]),...(ambiguousParents.length?['Для батьків є кілька різних записів ('+ambiguousParents.map(r=>r.toLocaleLowerCase('uk-UA')).join(', ')+'). Звірте поле «Батько та мати» за документами.']:[])]};
 }
 function wrapText(value,width,measure){
  const out=[];

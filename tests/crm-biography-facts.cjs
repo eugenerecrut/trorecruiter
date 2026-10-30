@@ -38,6 +38,12 @@ test('month and year remain partial; invalid, held and unsourced claims do not p
 });
 test('overlapping confirmed employer record wins and repeated projection is idempotent',()=>{
  const manual={kind:'employment',employer:claim().employer,start_date:'2024-03-05',end_date:'2025-11-04',position:'Погоджена посада',confirmed_by_user:true},out=facts.profile({work_records:[manual],bio_work_claims:[claim()]});assert.deepEqual(out.work_records,[manual]);assert.deepEqual(facts.profile(out),out);
+ const pfu={kind:'employment',employer:'ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ "ВАЙН-ТАЙМ"',start_date:'2024-11-21',end_date:'2025-05-31',position:'Продавець-консультант'};
+ const bio={employer:'«ВАЙН-ТАЙМ»',start_date:{value:'2024-04',precision:'month'},end_date:{value:'2025-05',precision:'month'},position:'продавець-консультант',source_document_id:'bio'};
+ assert.deepEqual(facts.profile({work_records:[pfu],bio_work_claims:[bio]}).work_records,[pfu]);
+ const pfuPrat={kind:'employment',employer:'ПРИВАТНЕ АКЦІОНЕРНЕ ТОВАРИСТВО "КИЇВСТАР"',start_date:'2024-12-02',end_date:'2025-06-27',position:'Молодший фахівець, Фахівець'};
+ const bioPrat={employer:'ПрАТ «Київстар»',start_date:{value:'2024-11',precision:'month'},end_date:{value:'2025-06',precision:'month'},position:'менеджер',source_document_id:'bio'};
+ assert.deepEqual(facts.profile({work_records:[pfuPrat],bio_work_claims:[bioPrat]}).work_records,[pfuPrat]);
 });
 test('diploma is retained; autobiography education fills absence only',()=>{
  const bio={institution:'Школа',degree:'середня',end_date:{value:'2019-05'},source_document_id:'bio'};

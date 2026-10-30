@@ -25,3 +25,12 @@ audited.profile_data.military_rank_records.push({rank:'Солдат',confirmed_b
 console.log('Audit repairs: case-insensitive relatives, matching rank orders, ambiguous order held, reviewed education only: PASS');
 
 assert.equal(model(audited,{}).issues.length,1,'Ambiguity is reported to the recruiter');
+
+audited.worked_before=true;audited.profile_data.work_records=[{kind:'employment',employer:'ТОВ "ВАЙН-ТАЙМ"',position:'Продавець-консультант, Продавець-консультант',start_date:'2024-11-21',end_date:'2025-05-31'},{kind:'employment',employer:'ПрАТ "Київстар"',position:'Молодший фахівець, Фахівець',start_date:'2023-09-11',end_date:'2024-01-05'}];
+state=model(audited,{});
+assert.equal(value(state,'work_0_3'),'Продавець-консультант');
+assert.equal(value(state,'work_1_3'),'Молодший фахівець, Фахівець');
+audited.profile_data.relatives.push({relationship:'Мати',full_name:'ІНША Олена'});
+state=model(audited,{});
+assert.equal(value(state,'parents'),'Батько: ТЕСТЕНКО Петро','Ambiguous mother is held while unambiguous father prints');
+assert.equal(state.issues.length,2,'Ambiguous parent role is reported alongside ambiguous rank order');

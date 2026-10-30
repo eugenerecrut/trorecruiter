@@ -2,6 +2,7 @@
 (function(root){
 'use strict';
 const list=v=>Array.isArray(v)?v:[],norm=v=>String(v||'').normalize('NFKC').toLocaleLowerCase('uk-UA').replace(/[«»"']/g,'').replace(/\s+/g,' ').trim();
+const employerKey=v=>norm(v).replace(/^(?:товариство з обмеженою відповідальністю|тов|приватне акціонерне товариство|публічне акціонерне товариство|акціонерне товариство|прат|пат|ат|приватне підприємство|державне підприємство|комунальне підприємство|фоп|фізична особа[\s-]*підприємець)\s+/u,'').trim()||norm(v);
 function partial(v){
  const value=typeof v==='object'&&v?v.value:v;if(typeof value!=='string')return null;
  if(/^\d{4}$/.test(value))return {value,min:value+'-01-01',max:value+'-12-31'};
@@ -14,7 +15,7 @@ function profile(input={}){
  const usable=r=>r&&!r.requires_review&&!r.crossed_out&&r.source_document_id;
  for(const r of list(p.bio_work_claims)){
   const start=partial(r?.start_date),end=partial(r?.end_date);if(!usable(r)||!r.employer||!start||(r.end_date&&!end)||(end&&end.max<start.min))continue;
-  const existing=work.some(old=>old&&old.kind==='employment'&&norm(old.employer)===norm(r.employer)&&partial(old.start_date)?.min<=(end?.max||'9999')&&(!partial(old.end_date)||partial(old.end_date).max>=start.min));
+  const existing=work.some(old=>old&&old.kind==='employment'&&employerKey(old.employer)===employerKey(r.employer)&&partial(old.start_date)?.min<=(end?.max||'9999')&&(!partial(old.end_date)||partial(old.end_date).max>=start.min));
   if(existing)continue;
   work.push({...r,kind:'employment',start_date:start.value,end_date:end?.value||null,source_type:'autobiography',date_precision:{start:start.value.length===4?'year':start.value.length===7?'month':'day',end:!end?null:end.value.length===4?'year':end.value.length===7?'month':'day'}});
  }
