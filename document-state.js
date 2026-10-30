@@ -19,6 +19,7 @@
     if(d.verification_status==='Підтверджено')return 'Перевірений';
     if(d.verification_status==='Потребує перевірки')return 'Є розбіжності';
     if(aiEnabled&&d.processing_status==='AI помилка')return 'Помилка розпізнавання';
+    if(aiEnabled&&d.processing_status==='AI очікує')return 'Очікує опрацювання СПЛАВ';
     if(aiEnabled&&d.processing_status==='AI обробка')return 'Розпізнавання…';
     if(aiEnabled&&d.ai_extracted&&Object.keys(d.ai_extracted).length)return 'Розпізнано — перевірте дані';
     return 'Завантажено — перевірте документ';
