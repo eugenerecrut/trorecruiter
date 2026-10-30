@@ -199,10 +199,12 @@
         (hasDoc ? '' +
           '<div class="uploaded-info">' +
             '<span>📄 ' + escapeHtml(item.file_name || 'Файл збережено') + '</span>' +
-            '<label class="upload-btn-label" style="background:transparent;color:#0284c7;border:1px solid #cbd5e1;padding:3px 8px;font-size:11px;margin:0 0 0 8px">' +
-              '<span class="upload-btn-text">Замінити</span>' +
-              '<input type="file" accept="image/*,application/pdf" capture="environment" data-upload-input data-type="' + escapeHtml(item.document_type) + '" data-req="' + escapeHtml(item.requirement_id) + '">' +
-            '</label>' +
+            (!isVerified ? '' +
+              '<label class="upload-btn-label" style="background:transparent;color:#0284c7;border:1px solid #cbd5e1;padding:3px 8px;font-size:11px;margin:0 0 0 8px">' +
+                '<span class="upload-btn-text">Замінити</span>' +
+                '<input type="file" accept="image/*,application/pdf" capture="environment" data-upload-input data-type="' + escapeHtml(item.document_type) + '" data-req="' + escapeHtml(item.requirement_id) + '">' +
+              '</label>' :
+              '<span style="font-size:11px;color:#16a34a;margin-left:8px;font-weight:600">🔒 Підтверджено</span>') +
           '</div>' :
           '<label class="upload-btn-label">' +
             '<span class="upload-btn-text">📷 Сфотографувати / Завантажити</span>' +
