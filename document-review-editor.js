@@ -7,7 +7,7 @@
     const e=structuredClone(d.ai_extracted||{}),esc=docEscape;
     const fields=[['Тип документа','document_type',d.ai_document_type||d.document_type],['ПІБ власника','full_name',e.full_name],['Дата народження','birth_date',e.birth_date,'date'],['Серія документа','document_series',e.document_series],['Номер документа','document_number',e.document_number],['Дата видачі','document_date',e.document_date,'date'],['Орган видачі','document_issuer',e.document_issuer]];
     const kind=CRMDocumentPolicy.kind(d);
-    if(/свідоцтво про народження/iu.test(String(d.document_type))){
+    if(!CRMDocumentPolicy.isChildBirth(d)&&/(?:свідоцтво|акт(?:овий|ового) запис|витяг).{0,35}народження/iu.test(String(d.ai_document_type||d.document_type))){
       fields.push(['Місце народження','birth_place',e.birth_place]);
       (e.relatives||[]).forEach((r,i)=>fields.push(['Родич '+(i+1)+' · ПІБ ('+(r.relationship||'не вказано')+')','relatives.'+i+'.full_name',r.full_name]));
     }

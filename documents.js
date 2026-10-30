@@ -356,7 +356,7 @@ function normName(s){return String(s||'').toLowerCase().replace(/[^a-zа-яії�
 function findCandidateByName(name,candidates){const n=normName(name);if(!n)return null;return candidates.find(c=>{const cn=normName(c.full_name);return cn===n||cn.includes(n)||n.includes(cn)})||null}
 function identityDocumentTypeValue(documentType=''){
 const type=String(documentType||'').toLocaleLowerCase('uk-UA').replace(/\s+/g,' ').trim();
-if(type.includes('свідоцтво про народження'))return'birth';
+if(/(?:свідоцтво|акт(?:овий|ового) запис|витяг).{0,35}народження/u.test(type)&&!/дитин|дітей/u.test(type))return'birth';
 if(/\bid\b|id[\s-]*карт/.test(type))return'ID';
 if(type.includes('паспорт'))return'passport';
 return null;

@@ -9,7 +9,7 @@ function family(type,hint=''){
  if(/військов(?:ий|ого) квит|посвідчення офіцера|приписн|військовий облік/iu.test(value))return 'military';
  if(/автобіограф/iu.test(value))return 'autobiography';
  if(/трудов/iu.test(value))return 'employment';
- if(/свідоцтв.*(?:народжен|шлюб|імен|прізвищ)/iu.test(value))return 'civil_record';
+ if(/(?:свідоцтв|акт(?:овий|ового) запис|витяг).{0,35}(?:народжен|шлюб|імен|прізвищ)/iu.test(value))return 'civil_record';
  if(/диплом|атестат|документи про освіту/iu.test(value))return 'education';
  if(/довідка.*влк/iu.test(value))return 'vlk';
  if(/паспорт/iu.test(value)&&(!/ID|айді/iu.test(hint)||/книжеч/iu.test(hint)))return 'passport';

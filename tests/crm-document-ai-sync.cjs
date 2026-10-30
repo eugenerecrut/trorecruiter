@@ -331,3 +331,17 @@ test('equivalent flat and nested sex markers do not create a format conflict',()
  const c=candidate(),d=document({...personal(),sex:'Ч',personal:{...personal(),sex:'male'}},'Копія паспорта'),before=JSON.stringify(d),r=sync.plan(d,c);
  assert.equal(r.rows.find(x=>x.key==='sex').action,'fill');assert.equal(r.selections.find(x=>x.key==='sex').incoming,'male');assert.equal(JSON.stringify(d),before);
 });
+
+
+test('Diia birth record extract maps candidate birth place, certificate number and parents while child birth extracts remain blocked',()=>{
+ for(const type of ['Актовий запис про народження','Витяг про народження']){
+  const c=candidate(),d=document({...personal(),birth_place:'м. Дніпропетровськ',document_number:'1-КИ 284083',relatives:[{relation:'батько',full_name:'Тестенко Петро Іванович',birth_date:'1970-04-02'},{relation:'мати',full_name:'Тестенко Олена Борисівна',birth_date:'1969-05-05'}]},type);
+  const p=sync.plan(d,c);
+  assert.equal(p.supported,true,type);
+  assert.equal(p.selections.find(s=>s.key==='birth_place')?.incoming,'м. Дніпропетровськ');
+  assert.equal(p.selections.find(s=>s.key==='birth_certificate')?.incoming,'1-КИ 284083');
+  assert.equal(p.selections.find(s=>s.key==='relatives')?.incoming.length,2);
+ }
+ const child=document({...personal(),birth_place:'м. Дніпро',document_number:'1-КИ 999999'},'Актовий запис про народження дитини');
+ assert.equal(sync.plan(child,candidate()).supported,false);
+});

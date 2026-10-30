@@ -120,7 +120,7 @@
     const childBirth=root.CRMDocumentPolicy?.isChildBirth?.(document)??[document.document_type,document.ai_document_type,document.requirement_type].some(t=>/народження.*(?:дитин|дітей)/iu.test(String(t||'')));
     if(childBirth)return {document,candidate,rows,selections,supported:false,blockedReason:'Це свідоцтво дитини: особисті дані кандидата з нього не переносяться.'};
     const type=String(policy?.type||document.ai_document_type||document.document_type||'');
-    const recommendation=/рекомендац/i.test(type),birth=/свідоцтво про народження/i.test(type)&&!/дітей/i.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
+    const recommendation=/рекомендац/i.test(type),birth=/(?:свідоцтво|акт(?:овий|ового) запис|витяг).{0,35}народження/iu.test(type)&&!/дитин|дітей/iu.test(type),marriage=/свідоцтво про шлюб|акт(?:овий|ового) запис.{0,25}шлюб|витяг.{0,35}шлюб/i.test(type),tax=/ідентифікаційн(?:ого|ий) код|картка платника податків|рнокпп|податков(?:а|ий) картк/i.test(type);
     const identity=/паспорт|ID[\s-]*карт/iu.test(type),military=!!root.CRMMilitary?.isDocument(type),work=!!root.CRMWork?.isDocument(type),vlk=!!root.CRMVLK?.isDocument(type);
     const registry=/Резерв\s*\+|приписн|військовий облік/iu.test(type)||/^(?:копія\s+)?посвідчення\s+про\s+приписку\s+до\s+призовної\s+дільниці$/iu.test(String(type||'').trim());
     const militaryFacts=!!root.CRMMilitaryFacts?.isDocument(type);
