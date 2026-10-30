@@ -95,8 +95,8 @@
     const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Kyiv',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const policy=relativePolicy(get('relationship'),get('deceased'),get('birth_date'),today);
     const state=row.querySelector('[name="deceased"]');
-    state.querySelector('[value="false"]').textContent=policy.alive;
-    state.querySelector('[value="true"]').textContent=policy.dead;
+    const optAlive = state?.querySelector('[value="false"]'); if (optAlive) optAlive.textContent = policy.alive;
+    const optDead = state?.querySelector('[value="true"]'); if (optDead) optDead.textContent = policy.dead;
     for(const key of ['death_date','address','phone','workplace','position']){
       const field=row.querySelector('[name="'+key+'"]')?.closest('.cc-field');
       if(field)field.hidden=policy.hidden.includes(key);
@@ -315,7 +315,7 @@
     const childrenInput=formForNavigation.querySelector('[name=children_count]');childrenInput.min='0';childrenInput.step='1';
     const cardState={candidateId,form:formForNavigation,dirty:false,save:null,saving:null,expectedUpdatedAt:c.updated_at,candidate:c,documents:visibleDocs,requirements,personalFile:pf};
     CRMWorkspace.card=cardState;
-    formForNavigation.addEventListener('input',()=>{cardState.dirty=true;content.querySelector('#ccStatus').textContent='Є незбережені зміни'});
+    formForNavigation.addEventListener('input',()=>{cardState.dirty=true;const ccStatus=content?.querySelector('#ccStatus')||document.getElementById('ccStatus');if(ccStatus)ccStatus.textContent='Є незбережені зміни'});
     formForNavigation.addEventListener('change',()=>{cardState.dirty=true});
 
     const relBox = content.querySelector('#ccRelatives');
@@ -351,7 +351,7 @@
     });
     const saveCard=async function (event) {
       event.preventDefault();
-      if(CRMWorkflow.wf(c).archived_at||CRMWorkflow.wf(c).archive_lock){content.querySelector('#ccStatus').textContent='Справа в архіві або заблокована. Спочатку поверніть її в роботу.';return false;}
+      if(CRMWorkflow.wf(c).archived_at||CRMWorkflow.wf(c).archive_lock){const ccStatus=content?.querySelector('#ccStatus')||document.getElementById('ccStatus');if(ccStatus)ccStatus.textContent='Справа в архіві або заблокована. Спочатку поверніть її в роботу.';return false;}
       const form = event.target;
       if(!form.reportValidity())return false;
       const status = document.getElementById('ccStatus');
@@ -402,7 +402,7 @@
       if(!unit&&workRows.some(r=>!r.employer||!r.start_date||(r.end_date&&r.end_date<r.start_date))){status.textContent='У періодах діяльності вкажіть організацію й початок; завершення не може бути раніше початку.';return false;}
       if(!unit&&form.querySelector('[data-work-rows]'))oldProfile.work_records=workRows;
       const workSummary=CRMWork.summary(workRows);
-      form.querySelector('[data-work-summary]').textContent='Підтверджені завершені періоди роботи: '+workSummary.days+' календарних днів. Неповних періодів: '+workSummary.incomplete+'. Це не розрахунок страхового стажу.';
+      const workSummaryEl = form.querySelector('[data-work-summary]'); if (workSummaryEl) workSummaryEl.textContent='Підтверджені завершені періоди роботи: '+workSummary.days+' календарних днів. Неповних періодів: '+workSummary.incomplete+'. Це не розрахунок страхового стажу.';
       if(!unit)oldProfile.phone_secondary=window.CRMPhone.normalize(oldProfile.phone_secondary);
 
       const militaryUnit = String(fd.get('military_unit') || '').trim();
@@ -462,10 +462,10 @@
       return true;
     };
     cardState.save=()=>{
-      if(CRMWorkflow.readOnly?.(c)){content.querySelector('#ccStatus').textContent='Спочатку поверніть справу з архіву в роботу.';return Promise.resolve(false);}
+      if(CRMWorkflow.readOnly?.(c)){const ccStatus=content?.querySelector('#ccStatus')||document.getElementById('ccStatus');if(ccStatus)ccStatus.textContent='Спочатку поверніть справу з архіву в роботу.';return Promise.resolve(false);}
       if(cardState.saving)return cardState.saving;
       CRMWorkspace.busy=true;const button=formForNavigation.querySelector('[type=submit]');button.disabled=true;
-      cardState.saving=saveCard({preventDefault(){},target:formForNavigation}).catch(err=>{content.querySelector('#ccStatus').textContent='Помилка збереження: '+err.message;return false}).finally(()=>{cardState.saving=null;CRMWorkspace.busy=false;button.disabled=false});
+      cardState.saving=saveCard({preventDefault(){},target:formForNavigation}).catch(err=>{const ccStatus=content?.querySelector('#ccStatus')||document.getElementById('ccStatus');if(ccStatus)ccStatus.textContent='Помилка збереження: '+err.message;return false}).finally(()=>{cardState.saving=null;CRMWorkspace.busy=false;button.disabled=false});
       return cardState.saving;
     };
     formForNavigation.addEventListener('submit',event=>{event.preventDefault();cardState.save()});

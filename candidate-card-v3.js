@@ -75,7 +75,7 @@
       ? [value('relationship') || 'Родич', value('full_name') || 'Новий запис', date(value('birth_date'))]
       : [date(value('work_start_date')) || '…', date(value('work_end_date')) || '…', value('work_employer') || 'Новий період', value('work_position')];
     const summary = details.querySelector(':scope > summary');
-    if (summary.textContent !== title.filter(Boolean).join(' · ')) summary.textContent = title.filter(Boolean).join(' · ');
+    if (summary && summary.textContent !== title.filter(Boolean).join(' · ')) summary.textContent = title.filter(Boolean).join(' · ');
     if (kind === 'relative') row.querySelectorAll('[name="birth_place"],[name="citizenship"],[name="workplace"],[name="position"],[name="notes"]').forEach(el => { const f = el.closest('.cc-field'); if (f) f.dataset.v3Advanced = 'true'; }); advancedControl(details.querySelector('.cc-v3-record-body'));
   }
   async function sourceButton(label, doc) {
@@ -239,7 +239,7 @@
       if(active==='review'&&!reviewLoaded&&candidate.id){reviewLoaded=true;reviewHost.textContent='Звіряємо документи…';CRMIntake.review(reviewHost,candidate,documents).catch(e=>{reviewHost.textContent='Перевірку не завершено: '+e.message;const retry=document.createElement('button');retry.type='button';retry.textContent='Повторити';retry.onclick=()=>{reviewLoaded=false;select('review');};reviewHost.append(retry);});}
       if(active==='case'&&!caseLoaded&&candidate.id){caseLoaded=true;CRMWorkflow.mount(candidate,caseHost.parentElement).then(()=>{
         const tools=caseHost.querySelector('.wf-tools'),full=tools?.querySelector('[data-full-package]'),service=tools?.querySelector('[data-service]'),card13=tools?.querySelector('[data-card13]');
-        if(full){const actions=document.createElement('div');actions.className='crm-case-primary';if(service)actions.append(service);if(card13)actions.append(card13);full.classList.add('primary');actions.append(full);tools.before(actions);tools.querySelector('summary').textContent='Окремі бланки та додаткові дії';}
+        if(full){const actions=document.createElement('div');actions.className='crm-case-primary';if(service)actions.append(service);if(card13)actions.append(card13);full.classList.add('primary');actions.append(full);tools.before(actions);const sumEl=tools.querySelector('summary');if(sumEl)sumEl.textContent='Окремі бланки та додаткові дії';}
         if(compact){const planning=caseHost.querySelector('.wf-panel');if(planning){
           // Generators are nested in the legacy stage panel. Move their existing
           // nodes/handlers out before folding stages, otherwise PDF actions disappear.
@@ -268,8 +268,8 @@
     function refresh() {
       if (!form.isConnected) return;
       decorate(); conditional();CRMWorkflow.protectCard?.(form,candidate); select(active);
-      header.querySelector('[data-v3-name]').textContent = value('name_nominative') || 'Кандидат';
-      const phone = header.querySelector('[data-v3-phone]'); phone.textContent = value('phone') || 'Телефон не вказаний'; phone.href = 'tel:'+value('phone');
+      const nameEl = header.querySelector('[data-v3-name]'); if (nameEl) nameEl.textContent = value('name_nominative') || 'Кандидат';
+      const phone = header.querySelector('[data-v3-phone]'); if (phone) { phone.textContent = value('phone') || 'Телефон не вказаний'; phone.href = 'tel:'+value('phone'); }
       const waBtn = header.querySelector('[data-v3-wa]');
       if (waBtn) {
         const phoneVal = value('phone') || candidate.phone;
@@ -295,9 +295,9 @@
           portalBtn.style.display = 'none';
         }
       }
-      header.querySelector('[data-v3-position]').textContent = value('desired_position') || 'Не вказана';
-      header.querySelector('[data-v3-unit]').textContent = parse(candidate.profile_data).military_unit || value('military_unit') || candidate.recommender_unit || 'Не вказана';
-      header.querySelector('[data-v3-stage]').textContent = value('case_mode') === 'unit' ? 'Оформлює ВЧ' : CRMWorkflow.label(candidate);
+      const posEl = header.querySelector('[data-v3-position]'); if (posEl) posEl.textContent = value('desired_position') || 'Не вказана';
+      const unitEl = header.querySelector('[data-v3-unit]'); if (unitEl) unitEl.textContent = parse(candidate.profile_data).military_unit || value('military_unit') || candidate.recommender_unit || 'Не вказана';
+      const stageEl = header.querySelector('[data-v3-stage]'); if (stageEl) stageEl.textContent = value('case_mode') === 'unit' ? 'Оформлює ВЧ' : CRMWorkflow.label(candidate);
       const totals=window.CRMDocumentState?.summary(candidate,CRMWorkspace.card.requirements||[],documents);
       const packet=window.CRMDocumentState?.packageState(candidate,documents);
       if(compact&&candidate.id){
@@ -307,12 +307,12 @@
           const markup='<strong>'+esc(text)+'</strong><p>Перевірено документів: '+view.completeness.verified+' / '+view.completeness.total+' · Питань у документах: '+view.issues.length+' · У роботі AI: '+view.completeness.processing+'</p><small>Паперові позначки: '+view.completeness.paper+'. Електронних копій: '+view.completeness.copies+'. Готовність верстки перевіряється під час формування PDF.</small>'+readinessDetails(view,caseSummary.querySelector('[data-case-data-review]')?.open===true)+(view.nextAction.kind==='wait'?'':'<p><button type="button" data-case-next="'+view.nextAction.kind+'">'+esc(view.nextAction.kind==='case'?'Перейти до формування':'Переглянути питання і дані')+'</button></p>');
           if(caseSummary.innerHTML!==markup)caseSummary.innerHTML=markup;
           caseSummary.onclick=event=>{const jump=event.target.closest('[data-case-jump]')?.dataset.caseJump;if(jump){const map={'identity.full_name':'[name="name_nominative"]','identity.birth_date':'[name="birth_date"]','identity.birth_place':'[name="birth_place"]','education.civil':'[data-education-field="institution"],[name="education_institution"]','employment.absence':'[name="worked_before"]','employment.periods':'[data-work-row] input,[name="worked_before"]','service.absence':'[name="served_before"]','service.periods':'[name="military_unit"],[name="served_before"]','family.marital_status':'[name="marital_status"]','family.parents':'[data-relative-row] [name="relationship"]','family.spouse':'[data-relative-row] [name="relationship"]'};manualEditing=true;manual.setAttribute('aria-expanded','true');select('review');const target=form.querySelector(map[jump]||'[name]');if(target){target.closest('details.cc-v3-record')?.setAttribute('open','');target.closest('[data-section]')?.classList.add('cc-v3-expanded');target.scrollIntoView?.({block:'center'});target.focus?.();}return;}const button=event.target.closest('[data-case-next]');if(button)select(button.dataset.caseNext==='case'?'case':'review',true);};
-          for(const [tab,label] of [['documents','Додати документи'],['review','Перевірити питання'+(view.issues.length?' · '+view.issues.length:'')],['case','Сформувати справу']])nav.querySelector('[data-v3-tab="'+tab+'"]').textContent=label;
+          for(const [tab,label] of [['documents','Додати документи'],['review','Перевірити питання'+(view.issues.length?' · '+view.issues.length:'')],['case','Сформувати справу']]) { const tabBtn = nav.querySelector('[data-v3-tab="'+tab+'"]'); if (tabBtn) tabBtn.textContent=label; }
         }catch(error){caseSummary.textContent='Не вдалося перевірити стан справи: '+error.message;}
       }
       const indicators=totals?
         '<button type="button" data-indicator="documents">Комплект · '+totals.verified+'/'+totals.total+(totals.unknown?' · уточнити '+totals.unknown:'')+'</button><button type="button" data-indicator="documents">Копії · '+totals.copies+'</button><button type="button" data-indicator="documents">AI · '+('помилок '+totals.errors+(totals.processing?' · обробляється '+totals.processing:''))+'</button><button type="button" data-indicator="documents">PDF · '+(packet.ready?'готовий':'бракує '+packet.missing.length)+'</button><button type="button" data-indicator="military">ВЛК · '+esc(value('vlk_conclusion')?'висновок є':'немає висновку')+'</button>':'';
-      if(header.querySelector('.cc-v3-indicators').innerHTML!==indicators)header.querySelector('.cc-v3-indicators').innerHTML=indicators;
+      const indEl = header.querySelector('.cc-v3-indicators'); if(indEl && indEl.innerHTML!==indicators) indEl.innerHTML=indicators;
 
     }
     const documentsButton=[...header.querySelectorAll('.quick-actions button')].find(b=>b.textContent.trim()==='Документи');if(documentsButton){documentsButton.onclick=()=>select('documents');documentsButton.hidden=true;}
