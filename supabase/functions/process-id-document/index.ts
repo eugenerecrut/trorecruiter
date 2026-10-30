@@ -27,7 +27,7 @@ async function processDocument(req:Request){
     if(!body?.job_id||!body?.lease_token)return json({error:'Фоновий виконавець може працювати лише через чергу СПЛАВ',code:'PROCESSOR_QUEUE_REQUIRED'},403);
     const access=await sb.rpc('crm_splav_validate',{job_id:body.job_id,token:body.lease_token});
     if(access.error||access.data?.document_id!==body.document_id)return json({error:'Доручення СПЛАВ недійсне або прострочене',code:'INVALID_SPLAV_LEASE'},403);
-    queue={job_id:body.job_id,lease_token:body.lease_token,stage:access.data.stage};
+    queue={job_id:body.job_id,lease_token:body.lease_token,stage:access.data.stage,zone_authorization:access.data.zone_authorization};
   }else if(body?.job_id||body?.lease_token)return json({error:'Виконання черги доступне лише СПЛАВ'},403);
   let id:string|undefined,snapshot:any=null,providerReceipt:string|null=null;
   const stale=()=>json({error:'Стан документа вже змінено під час розпізнавання. Оновіть картку, щоб побачити чинні дані.',code:'STALE_DOCUMENT'},409);
@@ -46,7 +46,8 @@ async function processDocument(req:Request){
     try{
       reconciliation=await reconcileDocument(sb,id,revision,queue);
       if(queue&&['completed','needs_review'].includes(reconciliation.state)){
-        const rollout=continuationRolloutPolicy({jobId:queue.job_id,documentId:id,globalEnabled:Deno.env.get('SPLAV_ROOT_ZONE_CONTINUATION_V1')==='true'});
+        const rollout=continuationRolloutPolicy({jobId:queue.job_id,documentId:id,authorization:queue.zone_authorization,globalEnabled:Deno.env.get('SPLAV_ROOT_ZONE_CONTINUATION_V1')==='true'});
+        if(rollout.reason&&queue.zone_authorization&&reconciliation.state==='needs_review')reconciliation={...reconciliation,continuation:{state:'needs_review',reason:rollout.reason}};
         reconciliation=await finishQueueWithContinuation({client:sb,queue,outcome:reconciliation,
           enabled:rollout.enabled,metadata:async()=>{
             const fresh=await sb.from('documents').select('*').eq('id',id).single();if(fresh.error||!fresh.data)throw Error('Continuation source unavailable');

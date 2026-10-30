@@ -14,7 +14,8 @@ export async function continuationPDFMetadata({client,document,backend,getLibrar
  let pdf;try{pdf=await (await getLibrary()).loadDocument(bytes);return {digest,pages:pdf.getPageCount()};}finally{pdf?.destroy();}
 }
 
-// Only a server environment flag can opt in. The existing finish remains the default.
+// Only the server's bounded rollout/delegation decision can opt in.
+// The existing finish remains the default for legacy jobs without delegation.
 // SQL atomically commits parent completion and child creation; transport failures
 // retain ocr_saved so the existing lease recovery resumes without another root OCR.
 export async function finishQueueWithContinuation({client,queue,outcome,enabled,metadata}) {

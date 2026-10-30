@@ -31,6 +31,7 @@ function setup(options={}){
   if(patch){state.browserPatches.push(structuredClone(patch));Object.assign(data,structuredClone(patch));}return {data:structuredClone(data)};
   }return q;
  },async rpc(fn,{document_id,selections}){
+  if(fn==='crm_splav_enqueue_autopilot'){state.autopilotRequests=(state.autopilotRequests||0)+1;return options.queue?{data:{id:'job-'+document_id,state:'queued',zone_authorized:true}}:{error:{code:'PGRST202',message:'Function not available'}};}
   if(fn==='crm_splav_enqueue')return options.queue?{data:{id:'job-'+document_id,state:'queued'}}:{error:{code:'55000',message:'SPLAV_QUEUE_DISABLED'}};
   const doc=state.docs.find(d=>d.id===document_id);assert(doc);assert.equal(fn,'crm_apply_document_fields');
   for(const s of selections){assert.deepEqual(JSON.parse(JSON.stringify(s.expected_ai)),doc.ai_extracted);if(['sync_guard','sync_conflict'].includes(s.target))continue;const dest=s.target==='candidate'?state.candidate:state.candidate.profile_data;assert.deepEqual(JSON.parse(JSON.stringify(dest[s.key]??null)),JSON.parse(JSON.stringify(s.expected_current)));}
@@ -38,7 +39,7 @@ function setup(options={}){
   state.rpcs++;return {};
  }};
  const elements={'#docFileInput':{files:[]},'#docUploadStatus':{textContent:''},'#closeDocModal':{},'#docUploadButton':{}};
- const modal={dataset:{candidateId:'c'},querySelector:s=>elements[s],querySelectorAll:()=>[]};
+ const modal={dataset:{candidateId:'c',...(options.autopilot?{autopilot:'true'}:{})},querySelector:s=>elements[s],querySelectorAll:()=>[]};
  const c=vm.createContext({console,structuredClone,crypto:webcrypto,TextEncoder,URL,supabaseClient:client,CRMWorkspace:{busy:false},CRMUploadPDF:{isJPEG:()=>false,prepare:async f=>f},DOC_MAX_SIZE:20e6,DOC_BUCKET:'test',AI_DOC_FUNCTION:'test-ai',document:{getElementById:id=>id==='documentModal'?modal:null},getCurrentUser:async()=>({id:'u'}),getCandidates:async()=>[structuredClone(state.candidate)],getDocumentRequirements:async()=>requirements,alert:m=>{throw Error(m)}});c.window=c;
  for(const f of ['supabase/functions/_shared/document-data-policy.js','education-document.js','work-document.js','document-ai-sync.js','candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(read(f),c);
  const automate=c.CRMDocumentSync.automate;c.CRMDocumentSync.automate=async(...args)=>{state.automations++;return automate(...args)};
@@ -80,6 +81,30 @@ test('server reconciliation failure stays visible without a silent second applic
 test('manual retry also consumes the source-bound server outcome without duplicate sync',async()=>{const {c,state,upload}=setup({serverSync:true});await upload(['birth.pdf']);state.automations=0;const alerts=[];c.alert=m=>alerts.push(m);c.activeDocumentsCandidateId='c';c.reloadDocumentView=async()=>{};c.reviewDocumentData=async()=>{};const src=read('documents.js');vm.runInContext(src.slice(src.indexOf('async function retryDocumentAI('),src.indexOf('async function openDocument(')),c);await c.retryDocumentAI('d1');assert.equal(state.automations,1);assert(alerts.some(m=>m.includes('СПЛАВ завершив')));assert.equal(state.candidate.profile_data.relatives.length,1);});
 
 test('enabled background queue accepts uploaded files without waiting for OCR or invoking it in the browser',async()=>{const {state,upload}=setup({queue:true});const message=await upload(['birth.pdf','diploma.pdf']);assert.equal(state.docs.length,2);assert.equal(state.calls.length,0);assert.equal(state.automations,0);assert.equal(state.browserPatches.length,0);assert.match(message,/фонової черги/);assert.match(message,/вкладку можна закрити/);});
+
+test('explicit upload delegation queues the complete bounded pipeline without browser AI',async()=>{
+ const {c,state,upload}=setup({queue:true,autopilot:true});const message=await upload(['birth.pdf','diploma.pdf']);
+ assert.equal(state.autopilotRequests,2);assert.equal(state.docs.length,2);assert.equal(state.calls.length,0);assert.equal(state.automations,0);assert.equal(state.browserPatches.length,0);assert.match(message,/детальне читання та звірку/);
+ assert.equal(c.document.getElementById('documentModal').querySelector('#docUploadButton').textContent,'Передано СПЛАВ');
+});
+test('missing autopilot server leaves the original saved and never silently falls back to paid browser processing',async()=>{
+ const {state,upload}=setup({autopilot:true});const message=await upload(['birth.pdf']);
+ assert.equal(state.docs.length,1);assert.equal(state.autopilotRequests,1);assert.equal(state.calls.length,0);assert.equal(state.automations,0);assert.match(message,/Сервер ще не оновлено/);assert.match(message,/не запускалося/);
+});
+test('UI waits for the queued child instead of reporting root completion as the final result',async()=>{
+ const source=read('documents.js'),timers=[],calls=[],status={textContent:''},rootId='11111111-1111-4111-8111-111111111111',childId='22222222-2222-4222-8222-222222222222';let reloads=0;
+ const c=vm.createContext({activeDocumentsCandidateId:'c',activeDocumentsReadOnly:false,CRMWorkspace:{busy:false},setTimeout:fn=>timers.push(fn),reloadDocumentView:async()=>reloads++,document:{getElementById:id=>id==='documentRows'?{dataset:{splavCandidate:'c'}}:status},supabaseClient:{rpc:async(name,{job_id})=>{calls.push(job_id);return {data:job_id===rootId?{state:'needs_review',result:{continuation:{state:'queued',job_id:childId}}}:{state:'needs_review',result:{status:'complete_with_gaps'}}};}}});
+ vm.runInContext(source.slice(source.indexOf('const splavTrackedJobs='),source.indexOf('async function resumeSplavJobs')),c);
+ c.trackSplavJob(rootId,'c');await timers.shift()();assert.equal(reloads,0);assert.equal(timers.length,1);assert.match(status.textContent,/триває детальне читання/);
+ await timers.shift()();assert.deepEqual(calls,[rootId,childId]);assert.equal(reloads,1);assert.equal(timers.length,0);assert.match(status.textContent,/потрібна звірка/);
+});
+test('late queue response cannot update a different candidate or start tracking its child',async()=>{
+ const source=read('documents.js'),timers=[],status={textContent:'unchanged'};let resolve,reloads=0;const pending=new Promise(r=>resolve=r);
+ const c=vm.createContext({activeDocumentsCandidateId:'a',activeDocumentsReadOnly:false,CRMWorkspace:{busy:false},setTimeout:fn=>timers.push(fn),reloadDocumentView:async()=>reloads++,document:{getElementById:()=>status},supabaseClient:{rpc:async()=>pending}});
+ vm.runInContext(source.slice(source.indexOf('const splavTrackedJobs='),source.indexOf('async function resumeSplavJobs')),c);
+ c.trackSplavJob('root','a');const turn=timers.shift()();c.activeDocumentsCandidateId='b';resolve({data:{state:'needs_review',result:{continuation:{state:'queued',job_id:'22222222-2222-4222-8222-222222222222'}}}});await turn;
+ assert.equal(reloads,0);assert.equal(timers.length,0);assert.equal(status.textContent,'unchanged');
+});
 
 
 test('excluded source retry hides confirmed and AI-disabled documents and escapes identifiers',()=>{
