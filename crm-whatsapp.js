@@ -1,7 +1,13 @@
 // PSK_RECRUTER CRM — Інтеграція WhatsApp
-// Забезпечує швидкий перехід у WhatsApp Web (wa.me), шаблони повідомлень, історію діалогів та прив’язку файлів.
+// Забезпечує швидкий перехід у WhatsApp Web (wa.me), шаблони повідомлень, історію діалогів, шлюз Green API та прив’язку файлів.
 (function(root){
   'use strict';
+
+  function getSupabase(){
+    if(typeof supabaseClient !== 'undefined') return supabaseClient;
+    if(typeof window !== 'undefined' && window.supabaseClient) return window.supabaseClient;
+    return null;
+  }
 
   function cleanDigits(phone){
     const digits = String(phone||'').replace(/\D/g,'');
@@ -17,7 +23,6 @@
     if(!nom) return 'Шановний кандидате';
     const parts = nom.split(/\s+/);
     if(parts.length >= 2){
-      // Capitalize first name nicely, e.g. "Микито" or "Микита"
       return parts[1];
     }
     return parts[0];
@@ -108,6 +113,118 @@
     return [];
   }
 
+  async function getWhatsAppSettings(){
+    const sb = getSupabase();
+    if(!sb) return null;
+    try {
+      const { data } = await sb.from('whatsapp_settings').select('*').eq('id', 'default').maybeSingle();
+      return data;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function openSettingsModal(){
+    const dialog = document.createElement('dialog');
+    dialog.className = 'crm-dialog crm-whatsapp-settings-dialog';
+    dialog.style.maxWidth = '620px';
+    dialog.style.width = '95%';
+
+    const webhookUrl = 'https://vhfysipxorlhuiaatxqi.supabase.co/functions/v1/whatsapp-webhook';
+
+    dialog.innerHTML = '' +
+      '<div class="crm-dialog-header" style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span style="font-size:22px">⚙️</span>' +
+          '<div>' +
+            '<h3 style="margin:0;font-size:16px">Підключення WhatsApp до CRM</h3>' +
+            '<small style="color:#64748b">Налаштування шлюзу для двостороннього чату та автоприйому документів</small>' +
+          '</div>' +
+        '</div>' +
+        '<button type="button" class="btn secondary" data-settings-close style="padding:4px 8px;font-size:16px">✕</button>' +
+      '</div>' +
+
+      '<div style="font-size:13px;line-height:1.5;color:#334155;margin-bottom:16px">' +
+        '<p style="margin:0 0 10px 0"><b>Як підключити робочий номер WhatsApp рекрутера:</b></p>' +
+        '<ol style="margin:0 0 12px 0;padding-left:20px;display:flex;flex-direction:column;gap:6px">' +
+          '<li>Зареєструйтеся безкоштовно на шлюзі <b>Green API</b> (<a href="https://green-api.com" target="_blank" style="color:#0284c7;font-weight:600">green-api.com</a>) та створіть тестовий/робочий інстанс.</li>' +
+          '<li>У кабінеті Green API відскануйте QR-код за допомогою WhatsApp на телефоні (<i>Налаштування → Пов’язані пристрої → Прив’язати пристрій</i>).</li>' +
+          '<li>У налаштуваннях інстансу Green API (розділ <b>Webhook</b>) увімкніть вебхуки та вставте цю URL-адресу:</li>' +
+        '</ol>' +
+
+        '<div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:8px;margin-bottom:14px">' +
+          '<code style="flex:1;font-size:11px;word-break:break-all;color:#0f172a">' + webhookUrl + '</code>' +
+          '<button type="button" class="btn secondary" data-copy-webhook style="font-size:12px;padding:4px 8px;white-space:nowrap">Копіювати</button>' +
+        '</div>' +
+
+        '<p style="margin:0 0 10px 0"><b>Параметри шлюзу Green API для прямої відправки з CRM (опціонально):</b></p>' +
+        '<div style="display:flex;flex-direction:column;gap:10px">' +
+          '<label style="display:block">' +
+            '<span style="font-size:12px;font-weight:600;color:#475569">IdInstance (наприклад, 11018...):</span>' +
+            '<input type="text" data-settings-instance style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;margin-top:3px">' +
+          '</label>' +
+          '<label style="display:block">' +
+            '<span style="font-size:12px;font-weight:600;color:#475569">ApiTokenInstance:</span>' +
+            '<input type="text" data-settings-token style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;margin-top:3px">' +
+          '</label>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid #e2e8f0;padding-top:12px">' +
+        '<span data-settings-status style="font-size:12px;color:#16a34a"></span>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button type="button" class="btn secondary" data-settings-close>Закрити</button>' +
+          '<button type="button" class="btn primary" data-settings-save style="background:#0284c7;color:#fff">Зберегти налаштування</button>' +
+        '</div>' +
+      '</div>';
+
+    document.body.append(dialog);
+    dialog.showModal();
+
+    const closeBtn = dialog.querySelectorAll('[data-settings-close]');
+    closeBtn.forEach(b => b.onclick = () => { dialog.close(); dialog.remove(); });
+
+    dialog.querySelector('[data-copy-webhook]').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(webhookUrl);
+        const btn = dialog.querySelector('[data-copy-webhook]');
+        btn.textContent = '✓ Скопійовано';
+        setTimeout(() => { btn.textContent = 'Копіювати'; }, 1500);
+      } catch(e) {}
+    };
+
+    // Load existing settings
+    getWhatsAppSettings().then(st => {
+      if(st){
+        if(st.instance_id) dialog.querySelector('[data-settings-instance]').value = st.instance_id;
+        if(st.api_token) dialog.querySelector('[data-settings-token]').value = st.api_token;
+      }
+    });
+
+    dialog.querySelector('[data-settings-save]').onclick = async () => {
+      const sb = getSupabase();
+      if(!sb){ alert('Помилка підключення Supabase'); return; }
+      const instance = dialog.querySelector('[data-settings-instance]').value.trim();
+      const token = dialog.querySelector('[data-settings-token]').value.trim();
+      const statusEl = dialog.querySelector('[data-settings-status]');
+      statusEl.textContent = 'Зберігаємо…';
+      try {
+        await sb.from('whatsapp_settings').upsert({
+          id: 'default',
+          provider: 'green_api',
+          instance_id: instance || null,
+          api_token: token || null,
+          is_active: Boolean(instance && token),
+          updated_at: new Date().toISOString()
+        });
+        statusEl.textContent = '✓ Збережено успішно!';
+        setTimeout(() => { dialog.close(); dialog.remove(); }, 1200);
+      } catch(e) {
+        statusEl.textContent = 'Помилка: ' + e.message;
+      }
+    };
+  }
+
   function openTemplateModal(cand, phoneOverride, documents, requirements){
     const targetPhone = phoneOverride || cand.phone || cand.profile_data?.phone_secondary;
     if(!targetPhone){
@@ -191,10 +308,10 @@
       dialog.querySelector('[data-wa-send]').onclick = async () => {
         const text = textarea.value.trim();
         openWaMe(targetPhone, text);
-        // Record outbound message in Supabase in background
-        if(cand.id && window.supabaseClient){
+        const sb = getSupabase();
+        if(cand.id && sb){
           try {
-            await window.supabaseClient.from('whatsapp_messages').insert({
+            await sb.from('whatsapp_messages').insert({
               candidate_id: cand.id,
               phone: cleanDigits(targetPhone),
               direction: 'outbound',
@@ -246,7 +363,8 @@
           '</div>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:8px">' +
-          '<button type="button" class="btn" data-chat-wame style="background:rgba(255,255,255,0.2);color:#fff;font-size:12px;padding:5px 10px;border:none">Відкрити wa.me</button>' +
+          '<button type="button" class="btn" data-chat-settings style="background:rgba(255,255,255,0.18);color:#fff;font-size:12px;padding:5px 9px;border:none" title="Налаштування шлюзу та вебхука">⚙️ Підключення</button>' +
+          '<button type="button" class="btn" data-chat-wame style="background:rgba(255,255,255,0.22);color:#fff;font-size:12px;padding:5px 10px;border:none">Відкрити wa.me</button>' +
           '<button type="button" data-chat-close style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px">✕</button>' +
         '</div>' +
       '</div>' +
@@ -258,7 +376,7 @@
       '<div style="background:#f0f2f5;padding:10px 14px;border-top:1px solid #d1d7db;display:flex;flex-direction:column;gap:8px">' +
         '<div style="display:flex;align-items:center;justify-content:space-between">' +
           '<button type="button" data-chat-templates style="background:none;border:none;color:#008069;font-size:12px;cursor:pointer;font-weight:500;padding:2px 0">⚡ Вставити готовий шаблон</button>' +
-          '<small style="color:#64748b;font-size:11px">Надіслані тут повідомлення зберігаються у справі кандидата</small>' +
+          '<small style="color:#64748b;font-size:11px">Повідомлення зберігаються у справі кандидата</small>' +
         '</div>' +
         '<div style="display:flex;gap:8px">' +
           '<textarea data-chat-input placeholder="Введіть повідомлення для кандидата…" rows="2" style="flex:1;padding:8px 12px;border:1px solid #ccd0d5;border-radius:8px;font-family:inherit;font-size:13px;resize:none"></textarea>' +
@@ -276,6 +394,10 @@
     closeBtn.onclick = () => { dialog.close(); dialog.remove(); };
     dialog.addEventListener('cancel', () => { dialog.close(); dialog.remove(); });
 
+    dialog.querySelector('[data-chat-settings]').onclick = () => {
+      openSettingsModal();
+    };
+
     dialog.querySelector('[data-chat-wame]').onclick = () => {
       openWaMe(targetPhone, input.value.trim());
     };
@@ -287,12 +409,13 @@
     };
 
     async function loadMessages(){
-      if(!window.supabaseClient) {
-        body.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px">Клієнт Supabase не підключено.</div>';
+      const sb = getSupabase();
+      if(!sb) {
+        body.innerHTML = '<div style="text-align:center;color:#64748b;padding:20px">Клієнт Supabase ініціалізується… Будь ласка, оновіть картку.</div>';
         return;
       }
       try {
-        let query = window.supabaseClient.from('whatsapp_messages').select('*');
+        let query = sb.from('whatsapp_messages').select('*');
         if(cand.id && digits) {
           query = query.or('candidate_id.eq.' + cand.id + ',phone.eq.' + digits);
         } else if(cand.id) {
@@ -305,10 +428,18 @@
 
         if(!data || !data.length){
           body.innerHTML = '' +
-            '<div style="text-align:center;background:#fff;border-radius:8px;padding:16px;margin:20px auto;max-width:380px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">' +
-              '<p style="margin:0 0 6px 0;font-weight:600;font-size:14px;color:#1e293b">Повідомлень поки що немає</p>' +
-              '<p style="margin:0;font-size:12px;color:#64748b">Ви можете надіслати перший шаблон або відкрити прямий чат у WhatsApp Web через кнопку зверху.</p>' +
+            '<div style="text-align:center;background:#fff;border-radius:10px;padding:18px 20px;margin:24px auto;max-width:440px;box-shadow:0 1px 3px rgba(0,0,0,0.08);line-height:1.5">' +
+              '<p style="margin:0 0 8px 0;font-weight:600;font-size:15px;color:#1e293b">💬 Чат WhatsApp готовий до роботи</p>' +
+              '<p style="margin:0 0 12px 0;font-size:13px;color:#475569">Ви можете надіслати повідомлення або шаблон кандидату через кнопку <b>«Відкрити wa.me»</b> або ввести текст нижче.</p>' +
+              '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:12px;color:#64748b;text-align:left">' +
+                '💡 <b>Автоматичний прийом документів:</b><br>' +
+                'Коли кандидат надсилатиме фото або PDF у WhatsApp, вони автоматично збережуться в цьому чаті та в переліку документів кандидата.' +
+              '</div>' +
+              '<p style="margin:12px 0 0 0"><button type="button" data-setup-prompt style="background:#0284c7;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;font-weight:500">⚙️ Як підключити автоматичний шлюз</button></p>' +
             '</div>';
+
+          const setupBtn = body.querySelector('[data-setup-prompt]');
+          if(setupBtn) setupBtn.onclick = () => openSettingsModal();
           return;
         }
 
@@ -344,26 +475,47 @@
     dialog.querySelector('[data-chat-send]').onclick = async () => {
       const text = input.value.trim();
       if(!text) return;
-      if(!window.supabaseClient) return;
+      const sb = getSupabase();
+      if(!sb) return;
 
       const sendBtn = dialog.querySelector('[data-chat-send]');
       sendBtn.disabled = true;
 
       try {
-        await window.supabaseClient.from('whatsapp_messages').insert({
+        // Check if Green API gateway is configured for direct send
+        const settings = await getWhatsAppSettings();
+        let sentViaGateway = false;
+        if(settings && settings.is_active && settings.instance_id && settings.api_token && digits) {
+          try {
+            const gwUrl = 'https://api.green-api.com/waInstance' + settings.instance_id + '/sendMessage/' + settings.api_token;
+            const res = await fetch(gwUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chatId: digits + '@c.us', message: text })
+            });
+            if(res.ok) sentViaGateway = true;
+          } catch(gwErr) {
+            console.warn('Gateway send error:', gwErr);
+          }
+        }
+
+        await sb.from('whatsapp_messages').insert({
           candidate_id: cand.id || null,
           phone: digits,
           direction: 'outbound',
           message_type: 'text',
           content: text,
-          status: 'sent'
+          status: sentViaGateway ? 'delivered' : 'sent'
         });
         input.value = '';
         await loadMessages();
-        // Also offer to open in wa.me
-        openWaMe(targetPhone, text);
+
+        // If not sent via background gateway, open wa.me
+        if(!sentViaGateway) {
+          openWaMe(targetPhone, text);
+        }
       } catch(err) {
-        alert('Помилка збереження повідомлення: ' + err.message);
+        alert('Помилка відправки повідомлення: ' + err.message);
       } finally {
         sendBtn.disabled = false;
       }
@@ -381,7 +533,9 @@
     templates: standardTemplates,
     openWaMe,
     openTemplateModal,
-    openChatDialog
+    openChatDialog,
+    openSettingsModal,
+    getSupabase
   };
 
 })(typeof window === 'undefined' ? globalThis : window);
