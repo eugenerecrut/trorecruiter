@@ -14,6 +14,7 @@ assert.ok(portalHtml.includes('<meta name="viewport"'), 'candidate.html must inc
 assert.ok(portalHtml.includes('Кабінет кандидата'), 'candidate.html must have Ukrainian title');
 assert.ok(portalHtml.includes('candidate-portal.js'), 'candidate.html must include candidate-portal.js script');
 assert.ok(portalHtml.includes('portalApp'), 'candidate.html must have portalApp container');
+assert.ok(portalHtml.includes('.badge-service'), 'candidate.html must have .badge-service style');
 console.log('✓ candidate.html structure verified');
 
 // 2. Check candidate-portal.js exists and syntax is valid
@@ -24,7 +25,9 @@ assert.doesNotThrow(() => new vm.Script(portalJs), 'candidate-portal.js must hav
 assert.ok(portalJs.includes('crm_portal_get_case'), 'candidate-portal.js must call crm_portal_get_case RPC');
 assert.ok(portalJs.includes('crm_portal_submit_document'), 'candidate-portal.js must call crm_portal_submit_document RPC');
 assert.ok(portalJs.includes('candidate-documents'), 'candidate-portal.js must upload to candidate-documents bucket');
-console.log('✓ candidate-portal.js syntax and RPC calls verified');
+assert.ok(portalJs.includes('badge-service'), 'candidate-portal.js must render service type badge');
+assert.ok(portalJs.includes('extraDocInput'), 'candidate-portal.js must support voluntary additional document upload');
+console.log('✓ candidate-portal.js syntax, RPC calls and service type filter verified');
 
 // 3. Verify WhatsApp Portal link generation in crm-whatsapp.js
 const waContext = { window: {}, URL, encodeURIComponent };
@@ -49,6 +52,8 @@ const migrationSql = fs.readFileSync(migrationPath, 'utf8');
 assert.ok(migrationSql.includes('portal_token'), 'Migration must add portal_token column');
 assert.ok(migrationSql.includes('crm_portal_get_case'), 'Migration must create crm_portal_get_case function');
 assert.ok(migrationSql.includes('crm_portal_submit_document'), 'Migration must create crm_portal_submit_document function');
+assert.ok(migrationSql.includes('v_is_mob'), 'Migration must filter requirements by mobilization vs contract');
+assert.ok(migrationSql.includes('v_is_unit'), 'Migration must filter requirements by case mode (unit vs full)');
 console.log('✓ Supabase migration file verified');
 
 console.log('\nAll Candidate Portal tests passed successfully!');

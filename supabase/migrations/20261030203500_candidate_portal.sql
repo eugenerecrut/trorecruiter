@@ -17,13 +17,18 @@ DECLARE
     v_total INT := 0;
     v_uploaded INT := 0;
     v_verified INT := 0;
+    v_service_type TEXT;
+    v_is_mob BOOLEAN;
+    v_is_unit BOOLEAN;
+    v_marital TEXT;
 BEGIN
     IF p_token IS NULL THEN
         RETURN jsonb_build_object('error', 'Token is required');
     END IF;
 
     SELECT id, full_name, name_nominative, phone, desired_position,
-           recruitment_status, profile_data, created_at, updated_at
+           recruitment_status, sex, marital_status, has_children, children_count,
+           worked_before, served_before, profile_data, created_at, updated_at
     INTO v_cand
     FROM public.candidates
     WHERE portal_token = p_token;
@@ -32,11 +37,16 @@ BEGIN
         RETURN jsonb_build_object('error', 'Справу за цим посиланням не знайдено');
     END IF;
 
+    v_service_type := COALESCE(v_cand.profile_data->>'service_type', 'За контрактом');
+    v_is_mob := (v_service_type ILIKE '%мобілізац%');
+    v_is_unit := (COALESCE(v_cand.profile_data->>'case_mode', '') = 'unit');
+    v_marital := LOWER(COALESCE(v_cand.marital_status, ''));
+
     SELECT 
         jsonb_agg(to_jsonb(r_item)), 
         COUNT(*), 
         COUNT(CASE WHEN r_item.has_document = true THEN 1 END), 
-        COUNT(CASE WHEN r_item.status = 'verified' THEN 1 END)
+        COUNT(CASE WHEN r_item.status IN ('Підтверджено', 'verified') THEN 1 END)
     INTO v_reqs, v_total, v_uploaded, v_verified
     FROM (
         SELECT 
@@ -61,7 +71,54 @@ BEGIN
             ORDER BY doc.created_at DESC
             LIMIT 1
         ) d ON true
-        WHERE dr.active = true AND COALESCE(dr.is_required, true) = true
+        WHERE dr.active = true
+          AND dr.document_type NOT IN (
+              'Припис про направлення',
+              'Реєстр кандидата',
+              'Послужний список',
+              'Перелік документів',
+              'Титульний аркуш',
+              'Наказ про зарахування до ВЧ',
+              'Характеристика'
+          )
+          AND (
+              -- Case mode unit: only recommendation letter
+              (v_is_unit AND dr.document_type ILIKE '%рекомендаційн%')
+              OR
+              -- Full case mode:
+              (NOT v_is_unit AND (
+                  -- MOBILIZATION:
+                  (v_is_mob AND (
+                      dr.document_type ~* 'паспорт|ідентифікаційн|Фото |довідка ВЛК|додаток 13|групи крові|місце проживання|довідка з МВС|сертифікат психологічного|диплом|рекомендаційн|довідка з банку'
+                      OR (dr.document_type ~* 'гінеколог' AND v_cand.sex = 'female')
+                      OR (dr.document_type ~* 'трудов' AND COALESCE(v_cand.worked_before, true) = true)
+                      OR (dr.document_type ~* 'військов.*квит' AND v_cand.served_before = true)
+                      OR (dr.document_type ~* 'резерв\+|приписн|військовий облік' AND COALESCE(v_cand.served_before, false) = false)
+                      OR (dr.document_type ~* 'УБД' AND v_cand.served_before = true)
+                  ))
+                  OR
+                  -- CONTRACT:
+                  (NOT v_is_mob AND (
+                      dr.document_type NOT ILIKE '%гінеколог%'
+                      AND (
+                          (dr.condition_field IS NULL AND COALESCE(dr.is_required, true) = true)
+                          OR (dr.condition_field = 'worked_before' AND COALESCE(v_cand.worked_before, true) = (dr.condition_value = 'true'))
+                          OR (dr.condition_field = 'served_before' AND (
+                              (v_cand.served_before IS NULL AND dr.condition_value = 'false')
+                              OR (v_cand.served_before = true AND dr.condition_value = 'true')
+                              OR (v_cand.served_before = false AND dr.condition_value = 'false')
+                          ))
+                          OR (dr.condition_field = 'has_children' AND (
+                              (v_cand.has_children = true AND dr.condition_value = 'true')
+                          ))
+                          OR (dr.condition_field = 'marital_status' AND (
+                              (dr.condition_value = 'married' AND (v_marital LIKE '%одруж%' OR v_marital = 'married'))
+                              OR (dr.condition_value = 'divorced' AND (v_marital LIKE '%розлуч%' OR v_marital = 'divorced'))
+                          ))
+                      )
+                  ))
+              ))
+          )
         ORDER BY dr.sort_order ASC, dr.document_type ASC
     ) r_item;
 
@@ -85,7 +142,9 @@ BEGIN
             'military_unit', COALESCE(v_cand.profile_data->>'military_unit', v_cand.profile_data->>'desired_unit', 'Військова частина'),
             'recruiter_name', COALESCE(v_cand.profile_data->>'recruiter_name', 'Черговий рекрутер'),
             'recruiter_phone', v_cand.profile_data->>'recruiter_phone',
-            'stage', COALESCE(v_cand.recruitment_status, 'Збір документів')
+            'stage', COALESCE(v_cand.recruitment_status, 'Збір документів'),
+            'service_type', v_service_type,
+            'case_mode', COALESCE(v_cand.profile_data->>'case_mode', 'full')
         ),
         'checklist', COALESCE(v_reqs, '[]'::jsonb),
         'all_documents', COALESCE(v_docs, '[]'::jsonb),

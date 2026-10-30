@@ -77,6 +77,7 @@
           '<h1 class="candidate-name">' + escapeHtml(c.name) + '</h1>' +
           '<div class="candidate-meta">' +
             '<span class="badge badge-stage">' + escapeHtml(c.stage) + '</span>' +
+            '<span class="badge badge-service">' + escapeHtml(c.service_type || 'За контрактом') + '</span>' +
             '<span>В/ч: <b>' + escapeHtml(c.military_unit) + '</b></span>' +
           '</div>' +
           '<div style="font-size:12px;color:#475569;margin-top:4px">' +
@@ -110,8 +111,8 @@
       '</div>' +
 
       '<div class="section-title">' +
-        '<span>Документи справи</span>' +
-        '<small style="font-size:12px;color:#64748b;font-weight:normal">Завантаження з камери чи файлу</small>' +
+        '<span>Необхідні документи</span>' +
+        '<small style="font-size:12px;color:#64748b;font-weight:normal">' + escapeHtml(c.service_type || 'За контрактом') + '</small>' +
       '</div>' +
 
       '<div class="filter-tabs">' +
@@ -127,6 +128,25 @@
           '</div>' : '') +
         filteredItems.map(it => renderChecklistItem(it, c.id)).join('') +
       '</div>' +
+
+      '<details class="card" style="padding:12px 16px;margin-top:14px">' +
+        '<summary style="font-size:13px;font-weight:700;color:#0284c7;cursor:pointer">＋ Надіслати додатковий документ</summary>' +
+        '<div style="margin-top:12px">' +
+          '<p style="font-size:12px;color:#64748b;margin:0 0 10px 0">Якщо у Вас є водійське посвідчення, посвідчення УБД або інші додаткові довідки, Ви можете завантажити їх сюди:</p>' +
+          '<select id="extraDocType" style="padding:8px 10px;border-radius:8px;border:1px solid #cbd5e1;font-size:13px;width:100%;margin-bottom:10px;background:#fff">' +
+            '<option value="Копія посвідчення водія / інші посвідчення">Посвідчення водія</option>' +
+            '<option value="Копія УБД">Посвідчення УБД</option>' +
+            '<option value="Свідоцтво про зміну імені / прізвища">Свідоцтво про зміну імені / прізвища</option>' +
+            '<option value="Копія свідоцтва про шлюб">Свідоцтво про шлюб</option>' +
+            '<option value="Копія свідоцтва про народження дітей">Свідоцтво про народження дитини</option>' +
+            '<option value="Інший документ">Інший документ / довідка</option>' +
+          '</select>' +
+          '<label class="upload-btn-label" style="text-align:center;display:block">' +
+            '<span class="upload-btn-text">📷 Сфотографувати / Завантажити</span>' +
+            '<input type="file" accept="image/*,application/pdf" capture="environment" id="extraDocInput">' +
+          '</label>' +
+        '</div>' +
+      '</details>' +
 
       '<div class="tip-box">' +
         '<b>💡 Як зробити якісне фото документа:</b>' +
@@ -236,6 +256,59 @@
         }
       };
     });
+
+    const extraInput = app.querySelector('#extraDocInput');
+    if (extraInput) {
+      extraInput.onchange = async () => {
+        const file = extraInput.files?.[0];
+        if (!file) return;
+
+        const select = app.querySelector('#extraDocType');
+        const docType = select ? select.value : 'Інший документ';
+        const candId = caseData.candidate.id;
+
+        const parentLabel = extraInput.closest('label');
+        const btnText = parentLabel ? parentLabel.querySelector('.upload-btn-text') : null;
+        const oldText = btnText ? btnText.textContent : 'Завантажити';
+        if (btnText) btnText.textContent = '⏳ Завантажуємо…';
+        if (parentLabel) {
+          parentLabel.style.opacity = '0.7';
+          parentLabel.style.pointerEvents = 'none';
+        }
+
+        try {
+          const cleanName = (file.name || 'document').replace(/[^\w.-]/g, '_');
+          const storagePath = `${candId}/portal/${Date.now()}_${cleanName}`;
+
+          const uploadRes = await supabase.storage
+            .from('candidate-documents')
+            .upload(storagePath, file, { cacheControl: '3600', upsert: true });
+
+          if (uploadRes.error) throw uploadRes.error;
+
+          const rpcRes = await supabase.rpc('crm_portal_submit_document', {
+            p_token: token,
+            p_document_type: docType,
+            p_file_name: file.name,
+            p_file_size: file.size,
+            p_mime_type: file.type || 'image/jpeg',
+            p_storage_path: storagePath,
+            p_requirement_id: null
+          });
+
+          if (rpcRes.error) throw rpcRes.error;
+
+          await loadCase();
+        } catch (err) {
+          alert('Помилка завантаження файлу: ' + (err.message || err));
+          if (btnText) btnText.textContent = oldText;
+          if (parentLabel) {
+            parentLabel.style.opacity = '1';
+            parentLabel.style.pointerEvents = 'auto';
+          }
+        }
+      };
+    }
   }
 
   loadCase();
