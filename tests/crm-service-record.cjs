@@ -63,3 +63,16 @@ assert.equal(state.issues.length,2,'Ambiguous parent role is reported alongside 
  ]}};
  assert.equal(value(model(schoolCandidate,{}),'education_civil'),'Гімназія №5, 2020 р.');
 }
+
+// Verify 2 line offsets from top and between records for employment
+audited.worked_before=true;
+audited.profile_data.work_records=[
+  {kind:'employment',employer:'БОНДАР ОЛЕКСАНДР СЕРГІЙОВИЧ',position:'Майстер',start_date:'2024-04-01',end_date:'2024-07-19'},
+  {kind:'employment',employer:'ТОВАРИСТВО З ОБМЕЖЕНОЮ ВІДПОВІДАЛЬНІСТЮ "ВАЙН-ТАЙМ"',position:'Продавець-консультант',start_date:'2024-11-21',end_date:'2025-05-31'}
+];
+state=model(audited,{});
+const w0=state.fields.find(f=>f.key==='work_0_0');
+const w1=state.fields.find(f=>f.key==='work_1_0');
+assert.equal(w0.box[1], 126.2 + 2 * 13.8, 'Top of first employment record has 2 offsets from table header');
+assert.equal(w1.box[1], w0.box[3] + 2 * 13.8, 'Between employment records has 2 offsets');
+console.log('Work record 2-offset spacing and Sovin pull-up verified: PASS');

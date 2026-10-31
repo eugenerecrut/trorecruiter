@@ -52,10 +52,14 @@ function model(c,pf={}){
  const periods=(Array.isArray(p.work_records)?p.work_records:[]).filter(r=>r&&!r.requires_review&&!r.crossed_out);
  const employment=periods.filter(r=>r.kind==='employment');
  if(worked===false)add('not_worked','Відомості про роботу',2,[85.4,126.2,571.1,152.5],c.sex==='female'?'Не працювала':'Не працював','Трудова діяльність',true);
- else employment.forEach((r,i)=>{
-  const cols=[85.4,156.9,228.4,493.1,571.1],top=126.2+i*(573.8/Math.max(employment.length,1)),bottom=126.2+(i+1)*(573.8/Math.max(employment.length,1));
-  [stacked(r.start_date),stacked(r.end_date),[r.employer,r.locality||r.location].filter(Boolean).join(', '),cleanPosition(r.position)].forEach((v,j)=>add('work_'+i+'_'+j,['Початок','Завершення','Підприємство та місцевість','Посада'][j]+' · '+(i+1),2,[cols[j],top,cols[j+1],bottom],v,'Трудова діяльність'));
- });
+ else {
+  let initialTop=126.2+2*13.8;
+  employment.forEach((r,i)=>{
+   const cols=[85.4,156.9,228.4,493.1,571.1],top=initialTop,bottom=initialTop+36;
+   initialTop+=36+2*13.8;
+   [stacked(r.start_date),stacked(r.end_date),[r.employer,r.locality||r.location].filter(Boolean).join(', '),cleanPosition(r.position)].forEach((v,j)=>add('work_'+i+'_'+j,['Початок','Завершення','Підприємство та місцевість','Посада'][j]+' · '+(i+1),2,[cols[j],top,cols[j+1],bottom],v,'Трудова діяльність'));
+  });
+ }
  const oath=printableObject(p.military_oath),discharge=printableObject(p.military_discharge);
  add('callup','Призов / початок служби',3,[222.6,39,510.3,70.7],served===false?'':p.service_start_date?words(p.service_start_date)+(p.previous_service_type?' '+p.previous_service_type:''):'','Військова служба');
  add('oath','Присяга',3,[312,75,510.3,105.9],served===false?'':[date(oath.date),oath.unit&&'в/ч '+oath.unit].filter(Boolean).join(', '),'Військова служба');
@@ -130,7 +134,25 @@ async function create(state){
  function rule(page,x1,t1,x2,t2){const pg=pdf.getPage(page);pg.drawLine({start:{x:x1,y:pg.getHeight()-t1},end:{x:x2,y:pg.getHeight()-t2},thickness:.48});}
  const printFields=state.fields.map(f=>({...f,box:[...f.box]}));
  if(state.worked===true){
-  rect(2,[85.1,126.2,571.3,762.2]);for(const x of [85.34,156.86,228.41,493.06,571.08])rule(2,x,126.2,x,700);for(const t of [126.2,700,762.12])rule(2,85.34,t,571.08,t);for(const x of [85.34,571.08])rule(2,x,700,x,762.12);draw({label:'Підписний блок',page:2,box:[85.34,700,571.08,762.12],value:sign});
+  rect(2,[85.1,126.2,571.3,762.2]);
+  const workFields=printFields.filter(f=>/^work_\d+_\d+$/.test(f.key));
+  let signatureTop=700;
+  if(workFields.length&&workFields.every(f=>f.page===2)){
+   const rows=[...new Set(workFields.map(f=>f.key.split('_')[1]))].map(id=>workFields.filter(f=>f.key.split('_')[1]===id));
+   let currentTop=126.2+2*line; // 2 відступи з гори
+   rows.forEach((row,i)=>{
+    const contentHeight=Math.max(...row.map(f=>size+(Math.max(1,lines(f.value,f.box[2]-f.box[0]-2*pad,f.label).length)-1)*line+2*pad));
+    row.forEach(f=>{f.box[1]=currentTop;f.box[3]=currentTop+contentHeight;});
+    currentTop+=contentHeight;
+    if(i<rows.length-1)currentTop+=2*line; // між полями теж 2 відступи
+   });
+   signatureTop=Math.min(currentTop+2*line,700); // наприкінці 2 відступи, Совіна підтягувати до кінця полів у гору
+  }
+  for(const x of [85.34,156.86,228.41,493.06,571.08])rule(2,x,126.2,x,signatureTop);
+  const signatureEnd=signatureTop+62.12;
+  for(const t of [126.2,signatureTop,signatureEnd])rule(2,85.34,t,571.08,t);
+  for(const x of [85.34,571.08])rule(2,x,signatureTop,x,signatureEnd);
+  draw({label:'Підписний блок',page:2,box:[85.34,signatureTop,571.08,signatureEnd],value:sign});
  }
  if(state.served===false){rect(3,[28.32,262.3,510.34,769.44]);for(const t of [262.3,289.3,342.5,769.44])rule(3,28.56,t,510.1,t);for(const x of [28.56,510.1])rule(3,x,262.3,x,769.44);for(const x of [70.7,120.4,324.8,445.2])rule(3,x,342.5,x,769.44);draw({label:'Підписний блок',page:3,box:[28.56,289.3,510.1,342.5],value:sign});}
  else if(!state.fields.find(f=>f.key==='discharge')?.value.trim()){
