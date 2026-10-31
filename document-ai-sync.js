@@ -71,7 +71,7 @@
   function valid(key,v){
     if(empty(v))return true;if(typeof v!=='string'&&typeof v!=='number')return false;
     if(/birth_date|death_date/.test(key))return date(v,key!=='birth_date'||key.startsWith('relative.'));
-    if(key==='military_specialty')return /^\d{6}[А-ЯІЇЄҐA-Z]?$/u.test(String(v).trim());
+    if(key==='military_specialty')return /^\d{3,6}[А-ЯІЇЄҐA-Z]?$/u.test(String(v).trim());
     if(key==='shpk'||key==='military_rank')return ranks.has(norm(v));
     if(key==='tariff_grade'){
       const s=String(v).trim();
@@ -185,6 +185,14 @@
     if(policy?.category==='education'&&empty(e.full_name)){
       const owners=[...new Set((Array.isArray(e.education_records)?e.education_records:[]).map(r=>r?.owner_full_name).filter(v=>!empty(v)).map(norm))];
       if(owners.length===1)e.full_name=(e.education_records||[]).find(r=>norm(r?.owner_full_name)===owners[0]).owner_full_name;
+    }
+    if(empty(e.full_name)){
+      const fallbackName=e.personal?.full_name||document.ai_raw_response?.extracted?.personal?.full_name||document.ai_raw_response?.extracted?.full_name||document.ai_candidate_name;
+      if(!empty(fallbackName)&&equal(fallbackName,candidate.full_name))e.full_name=fallbackName;
+    }
+    if(empty(e.birth_date)){
+      const fallbackDate=e.personal?.birth_date||document.ai_raw_response?.extracted?.personal?.birth_date||document.ai_raw_response?.extracted?.birth_date;
+      if(!empty(fallbackDate)&&equal(fallbackDate,candidate.birth_date))e.birth_date=fallbackDate;
     }
     const educationOwnerMatch=policy?.category==='education'&&document.verification_status==='Підтверджено'&&
       (e.education_records||[]).length>0&&(e.education_records||[]).every(r=>!r.requires_review&&equal(r.owner_full_name,e.full_name)&&root.CRMEducation?.ownerMatches(r,candidate,p.education_records||[],true));
