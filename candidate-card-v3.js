@@ -14,7 +14,7 @@
   }
   let opening = false, fieldSequence = 0;
   const tabs = [['documents','ДОДАТИ ДОКУМЕНТИ',[14]],['review','ВИРІШИТИ ПИТАННЯ',[1,2,3,4,5,6,7,8,9,10,11,12,13,16]],['case','СФОРМУВАТИ СПРАВУ',[]]];
-  const advanced = new Set(('name_genitive unzr birth_certificate citizenship children_info shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education combat_days military_service_history military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status blood_data_in_passport vlk_commission vlk_next_date vlk_notes candidate_source recruiter_name motivation recruitment_notes psychiatric_record_info has_management_experience organizational_skills work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
+  const advanced = new Set(('name_genitive unzr citizenship children_info shpk tariff_grade signatory phone_secondary email messenger passport_data education_specialty_code education_start_date education_end_date education_diploma_series education_diploma_number education_diploma_issue_date education_supplement_number education_supplement_issue_date education combat_days military_service_history military_registry_number military_document_expiry_date military_data_updated_at military_deferment_type military_deferment_until military_registration_removal_reason military_training_status military_registration_date military_registration_category military_registration_status blood_data_in_passport vlk_commission vlk_next_date vlk_notes candidate_source recruiter_name motivation recruitment_notes psychiatric_record_info has_management_experience organizational_skills work_employer_code work_termination_reason work_order_number work_order_date work_end_order_number work_end_order_date').split(' '));
   const educationFields = {
     degree:['Рівень освіти','text'], institution:['Заклад освіти','text'], specialty:['Спеціальність','text'], qualification:['Кваліфікація','text'],
     graduation_year:['Рік закінчення','number'], study_start_date:['Початок навчання','date'], study_end_date:['Завершення навчання','date'],
@@ -201,7 +201,8 @@
     function decorate() {
       form.querySelectorAll('.cc-field').forEach((field,index) => {
         const input = field.querySelector('input,select,textarea'); if (!input) return;
-        if (advanced.has(input.name)) field.dataset.v3Advanced = 'true';
+        const hasVal = input.type === 'checkbox' ? input.checked : !!String(input.value || '').trim();
+        if (advanced.has(input.name) && !hasVal) field.dataset.v3Advanced = 'true';
         const label = field.querySelector('label');
         if (label && !label.htmlFor) { if (!input.id) input.id = 'cc-v3-field-'+(++fieldSequence); label.htmlFor = input.id; }
         if (input.name === 'death_date' && label && !label.querySelector('.cc-v3-tip')) {
