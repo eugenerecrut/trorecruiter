@@ -473,7 +473,9 @@
         try {
           await navigator.clipboard.writeText(window.location.href);
           copyBtn.textContent = '✓ Посилання скопійовано!';
-          setTimeout(() => { copyBtn.textContent = '📋 Скопіювати посилання'; }, 2000);
+          setTimeout(() => {
+            if(copyBtn && copyBtn.isConnected) copyBtn.textContent = '📋 Скопіювати посилання';
+          }, 2000);
         } catch(_) {
           prompt('Скопіюйте посилання на кабінет:', window.location.href);
         }

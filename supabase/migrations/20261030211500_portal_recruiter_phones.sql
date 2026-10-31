@@ -1,4 +1,4 @@
--- Update crm_portal_get_case to return unit_phone and center_recruiter_phone and fix boolean string casting
+-- Update crm_portal_get_case to return unit_phone, center_recruiter_phone, correct document requirements filter and document type aliases
 ALTER TABLE public.crm_staff ADD COLUMN IF NOT EXISTS phone TEXT;
 
 -- Seed default center recruiter phone if null
@@ -26,6 +26,7 @@ DECLARE
     v_served_before BOOLEAN;
     v_worked_before BOOLEAN;
     v_marital TEXT;
+    v_sex TEXT;
     v_staff_name TEXT;
     v_staff_phone TEXT;
     v_unit_phone TEXT;
@@ -47,20 +48,24 @@ BEGIN
     
     v_has_children := COALESCE(
         v_cand.has_children,
-        CASE WHEN v_cand.profile_data->>'has_children' IN ('true', 't', '1', 'yes') THEN true ELSE false END
+        CASE WHEN v_cand.profile_data->>'has_children' IN ('true', 't', '1', 'yes') THEN true ELSE false END,
+        false
     );
 
     v_served_before := COALESCE(
         v_cand.served_before,
-        CASE WHEN v_cand.profile_data->>'served_before' IN ('true', 't', '1', 'yes') THEN true ELSE false END
+        CASE WHEN v_cand.profile_data->>'served_before' IN ('true', 't', '1', 'yes') THEN true ELSE false END,
+        false
     );
 
     v_worked_before := COALESCE(
         v_cand.worked_before,
-        CASE WHEN v_cand.profile_data->>'worked_before' IN ('true', 't', '1', 'yes') THEN true ELSE false END
+        CASE WHEN v_cand.profile_data->>'worked_before' IN ('true', 't', '1', 'yes') THEN true ELSE false END,
+        false
     );
 
     v_marital := LOWER(COALESCE(v_cand.marital_status, v_cand.profile_data->>'marital_status', ''));
+    v_sex := LOWER(COALESCE(v_cand.sex, v_cand.profile_data->>'sex', ''));
 
     IF v_cand.responsible_recruiter_id IS NOT NULL THEN
         SELECT s.display_name, s.phone INTO v_staff_name, v_staff_phone
@@ -82,6 +87,7 @@ BEGIN
         '+380687661109'
     );
 
+    -- Calculate stats
     SELECT
         COUNT(*),
         COUNT(*) FILTER (WHERE doc.id IS NOT NULL),
@@ -93,12 +99,20 @@ BEGIN
         FROM public.documents d
         WHERE d.candidate_id = v_cand.id
           AND d.deleted_at IS NULL
-          AND (d.requirement_id = dr.id OR d.document_type = dr.document_type)
+          AND (
+              d.requirement_id = dr.id 
+              OR d.document_type = dr.document_type
+              OR (dr.document_type = 'Копія паспорта/ID Картки' AND d.document_type IN ('Українська ID-картка', 'Паспорт', 'Копія паспорта/ID Картки'))
+              OR (dr.document_type = 'Свідоцтво про народження' AND d.document_type IN ('Актовий запис про народження', 'Свідоцтво про народження'))
+              OR (dr.document_type = 'Копія диплома та атестата з додатками' AND d.document_type IN ('Документи про освіту', 'Диплом', 'Атестат', 'Копія диплома та атестата з додатками'))
+              OR (dr.document_type = 'Копія рекомендаційного листа' AND d.document_type IN ('Рекомендаційний лист', 'Копія рекомендаційного листа'))
+              OR (dr.document_type = 'Копія ідентифікаційного коду' AND d.document_type IN ('ІПН', 'РНОКПП', 'Ідентифікаційний код', 'Копія ідентифікаційного коду'))
+          )
         ORDER BY d.created_at DESC
         LIMIT 1
     ) doc ON true
     WHERE dr.active = true
-      AND (dr.applies_to IS NULL OR dr.applies_to = 'both'
+      AND (dr.applies_to IS NULL OR dr.applies_to IN ('all', 'both')
            OR (dr.applies_to = 'contract' AND v_service_type ILIKE '%контракт%')
            OR (dr.applies_to = 'mobilization' AND v_service_type ILIKE '%мобіліз%'))
       AND (
@@ -108,18 +122,27 @@ BEGIN
               'Довідка ВЛК',
               'Сертифікат психологічного тестування',
               'Сертифікат психологічного тестування (перша сторінка)',
-              'Картка соціально-психологічного вивчення'
+              'Картка соціально-психологічного вивчення',
+              'Титульний аркуш',
+              'Послужний список',
+              'Перелік документів',
+              'Наказ про зарахування до ВЧ',
+              'Припис про направлення',
+              'Реєстр кандидата',
+              'Характеристика'
           )
       )
       AND (
           dr.document_type NOT IN (
               'Заява на контракт',
+              'Згода на обробку даних',
               'Згода на обробку персональних даних',
               'Згода на збір та обробку даних',
               'Згода на обробку даних для психологічного тестування',
               'Розписка кандидата на військову службу за контрактом',
               'Розписка кандидата'
           )
+          OR doc.id IS NOT NULL
           OR (
               v_cand.profile_data->'blanks_sent' IS NOT NULL
               AND (
@@ -149,37 +172,61 @@ BEGIN
                   (dr.condition_value = 'married' AND (v_marital LIKE '%одруж%' OR v_marital = 'married'))
                   OR (dr.condition_value = 'divorced' AND (v_marital LIKE '%розлуч%' OR v_marital = 'divorced'))
               ))
+              OR (dr.condition_field = 'sex' AND dr.condition_value = v_sex)
           )
       );
 
-    SELECT jsonb_agg(to_jsonb(r_item))
+    -- Build checklist items
+    SELECT jsonb_agg(item ORDER BY (item->>'sort_order')::int, item->>'document_type')
     INTO v_reqs
     FROM (
-        SELECT
-            dr.id AS requirement_id,
-            dr.document_type,
-            dr.condition_note,
-            dr.is_required,
-            dr.applies_to AS category,
-            dr.sort_order,
-            (doc.id IS NOT NULL) AS is_uploaded,
-            doc.id AS document_id,
-            doc.file_name,
-            doc.verification_status,
-            (doc.verification_status = 'Підтверджено') AS is_verified,
-            doc.created_at AS uploaded_at
+        SELECT jsonb_build_object(
+            'requirement_id', dr.id,
+            'document_type', dr.document_type,
+            'is_required', dr.is_required,
+            'condition_note', dr.condition_note,
+            'sort_order', dr.sort_order,
+            'has_document', doc.id IS NOT NULL,
+            'document_id', doc.id,
+            'file_name', doc.file_name,
+            'status', doc.verification_status,
+            'uploaded_at', doc.created_at,
+            'is_template_blank', (dr.document_type IN (
+                'Заява на контракт',
+                'Згода на обробку даних',
+                'Згода на обробку персональних даних',
+                'Згода на збір та обробку даних',
+                'Згода на обробку даних для психологічного тестування',
+                'Розписка кандидата на військову службу за контрактом',
+                'Розписка кандидата'
+            )),
+            'template_url', CASE 
+                WHEN dr.document_type = 'Заява на контракт' THEN 'https://vhfysipxorlhuiaatxqi.supabase.co/storage/v1/object/public/templates/zayava_kontrakt.pdf'
+                WHEN dr.document_type LIKE 'Згода на обробку даних%' THEN 'https://vhfysipxorlhuiaatxqi.supabase.co/storage/v1/object/public/templates/zgoda_dani.pdf'
+                WHEN dr.document_type LIKE 'Розписка%' THEN 'https://vhfysipxorlhuiaatxqi.supabase.co/storage/v1/object/public/templates/rozpyska_kontrakt.pdf'
+                ELSE NULL
+            END
+        ) AS item
         FROM public.document_requirements dr
         LEFT JOIN LATERAL (
             SELECT d.id, d.file_name, d.verification_status, d.created_at
             FROM public.documents d
             WHERE d.candidate_id = v_cand.id
               AND d.deleted_at IS NULL
-              AND (d.requirement_id = dr.id OR d.document_type = dr.document_type)
+              AND (
+                  d.requirement_id = dr.id 
+                  OR d.document_type = dr.document_type
+                  OR (dr.document_type = 'Копія паспорта/ID Картки' AND d.document_type IN ('Українська ID-картка', 'Паспорт', 'Копія паспорта/ID Картки'))
+                  OR (dr.document_type = 'Свідоцтво про народження' AND d.document_type IN ('Актовий запис про народження', 'Свідоцтво про народження'))
+                  OR (dr.document_type = 'Копія диплома та атестата з додатками' AND d.document_type IN ('Документи про освіту', 'Диплом', 'Атестат', 'Копія диплома та атестата з додатками'))
+                  OR (dr.document_type = 'Копія рекомендаційного листа' AND d.document_type IN ('Рекомендаційний лист', 'Копія рекомендаційного листа'))
+                  OR (dr.document_type = 'Копія ідентифікаційного коду' AND d.document_type IN ('ІПН', 'РНОКПП', 'Ідентифікаційний код', 'Копія ідентифікаційного коду'))
+              )
             ORDER BY d.created_at DESC
             LIMIT 1
         ) doc ON true
         WHERE dr.active = true
-          AND (dr.applies_to IS NULL OR dr.applies_to = 'both'
+          AND (dr.applies_to IS NULL OR dr.applies_to IN ('all', 'both')
                OR (dr.applies_to = 'contract' AND v_service_type ILIKE '%контракт%')
                OR (dr.applies_to = 'mobilization' AND v_service_type ILIKE '%мобіліз%'))
           AND (
@@ -189,18 +236,27 @@ BEGIN
                   'Довідка ВЛК',
                   'Сертифікат психологічного тестування',
                   'Сертифікат психологічного тестування (перша сторінка)',
-                  'Картка соціально-психологічного вивчення'
+                  'Картка соціально-психологічного вивчення',
+                  'Титульний аркуш',
+                  'Послужний список',
+                  'Перелік документів',
+                  'Наказ про зарахування до ВЧ',
+                  'Припис про направлення',
+                  'Реєстр кандидата',
+                  'Характеристика'
               )
           )
           AND (
               dr.document_type NOT IN (
                   'Заява на контракт',
+                  'Згода на обробку даних',
                   'Згода на обробку персональних даних',
                   'Згода на збір та обробку даних',
                   'Згода на обробку даних для психологічного тестування',
                   'Розписка кандидата на військову службу за контрактом',
                   'Розписка кандидата'
               )
+              OR doc.id IS NOT NULL
               OR (
                   v_cand.profile_data->'blanks_sent' IS NOT NULL
                   AND (
@@ -230,11 +286,12 @@ BEGIN
                       (dr.condition_value = 'married' AND (v_marital LIKE '%одруж%' OR v_marital = 'married'))
                       OR (dr.condition_value = 'divorced' AND (v_marital LIKE '%розлуч%' OR v_marital = 'divorced'))
                   ))
+                  OR (dr.condition_field = 'sex' AND dr.condition_value = v_sex)
               )
           )
-        ORDER BY dr.sort_order ASC, dr.document_type ASC
-    ) r_item;
+    ) q;
 
+    -- Build all documents list
     SELECT jsonb_agg(to_jsonb(doc_item))
     INTO v_docs
     FROM (
