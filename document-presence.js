@@ -4,7 +4,7 @@
   const allowedTypes=Object.freeze([
     'Автобіографія рукописна','Заява на контракт','Згода на обробку даних',
     'Згода на обробку даних для психологічного тестування','Картка соціально-психологічного вивчення',
-    'Анкета на контракт','Розписка кандидата на військову службу за контрактом','Фото 9×12','Фото 3×4',
+    'Анкета на контракт','Розписка кандидата на військову службу за контрактом','Фото 9×12','Фото 3×4','Фотокартки (3×4 або 9×12)',
     'Характеристика','Сертифікат від психіатра та нарколога / відповідні довідки',
     'Довідка з визначенням групи крові та резус-фактору','Додаток 13 (Картка обстеження та медичного огляду)',
     'Сертифікат психологічного тестування (перша сторінка)','Припис про направлення','Реєстр кандидата',
@@ -36,18 +36,28 @@
     return '<details class="crm-presence-summary"><summary><span class="status status-done">'+(hasFile?'Наявність підтверджена прапорцем':'Перевірений · без файла')+'</span></summary><small>Позначив: '+esc(e.checked_by_name||'Працівник CRM')+' · '+esc(date)+'</small></details>';
   }
   function control(r,c,files,esc) {
-    if(!r.id||!allowed(r)||files.length&&!entry(r,c))return '';
-    return '<label class="crm-presence-control"><input type="checkbox" data-doc-presence="'+esc(r.id)+'" aria-label="Є в наявності без файла: '+esc(r.document_type)+'" '+(entry(r,c)?'checked':'')+'> Є в наявності без файла</label>';
+    if(!r.id||!allowed(r))return '';
+    const isPhoto = /фото/iu.test(r.document_type || '') || r.group === 'photo-bundle';
+    if(files.length && !entry(r,c) && !isPhoto) return '';
+    const isChecked = !!entry(r, c) || (isPhoto && (profile(c).all_photos_present === true || profile(c).photos_present === true));
+    const label = isPhoto ? 'Всі фото є (4 шт. 3×4 та 2 шт. 9×12)' : 'Є в наявності без файла';
+    return '<label class="crm-presence-control"><input type="checkbox" data-doc-presence="'+esc(r.id)+'" aria-label="'+esc(label)+': '+esc(r.document_type)+'" '+(isChecked?'checked':'')+'> '+esc(label)+'</label>';
   }
   function cardRows(c,docs,esc) {
     return withoutCopies(c,docs).map(e=>'<div class="cc-doc"><div><b>'+esc(e.document_type)+'</b>'+summary(e,esc)+'</div></div>').join('');
   }
   async function set(client,c,r,present) {
     if(!allowed(r))throw new Error('Для цього документа потрібен файл.');
+    const isPhoto = /фото/iu.test(r.document_type || '') || r.group === 'photo-bundle';
     const result=await client.rpc('crm_set_document_presence',{
       p_candidate_id:c.id,p_requirement_id:r.id,p_present:present,p_expected:records(c)[r.id]||null
     });
     if(result.error)throw result.error;
+    if(isPhoto){
+      if(!c.profile_data) c.profile_data={};
+      if(typeof c.profile_data==='string'){try{c.profile_data=JSON.parse(c.profile_data)}catch(_){c.profile_data={}}}
+      c.profile_data.all_photos_present=present;
+    }
     return result.data;
   }
   window.CRMDocumentPresence={allowedTypes,allowed,profile,records,entry,active,byType,received,verifiedType,withoutCopies,counts,summary,control,cardRows,set};

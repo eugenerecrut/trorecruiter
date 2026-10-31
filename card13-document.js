@@ -79,7 +79,7 @@
       const close = () => { if (url) URL.revokeObjectURL(url); d.close(); d.remove(); };
       d.querySelector('[data-close]').onclick = close;
       d.addEventListener('cancel', ev => { ev.preventDefault(); close(); });
-      const photoDoc = current.find(x => /фото\s*9\s*[×xх\/]\s*12/i.test(x.document_type || ''));
+      const photoDoc = current.find(x => /фото\s*9\s*[×xх\/]\s*12/i.test(x.document_type || '')) || current.find(x => /фото/i.test(x.document_type || x.document_name || ''));
       try { if (photoDoc) photo = await CRMWorkspace.photo(photoDoc); }
       catch { /* A missing photo remains visible in the review; never invent it. */ }
       photoReady = true;

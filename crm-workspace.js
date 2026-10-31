@@ -85,7 +85,7 @@ window.CRMWorkspace = {
     if(cr.error)throw cr.error;if(pr.error)throw pr.error;const c=cr.data,pf=pr.data||{};
     let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
     this.setContext(id,c.name_nominative||c.full_name);
-    const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
+    const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(dr).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||''));
     const education=CRMCaseInformation.education(c,pf);
     const work=this.employmentInformation(c,p,pf);
     const servedValue=c.served_before??p.served_before;
@@ -134,8 +134,8 @@ window.CRMWorkspace = {
     let photo=null;try{photo=await this.photo(photoDoc)}catch(e){console.warn('Фото 9×12:',e)}
     if(sequence!==this.sequence||!content.querySelector('#crmInfoPhoto'))return;
     const missing=fields.slice(0,6).filter(([,v])=>!v).map(([k])=>k);
-    const photoOnPaper=!photo&&!!window.CRMDocumentPresence?.byType('Фото 9×12',c);
-    if(!photo&&!photoOnPaper)missing.push('Фото 9×12');
+    const photoOnPaper=!photo&&!!(window.CRMDocumentPresence?.byType('Фото 9×12',c) || window.CRMDocumentPresence?.byType('Фото 3×4',c) || window.CRMDocumentPresence?.byType('Фотокартки (3×4 або 9×12)',c) || c.profile_data?.all_photos_present || c.profile_data?.photos_present);
+    if(!photo&&!photoOnPaper)missing.push('Фотокартки (3×4 або 9×12)');
     const notice=content.querySelector('#crmInfoNotice');
     if(photo){const image=content.querySelector('#crmInfoPhoto');image.src=photo;image.hidden=false}
     notice.textContent=(missing.length?'Перед друком заповніть: '+missing.join(', ')+'.':'Перевірте відомості перед друком. Незаповнені додаткові поля позначені «Не вказано».')+(photoOnPaper?' Фото 9×12 є в наявності без файла: у PDF його не буде.':'');

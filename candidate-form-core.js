@@ -170,8 +170,9 @@
 
       <nav class="crm-card-nav cc-wrap" id="crmCardNav" aria-label="Розділи картки"></nav>
       <form id="candidateCardV2" class="cc-wrap">
-        <div class="crm-photo crm-card-overview" data-card-photo><div class="crm-card-photo-slot"><img id="crmCardPhoto" alt="Фото кандидата 9×12" hidden></div><div class="crm-card-overview-fields">        <div class="crm-case-mode"><label for="cardServiceType">Вид оформлення</label><select id="cardServiceType" name="service_type" required><option value="">Оберіть вид оформлення</option><option value="За контрактом" ${serviceType==='За контрактом'?'selected':''}>За контрактом</option><option value="За мобілізацією" ${serviceType==='За мобілізацією'?'selected':''}>За мобілізацією</option></select></div>
+        <div class="crm-photo crm-card-overview" data-card-photo><div class="crm-card-photo-slot"><img id="crmCardPhoto" alt="Фото кандидата" hidden></div><div class="crm-card-overview-fields">        <div class="crm-case-mode"><label for="cardServiceType">Вид оформлення</label><select id="cardServiceType" name="service_type" required><option value="">Оберіть вид оформлення</option><option value="За контрактом" ${serviceType==='За контрактом'?'selected':''}>За контрактом</option><option value="За мобілізацією" ${serviceType==='За мобілізацією'?'selected':''}>За мобілізацією</option></select></div>
         <div class="crm-case-mode"><label for="cardCaseMode">Хто збирає документи</label><select id="cardCaseMode" name="case_mode"><option value="full" ${profile.case_mode!=='unit'?'selected':''}>Документи збираємо ми</option><option value="unit" ${profile.case_mode==='unit'?'selected':''}>Документи збирає ВЧ</option></select></div>
+        <label class="crm-presence-control" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;margin:4px 0;cursor:pointer"><input type="checkbox" name="all_photos_present" value="true" ${(profile.all_photos_present || profile.photos_present) ? 'checked' : ''}> <span><b>Всі фото є</b> (4 шт. 3×4 та 2 шт. 9×12)</span></label>
 <button type="button" onclick="crmNavigate('documents','${candidateId}')">Документи та фото</button></div></div>
         ${section('1. Персональні дані','Основні ідентифікаційні відомості',
           input('ПІБ у називному відмінку','name_nominative',c.name_nominative || c.full_name,'text')+
@@ -296,7 +297,7 @@
     caseMode.addEventListener('change',applyCaseLayout);
     formForNavigation.addEventListener('change',applyCaseLayout);
     applyCaseLayout();
-    const photoDoc=CRMResponsibility.latest(docs).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''));
+    const photoDoc=CRMResponsibility.latest(docs).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(docs).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||''));
     CRMWorkspace.photo(photoDoc).then(photo=>{
       if(!formForNavigation.isConnected)return;
       const image=content.querySelector('#crmCardPhoto');

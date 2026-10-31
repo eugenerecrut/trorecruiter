@@ -102,6 +102,9 @@
       CRMResponsibility.latest(documents).forEach(doc => {
         if (!latest.has(doc.candidate_id) && /фото\s*9\s*[×xх\/]\s*12/i.test((doc.document_type || '') + ' ' + (doc.document_name || '')) && doc.storage_path) latest.set(doc.candidate_id, doc);
       });
+      CRMResponsibility.latest(documents).forEach(doc => {
+        if (!latest.has(doc.candidate_id) && /фото/i.test((doc.document_type || '') + ' ' + (doc.document_name || '')) && doc.storage_path) latest.set(doc.candidate_id, doc);
+      });
       observer ||= new IntersectionObserver(entries => {
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
