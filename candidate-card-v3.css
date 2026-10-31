@@ -70,7 +70,7 @@
 .cc-v3 .crm-document-more{grid-column:1/-1;font-size:12px}
 .cc-v3 .crm-document-more>summary{color:#536471;cursor:pointer;padding:4px 0}
 .cc-v3 .crm-document-more .crm-document-details{display:flex;flex-wrap:wrap;gap:6px;padding:7px 0}
-.cc-v3 .crm-case-primary{margin:10px 0;display:flex;gap:8px}
+.cc-v3 .crm-case-primary{margin:10px 0;display:flex;gap:8px;flex-wrap:wrap}
 .cc-v3 .crm-case-primary>button{min-height:38px}
 .cc-case-summary{padding:12px;border:1px solid var(--v3-line);border-radius:8px;margin:10px 0;overflow-wrap:anywhere}
 .cc-case-summary p{margin:6px 0}.cc-case-extra>summary{cursor:pointer;padding:8px}
