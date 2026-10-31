@@ -7,6 +7,31 @@
   // Object property order is not a difference in document facts. Array order stays significant.
   const stable = v => JSON.stringify(v,(_key,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.keys(value).sort().map(k=>[k,value[k]])):value);
   const equal = (a,b) => typeof a==='object'||typeof b==='object'?stable(a)===stable(b):norm(a)===norm(b);
+  const ranks=new Set(['солдат','старший солдат','матрос','старший матрос','молодший сержант','сержант','старший сержант','головний сержант','штаб-сержант','майстер-сержант','старший майстер-сержант','головний майстер-сержант','старшина','головний старшина','молодший лейтенант','лейтенант','старший лейтенант','капітан','майор','підполковник','полковник','бригадний генерал','генерал-майор','генерал-лейтенант','генерал']);
+  function sanitizeShpkAndVos(out){
+    if(!out)return;
+    const shpkRaw=String(out.shpk??'').trim();
+    if(shpkRaw){
+      const vosMatch=shpkRaw.match(/\b(\d{3,6}[А-ЯІЇЄҐA-Z]?)(?:\s*[\/\-]\s*\d+)?\b/iu);
+      if(vosMatch){
+        if(empty(out.military_specialty)){
+          out.military_specialty=vosMatch[1].toUpperCase();
+        }
+        let cleaned=shpkRaw.replace(vosMatch[0],'').replace(/[\/\-,;]/g,' ').trim().replace(/\s+/g,' ');
+        if(ranks.has(norm(cleaned))){
+          out.shpk=cleaned;
+        }else if(out.military_rank&&ranks.has(norm(out.military_rank))){
+          out.shpk=out.military_rank;
+        }else{
+          out.shpk=null;
+        }
+      }
+    }
+    if(out.military_specialty){
+      const m=String(out.military_specialty).trim().match(/^(\d{3,6}[А-ЯІЇЄҐA-Z]?)(?:\s*[\/\-]\s*\d+)?$/iu);
+      if(m)out.military_specialty=m[1].toUpperCase();
+    }
+  }
   function flatten(value) {
     const e=object(value), out={...e}, formatConflicts=[];
     for(const section of ['personal','service'])for(const [k,v] of Object.entries(object(e[section]))){if(!empty(out[k])&&!empty(v)&&!equal(comparable(k,out[k]),comparable(k,v)))formatConflicts.push(k);if(empty(out[k]))out[k]=v;}
@@ -16,6 +41,7 @@
       if(empty(out[key]))out[key]=v;
     }
     if(!Array.isArray(out.relatives))out.relatives=Array.isArray(e.family?.relatives)?e.family.relatives:[];
+    sanitizeShpkAndVos(out);
     return out;
   }
   function service(v){const n=norm(v);return /мобілізац/.test(n)?'За мобілізацією':/контракт/.test(n)?'За контрактом':null;}
@@ -42,7 +68,6 @@
     const [y,m=1,d=1]=text.split('-').map(Number), dt=new Date(Date.UTC(y,m-1,d));
     return y>=1800&&y<=new Date().getUTCFullYear()&&dt.getUTCFullYear()===y&&dt.getUTCMonth()===m-1&&dt.getUTCDate()===d;
   }
-  const ranks=new Set(['солдат','старший солдат','матрос','старший матрос','молодший сержант','сержант','старший сержант','головний сержант','штаб-сержант','майстер-сержант','старший майстер-сержант','головний майстер-сержант','старшина','головний старшина','молодший лейтенант','лейтенант','старший лейтенант','капітан','майор','підполковник','полковник','бригадний генерал','генерал-майор','генерал-лейтенант','генерал']);
   function valid(key,v){
     if(empty(v))return true;if(typeof v!=='string'&&typeof v!=='number')return false;
     if(/birth_date|death_date/.test(key))return date(v,key!=='birth_date'||key.startsWith('relative.'));
