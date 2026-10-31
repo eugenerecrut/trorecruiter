@@ -44,7 +44,7 @@
       name_accusative: n.accusative || '', name_instrumental: n.instrumental || '', name_locative: n.locative || '', name_vocative: n.vocative || '',
       military_unit: s.military_unit || '', desired_unit: s.desired_unit || '', desired_position: s.desired_position || '', shpk: s.shpk || '',
       military_specialty: s.military_specialty || '', tariff_grade: s.tariff_grade || '', service_type: s.service_type || '',
-      recommender_unit: s.recommender_unit || '', recruiter_name: s.recruiter_name || '', signatory: s.signatory || '',
+      recommender_unit: s.recommender_unit || '', recruiter_name: s.recruiter_name || '', recruiter_phone: s.recruiter_phone || s.unit_phone || '', unit_phone: s.unit_phone || s.recruiter_phone || '', signatory: s.signatory || '',
       relatives: Array.isArray(extracted?.relatives) ? extracted.relatives : [],
       source: extracted?.meta?.source || 'Рекомендаційний лист',
       missing_fields: Array.isArray(extracted?.meta?.missing_fields) ? extracted.meta.missing_fields : [],
@@ -95,7 +95,7 @@
     if (!data?.extracted) throw new Error(data?.error || 'AI не повернув структурованих даних.');
     if(attempt!==recognitionAttempt)throw new Error('Результат замінено новішим розпізнаванням.');
     const flat=flattenAIExtraction(data.extracted);
-    for(const k of ['full_name','military_specialty','shpk','tariff_grade','military_rank','recruiter_name','signatory','desired_position'])if(!window.CRMDocumentSync.valid(k,flat[k])){flat.warnings.push('Некоректне OCR-значення '+k+': '+flat[k]);flat[k]='';}
+    for(const k of ['full_name','military_specialty','shpk','tariff_grade','military_rank','recruiter_name','recruiter_phone','unit_phone','signatory','desired_position'])if(!window.CRMDocumentSync.valid(k,flat[k])){flat.warnings.push('Некоректне OCR-значення '+k+': '+flat[k]);flat[k]='';}
     recognizedFile=file;recognizedResponse=structuredClone(data);
     return flat;
   };

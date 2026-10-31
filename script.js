@@ -255,7 +255,8 @@ function showNewCandidateForm() {
             <div style="font-size:11px;font-weight:900;color:#6f8b28;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Службова інформація CRM</div>
           </div>
 
-          <div style="grid-column:1/-1"><label>Рекрутер за рекомендаційним листом</label><input name="recruiter_name"></div></div></details>
+          <div style="grid-column:1/-1"><label>Рекрутер за рекомендаційним листом</label><input name="recruiter_name"></div>
+          <div style="grid-column:1/-1"><label>Телефон представника ВЧ</label><input name="unit_phone"></div></div></details>
 
           <div style="grid-column:1/-1">
             <label>Примітки рекрутера</label>
@@ -580,7 +581,8 @@ function renderExtraction(parsed) {
     ['Вид служби', parsed.service_type],
     ['Рекомендуючий підрозділ', parsed.recommender_unit],
     ['Підписант', parsed.signatory],
-    ['Рекрутер за РЛ', parsed.recruiter_name]
+    ['Рекрутер за РЛ', parsed.recruiter_name],
+    ['Телефон ВЧ', parsed.unit_phone || parsed.recruiter_phone]
   ];
 
   grid.innerHTML = fields.map(([label, value]) => `
@@ -599,7 +601,7 @@ function fillCandidateForm(parsed) {
   const supported = [
     'full_name','birth_date','phone','address','military_unit','desired_unit',
     'desired_position','shpk','military_specialty','tariff_grade','service_type',
-    'recommender_unit','signatory','recruiter_name','rnokpp','military_rank','tcc','vlk_status',
+    'recommender_unit','signatory','recruiter_name','unit_phone','rnokpp','military_rank','tcc','vlk_status',
     'civilian_profession','notes'
   ];
 
@@ -638,6 +640,8 @@ function flattenAIExtraction(extracted) {
     service_type: service.service_type || '',
     recommender_unit: service.recommender_unit || '',
     recruiter_name: service.recruiter_name || '',
+    recruiter_phone: service.recruiter_phone || service.unit_phone || '',
+    unit_phone: service.unit_phone || service.recruiter_phone || '',
     signatory: service.signatory || '',
     notes: '',
     raw_text: pendingRecommendationText,
@@ -832,7 +836,7 @@ async function saveCandidateFromRecommendation(event) {
     tcc: String(fd.get('tcc') || '').trim() || null,
     vlk_status: String(fd.get('vlk_status') || '').trim() || null,
     notes: String(fd.get('notes') || '').trim() || null,
-    profile_data: { ...Object.fromEntries(['shpk','tariff_grade','recruiter_name','desired_unit','recommender_unit','signatory'].map(k=>[k,String(fd.get(k)||'').trim()||null])), relatives: fd.get('case_mode') !== 'unit' && typeof form.__pskReadRelatives==='function' ? form.__pskReadRelatives() : [], service_type: CRMCard13.service({}, {service_type:fd.get('service_type')}, {}), case_mode: fd.get('case_mode') === 'unit' ? 'unit' : 'full', military_unit: String(fd.get('military_unit') || '').trim() || null, candidate_source: pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення' },
+    profile_data: { ...Object.fromEntries(['shpk','tariff_grade','recruiter_name','unit_phone','desired_unit','recommender_unit','signatory'].map(k=>[k,String(fd.get(k)||'').trim()||null])), relatives: fd.get('case_mode') !== 'unit' && typeof form.__pskReadRelatives==='function' ? form.__pskReadRelatives() : [], service_type: CRMCard13.service({}, {service_type:fd.get('service_type')}, {}), case_mode: fd.get('case_mode') === 'unit' ? 'unit' : 'full', military_unit: String(fd.get('military_unit') || '').trim() || null, candidate_source: pendingRecommendationFile ? 'Рекомендаційний лист' : 'Ручне створення' },
     recruitment_status: 'Новий',
     recruiter_id: user.id
   };
