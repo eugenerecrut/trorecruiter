@@ -38,7 +38,15 @@
     if(/birth_date|death_date/.test(key))return date(v,key!=='birth_date'||key.startsWith('relative.'));
     if(key==='military_specialty')return /^\d{6}[А-ЯІЇЄҐA-Z]?$/u.test(String(v).trim());
     if(key==='shpk'||key==='military_rank')return ranks.has(norm(v));
-    if(key==='tariff_grade')return /^\d{1,2}$/.test(String(v))&&Number(v)>=1&&Number(v)<=99;
+    if(key==='tariff_grade'){
+      const s=String(v).trim();
+      if(/^\d{1,2}$/.test(s)){const n=Number(s);return n>=1&&n<=99;}
+      if(/^\d{1,2}\s*[\/\-]\s*\d{1,2}$/.test(s)){
+        const parts=s.split(/[\/\-]/).map(x=>Number(x.trim()));
+        return parts.every(n=>n>=1&&n<=99);
+      }
+      return false;
+    }
     if(key==='service_type')return !!service(v);
     if(key==='rnokpp')return /^\d{10}$/.test(String(v));
     if(key==='sex')return !!normalizeSex(v);
