@@ -26,7 +26,17 @@
     value=norm(value);
     return maleAliases.has(value)?'male':femaleAliases.has(value)?'female':null;
   }
-  function comparable(key,value){return key==='sex'?(normalizeSex(value)??value):value;}
+  function normalizeMilitaryUnit(value){
+    if(empty(value))return '';
+    let s=String(value).trim().toLowerCase();
+    s=s.replace(/^(?:військов(?:а|ої|ою|ій)?\s+частин(?:а|и|ою|і)?|в[\s\/\.]*ч[\s\.]*)/iu,'').trim();
+    return s.toUpperCase();
+  }
+  function comparable(key,value){
+    if(key==='sex')return normalizeSex(value)??value;
+    if(['military_unit','desired_unit','recommender_unit'].includes(key))return normalizeMilitaryUnit(value)||value;
+    return value;
+  }
   function date(v,partial=false){
     const text=String(v??'').trim();if(!new RegExp(partial?'^\\d{4}(?:-\\d{2}(?:-\\d{2})?)?$':'^\\d{4}-\\d{2}-\\d{2}$').test(text))return false;
     const [y,m=1,d=1]=text.split('-').map(Number), dt=new Date(Date.UTC(y,m-1,d));
@@ -181,7 +191,7 @@
         if(e.field_evidence?.[key]?.requires_review||e.meta?.field_evidence?.[key]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[key]?.legibility||e.meta?.field_evidence?.[key]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
         else if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
         else if(!(['driver_license','ubd_certificate','registration_records','marriage_record','education_records','work_records','work_events'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
-        else if(!empty(protectedValue)&&typeof value!=='object'&&equal(key==='service_type'?service(protectedValue):comparable(key,protectedValue),value)){action='leave';reason=ownerIssue?'Значення збігається з карткою; документ потребує перевірки':'';}
+        else if(!empty(protectedValue)&&typeof value!=='object'&&equal(key==='service_type'?service(protectedValue):comparable(key,protectedValue),comparable(key,value))){action='leave';reason=ownerIssue?'Значення збігається з карткою; документ потребує перевірки':'';}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
         else if(target==='profile'&&['education_records','work_records','work_events'].includes(key)&&empty(legacy)){
           if(key!=='education_records'&&Array.isArray(value))value=value.filter(row=>{
@@ -196,7 +206,7 @@
           if(merged.error){action='conflict';reason=merged.error;}
           else{for(const issue of merged.conflicts)add(target,key,null,'conflict',issue,current);value=merged.value;structured=true;action=equal(current||[],value)?'leave':'fill';}
         }
-        else if(!empty(protectedValue)){action=equal(key==='service_type'?service(protectedValue):protectedValue,value)?'leave':'conflict';reason=action==='conflict'?'Збережене значення має пріоритет':'';}
+        else if(!empty(protectedValue)){action=equal(key==='service_type'?service(protectedValue):comparable(key,protectedValue),comparable(key,value))?'leave':'conflict';reason=action==='conflict'?'Збережене значення має пріоритет':'';}
         else if(recommendation&&target==='candidate'&&['phone','military_rank'].includes(key)){action='conflict';reason=key==='phone'?'Номер у рекомендаційному листі може належати контактній особі. Потрібно підтвердити телефон кандидата.':'Чинне військове звання потрібно підтвердити військово-обліковим документом. ШПК у рекомендаційному листі не є підтвердженням звання.';}
         else action='fill';
       }
