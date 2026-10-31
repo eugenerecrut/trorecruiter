@@ -88,14 +88,16 @@ const summaryConfirmed = sandbox.CRMDocumentState.summary(candidateConfirmed, re
 assert.strictEqual(summaryConfirmed.received, 1);
 assert.strictEqual(summaryConfirmed.verified, 1);
 
-// 5. Verify optional "при наявності" and stage-based VLK documents are NOT displayed when empty
+// 5. Verify optional "при наявності" and stage-based VLK/routing documents are NOT displayed when empty
 const reqsWithOptional = [
   ...reqs,
   { id: 'req-name-change', document_type: 'Свідоцтво про зміну імені / прізвища', is_required: false, active: true },
   { id: 'req-driver', document_type: 'Копія посвідчення водія / інші посвідчення', is_required: false, active: true },
   { id: 'req-blood', document_type: 'Довідка з визначенням групи крові та резус-фактору', is_required: false, active: true },
   { id: 'req-vlk', document_type: 'Довідка ВЛК', is_required: true, active: true },
-  { id: 'req-app13', document_type: 'Додаток 13 (Картка обстеження та медичного огляду)', is_required: true, active: true }
+  { id: 'req-app13', document_type: 'Додаток 13 (Картка обстеження та медичного огляду)', is_required: true, active: true },
+  { id: 'req-order-dispatch', document_type: 'Припис про направлення', is_required: true, active: true },
+  { id: 'req-registry', document_type: 'Реєстр кандидата', is_required: true, active: true }
 ];
 
 const rowsWithoutOptionalDocs = sandbox.CRMDocumentState.rows(candidateEmpty, reqsWithOptional, []);
@@ -104,11 +106,14 @@ assert.strictEqual(rowsWithoutOptionalDocs.some(r => /посвідчення в�
 assert.strictEqual(rowsWithoutOptionalDocs.some(r => /групи крові/i.test(r.r.document_type)), false, 'Blood group cert hidden when empty');
 assert.strictEqual(rowsWithoutOptionalDocs.some(r => /довідка влк/i.test(r.r.document_type)), false, 'VLK certificate hidden when empty');
 assert.strictEqual(rowsWithoutOptionalDocs.some(r => /додаток\s*13/i.test(r.r.document_type)), false, 'Dodatok 13 hidden when empty');
+assert.strictEqual(rowsWithoutOptionalDocs.some(r => /припис про направлення/i.test(r.r.document_type)), false, 'Prypys hidden when empty');
+assert.strictEqual(rowsWithoutOptionalDocs.some(r => /реєстр кандидата/i.test(r.r.document_type)), false, 'Registry hidden when empty');
 
 // When uploaded, they appear in rows
 const docsWithDriverAndVLK = [
   { id: 'doc-driver-1', document_type: 'Копія посвідчення водія / інші посвідчення', storage_path: 'driver.pdf', verification_status: 'Підтверджено' },
-  { id: 'doc-vlk-1', document_type: 'Довідка ВЛК', storage_path: 'vlk.pdf', verification_status: 'Підтверджено' }
+  { id: 'doc-vlk-1', document_type: 'Довідка ВЛК', storage_path: 'vlk.pdf', verification_status: 'Підтверджено' },
+  { id: 'doc-prys-1', document_type: 'Припис про направлення', storage_path: 'prys.pdf', verification_status: 'Підтверджено' }
 ];
 const rowsWithUploaded = sandbox.CRMDocumentState.rows(candidateEmpty, reqsWithOptional, docsWithDriverAndVLK);
 const driverRow = rowsWithUploaded.find(r => /посвідчення водія/i.test(r.r.document_type));
@@ -119,6 +124,10 @@ assert.strictEqual(driverRow.received, true);
 const vlkRow = rowsWithUploaded.find(r => /довідка влк/i.test(r.r.document_type));
 assert.ok(vlkRow, 'VLK row appears when uploaded');
 assert.strictEqual(vlkRow.received, true);
+
+const prysRow = rowsWithUploaded.find(r => /припис про направлення/i.test(r.r.document_type));
+assert.ok(prysRow, 'Prypys row appears when uploaded');
+assert.strictEqual(prysRow.received, true);
 
 // 6. Verify military documents depending on served_before
 const reqsWithMilitary = [

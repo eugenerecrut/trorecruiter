@@ -26,7 +26,7 @@
   }
   const isPhotoRequirement = type => /фото\s*(?:3\s*[×xх\/]\s*4|9\s*[×xх\/]\s*12)/iu.test(String(type || '')) || /^фото/iu.test(String(type || '').trim());
   const isPhotoDoc = d => isPhotoRequirement(d.document_type || d.document_name || '');
-  const isAsAvailableOnly = type => /змін.*(?:імен|прізвищ)|посвідчення водія|групи крові|довідка влк|додаток\s*13|картка обстеження|убд|витяг.*наказ|нагород/iu.test(String(type || ''));
+  const isAsAvailableOnly = type => /змін.*(?:імен|прізвищ)|посвідчення водія|групи крові|довідка влк|додаток\s*13|картка обстеження|убд|витяг.*наказ|нагород|припис про направлення|реєстр кандидата/iu.test(String(type || ''));
   const isMilitaryTicket = type => /військов.*квит/iu.test(String(type || ''));
   function rows(c,requirements,documents) {
     const docs=latest(documents), p=conditions().value(c,'relatives');
