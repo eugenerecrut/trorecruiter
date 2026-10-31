@@ -128,7 +128,9 @@
         if(!['birth_date','death_date','birth_place','citizenship','address','phone','workplace','position','notes','deceased'].includes(key))continue;
         const field='relatives.'+i+'.'+key;
         if(/_date$/.test(key)&&!date(v,true)){add('profile',field,v,'conflict','Некоректна дата',dest[key]);continue;}
-        if(empty(dest[key])){add('profile',field,v,'fill','',dest[key]);dest[key]=v;dest.field_sources={...object(dest.field_sources),[key]:documentId};}
+        if(added){
+          dest[key]=v;dest.field_sources={...object(dest.field_sources),[key]:documentId};
+        }else if(empty(dest[key])){add('profile',field,v,'fill','',dest[key]);dest[key]=v;dest.field_sources={...object(dest.field_sources),[key]:documentId};}
         else {const same=key==='phone'&&root.CRMPhone?equal(root.CRMPhone.normalize(dest[key]),root.CRMPhone.normalize(v)):equal(dest[key],v);add('profile',field,v,same?'leave':'conflict',same?'':'Збережене значення родича має пріоритет',dest[key]);}
       }
       if(added)add('profile','relatives.'+i,r,'fill','Новий родич',null);

@@ -7,11 +7,12 @@ function label(value,candidate){
  const key=String(value??'');
  if(Object.hasOwn(labels,key))return labels[key];
  if(Object.hasOwn(extraLabels,key))return extraLabels[key];
- const match=/^relatives\.(0|[1-9]\d*)\.([a-z_]+)$/.exec(key);
- if(match&&Number.isSafeInteger(Number(match[1]))&&Object.hasOwn(relativeLabels,match[2])){
+ const match=/^relatives\.(0|[1-9]\d*)(?:\.([a-z_]+))?$/.exec(key);
+ if(match&&Number.isSafeInteger(Number(match[1]))){
   const index=Number(match[1]),relatives=profile(candidate||{}).relatives,relative=Array.isArray(relatives)?relatives[index]:null;
   const name=typeof relative?.full_name==='string'?relative.full_name.trim():'';
-  return (name||'Родич №'+(index+1))+' · '+relativeLabels[match[2]];
+  if(!match[2])return (name||'Родич №'+(index+1))+' (новий запис)';
+  if(Object.hasOwn(relativeLabels,match[2]))return (name||'Родич №'+(index+1))+' · '+relativeLabels[match[2]];
  }
  return 'Інші відомості ('+key+')';
 }
