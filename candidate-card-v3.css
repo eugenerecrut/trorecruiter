@@ -2,7 +2,7 @@
 .cc-v3{--v3-accent:#467524;--v3-line:#dce3e6;--v3-muted:#687780;padding:18px 22px!important;background:#f4f6f7}
 .cc-v3 [hidden]{display:none!important}
 .cc-v3 .cc-wrap{max-width:none}
-.cc-v3-header{position:sticky;top:0;z-index:12;display:grid;grid-template-columns:54px minmax(170px,1.2fr) minmax(130px,1fr) minmax(130px,1fr) minmax(160px,1fr);gap:8px 14px;background:#fff;border:1px solid var(--v3-line);border-radius:6px;padding:10px 12px;box-shadow:0 2px 6px #15222c08}
+.cc-v3-header{position:sticky;top:0;z-index:12;display:grid;grid-template-columns:54px minmax(170px,1.2fr) minmax(140px,1fr) minmax(140px,1fr) minmax(150px,1fr);gap:8px 14px;background:#fff;border:1px solid var(--v3-line);border-radius:6px;padding:10px 12px;box-shadow:0 2px 6px #15222c08}
 .cc-v3-photo .crm-card-photo-slot{width:54px;height:70px;min-height:0;padding:0;background:#eef2f0;border-radius:4px;overflow:hidden}
 .cc-v3-photo img{width:100%;height:100%;object-fit:cover}
 .cc-v3-identity h1{font-size:17px;line-height:1.25;margin:0 0 4px;overflow-wrap:anywhere}

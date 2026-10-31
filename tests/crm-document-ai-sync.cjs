@@ -11,7 +11,7 @@ const uploadPDF={prepare:async file=>file,isJPEG:()=>false};
 const candidate=()=>({id:'c1',full_name:'ТЕСТЕНКО Іван Петрович',birth_date:'1990-06-13',rnokpp:'1234567890',profile_data:{service_type:'За мобілізацією'}});
 const document=(extracted,type='Рекомендаційний лист')=>({id:'d1',candidate_id:'c1',file_name:'test.pdf',document_type:type,ai_extracted:extracted});
 const personal=()=>({full_name:'Тестенко Іван Петрович',birth_date:'1990-06-13',rnokpp:'1234567890'});
-const service=()=>({military_specialty:'225256А',shpk:'солдат',tariff_grade:2,recruiter_name:'Сергій ТЕСТЕНКО',military_unit:'А7036',desired_position:'МЕХАНІК',signatory:'Іван ТЕСТЕНКО',desired_unit:'військова частина А7036',recommender_unit:'А7036',service_type:'за контрактом'});
+const service=()=>({military_specialty:'225256А',shpk:'солдат',tariff_grade:2,recruiter_name:'Сергій ТЕСТЕНКО',recruiter_phone:'+380991112233',unit_phone:'+380991112233',military_unit:'А7036',desired_position:'МЕХАНІК',signatory:'Іван ТЕСТЕНКО',desired_unit:'військова частина А7036',recommender_unit:'А7036',service_type:'за контрактом'});
 function memory(c,d){
   const state={c:structuredClone(c),d:structuredClone(d),writes:0,rpcs:0,fail:null};
   const client={from(table){let id,patch,insert;const q={select(){return q},eq(k,v){id=v;return q},insert(v){insert=v;return q},update(v){patch=v;return q},single:run,maybeSingle:run,then(a,b){return run().then(a,b)}};
@@ -32,7 +32,7 @@ test('Flat and nested RL yield identical validated selections and preserve mobil
   const nested=sync.plan(document({personal:personal(),service:service()}),candidate());
   const flat=sync.plan(document({...personal(),...service()}),candidate());
   assert.deepEqual(nested.selections.map(({expected_ai,...s})=>s),flat.selections.map(({expected_ai,...s})=>s));
-  for(const key of ['military_specialty','shpk','tariff_grade','recruiter_name','military_unit','signatory','desired_position'])assert(nested.selections.some(s=>s.key===key));
+  for(const key of ['military_specialty','shpk','tariff_grade','recruiter_name','recruiter_phone','unit_phone','military_unit','signatory','desired_position'])assert(nested.selections.some(s=>s.key===key));
   assert.equal(nested.rows.find(r=>r.key==='service_type').action,'conflict');assert(!nested.selections.some(s=>s.key==='service_type'));
 });
 test('Invalid Parfionenko SHPK and mixed Latin OCR are rejected, valid VOS retained',()=>{

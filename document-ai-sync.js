@@ -205,7 +205,13 @@
       propose('candidate',key,v);
     }
     if(recommendation){
-      for(const key of ['shpk','tariff_grade','recruiter_name','military_unit','desired_unit','recommender_unit','signatory','service_type'])propose('profile',key,key==='service_type'&&!empty(e[key])?service(e[key])||e[key]:e[key]);
+      if(empty(e.unit_phone) && !empty(e.recruiter_phone)) e.unit_phone = e.recruiter_phone;
+      if(empty(e.recruiter_phone) && !empty(e.unit_phone)) e.recruiter_phone = e.unit_phone;
+      for(const key of ['shpk','tariff_grade','recruiter_name','recruiter_phone','unit_phone','military_unit','desired_unit','recommender_unit','signatory','service_type']){
+        let val = e[key];
+        if(['recruiter_phone','unit_phone'].includes(key) && !empty(val) && root.CRMPhone) val = root.CRMPhone.normalize(val);
+        propose('profile',key,key==='service_type'&&!empty(val)?service(val)||val:val);
+      }
     }
     if(identity){
       const check=/ID[\s-]*карт/iu.test(type)?root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate):null;
