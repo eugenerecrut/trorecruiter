@@ -21,6 +21,18 @@
   let currentFilter = 'missing'; // 'all', 'missing', 'uploaded'
   let caseData = null;
 
+  const LOGO_4CR_SVG = '' +
+    '<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">' +
+      '<path d="M24 3 L41 7.5 V23 C41 33.5 32.5 42 24 45.5 C15.5 42 7 33.5 7 23 V7.5 L24 3 Z" fill="#0f172a" stroke="#ca8a04" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M24 5.5 L39 9.5 V23 C39 32.2 31.5 39.8 24 43 C16.5 39.8 9 32.2 9 23 V9.5 L24 5.5 Z" fill="#14532d"/>' +
+      '<path d="M14 12 H18 V15.5 H22 V12 H26 V15.5 H30 V12 H34 V18 H14 V12 Z" fill="#eab308"/>' +
+      '<path d="M24 18.5 V33" stroke="#fef08a" stroke-width="2.2" stroke-linecap="round"/>' +
+      '<path d="M20 22 C20 28 22 30 24 30 C26 30 28 28 28 22" stroke="#fef08a" stroke-width="1.8" stroke-linecap="round" fill="none"/>' +
+      '<path d="M17 24.5 C17 29.5 20.5 31.5 24 31.5 C27.5 31.5 31 29.5 31 24.5" stroke="#ca8a04" stroke-width="1.6" stroke-linecap="round" fill="none"/>' +
+      '<circle cx="24" cy="37.5" r="4.5" fill="#ca8a04" stroke="#0f172a" stroke-width="1"/>' +
+      '<text x="24" y="40.2" font-size="7" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif">4</text>' +
+    '</svg>';
+
   function checkIsDesktop(){
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 1);
@@ -48,18 +60,21 @@
 
   function renderLoginPrompt(){
     app.innerHTML = '' +
-      '<div class="card" style="text-align:center;padding:40px 24px;max-width:480px;margin:40px auto">' +
-        '<div style="font-size:42px;margin-bottom:12px">🪪</div>' +
-        '<h2 style="font-size:18px;margin:0 0 8px 0;color:#0f172a">Особистий кабінет кандидата</h2>' +
-        '<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">' +
-          'Введіть персональний ключ доступу з SMS/повідомлення рекрутера або вставте повне посилання:' +
+      '<div class="card" style="text-align:center;padding:36px 24px;max-width:480px;margin:40px auto">' +
+        '<div style="width:54px;height:54px;margin:0 auto 12px">' + LOGO_4CR_SVG + '</div>' +
+        '<div style="font-size:11px;font-weight:800;color:#166534;letter-spacing:0.5px;text-transform:uppercase">4 Центр рекрутингу Сил ТрО ЗСУ</div>' +
+        '<h2 style="font-size:19px;margin:4px 0 6px 0;color:#0f172a">Особистий кабінет кандидата</h2>' +
+        '<div style="font-size:11px;font-weight:700;color:#ca8a04;margin-bottom:18px;font-style:italic">«Готові до спротиву!»</div>' +
+        '<p style="font-size:13px;color:#64748b;margin:0 0 18px 0;line-height:1.4">' +
+          'Введіть персональний ключ доступу з повідомлення рекрутера або вставте повне посилання:' +
         '</p>' +
         '<form id="tokenForm" style="display:flex;flex-direction:column;gap:10px">' +
-          '<input type="text" id="tokenInput" placeholder="Вставте посилання або ключ доступу…" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;text-align:center" required>' +
-          '<button type="submit" style="background:#0284c7;color:#fff;border:none;border-radius:8px;padding:11px;font-weight:600;font-size:14px;cursor:pointer">Увійти в кабінет</button>' +
+          '<input type="text" id="tokenInput" placeholder="Вставте посилання або ключ доступу…" style="padding:11px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;text-align:center" required>' +
+          '<button type="submit" style="background:#166534;color:#fff;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:14px;cursor:pointer;transition:background 0.15s ease">Увійти в кабінет</button>' +
         '</form>' +
-        '<div style="margin-top:20px;font-size:12px;color:#94a3b8">' +
-          'Якщо Ви не маєте посилання, зверніться до закріпленого рекрутера.' +
+        '<div style="margin-top:22px;padding-top:14px;border-top:1px solid #f1f5f9;font-size:12px;color:#64748b">' +
+          'Офіційний портал: <a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer" style="color:#166534;font-weight:700;text-decoration:none">terytoria.org.ua ↗</a>' +
+          '<div style="margin-top:4px;font-size:11px;color:#94a3b8">Гаряча лінія 4 Центру: <a href="tel:0800300163" style="color:#ca8a04;font-weight:700;text-decoration:none">0 800 300 163</a></div>' +
         '</div>' +
       '</div>';
 
@@ -89,14 +104,18 @@
 
   function renderError(message){
     app.innerHTML = '' +
-      '<div class="card" style="text-align:center;padding:40px 20px;max-width:500px;margin:30px auto">' +
-        '<div style="font-size:40px;margin-bottom:12px">🔒</div>' +
-        '<h2 style="font-size:18px;margin:0 0 8px 0;color:#0f172a">Доступ до кабінету обмежено</h2>' +
-        '<p style="font-size:13px;color:#64748b;margin:0 0 20px 0">' + escapeHtml(message) + '</p>' +
+      '<div class="card" style="text-align:center;padding:36px 20px;max-width:500px;margin:30px auto">' +
+        '<div style="width:50px;height:50px;margin:0 auto 12px">' + LOGO_4CR_SVG + '</div>' +
+        '<div style="font-size:11px;font-weight:800;color:#166534;letter-spacing:0.5px;text-transform:uppercase">4 Центр рекрутингу Сил ТрО ЗСУ</div>' +
+        '<h2 style="font-size:18px;margin:4px 0 8px 0;color:#0f172a">Доступ до кабінету обмежено</h2>' +
+        '<p style="font-size:13px;color:#64748b;margin:0 0 18px 0">' + escapeHtml(message) + '</p>' +
         '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;font-size:12px;color:#475569">' +
-          'Зверніться, будь ласка, до Вашого рекрутера для отримання нового посилання.' +
+          'Зверніться, будь ласка, до закріпленого рекрутера 4 Центру для отримання нового посилання.' +
         '</div>' +
-        '<button type="button" id="btnChangeToken" style="margin-top:16px;background:transparent;border:1px solid #cbd5e1;padding:6px 12px;border-radius:6px;font-size:12px;color:#64748b;cursor:pointer">Ввести інший ключ</button>' +
+        '<div style="margin-top:14px;display:flex;justify-content:center;gap:10px;flex-wrap:wrap">' +
+          '<button type="button" id="btnChangeToken" style="background:transparent;border:1px solid #cbd5e1;padding:7px 14px;border-radius:6px;font-size:12px;color:#475569;font-weight:600;cursor:pointer">Ввести інший ключ</button>' +
+          '<a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;background:#f0fdf4;border:1px solid #86efac;padding:7px 14px;border-radius:6px;font-size:12px;color:#166534;font-weight:700;text-decoration:none">Сайт terytoria.org.ua ↗</a>' +
+        '</div>' +
       '</div>';
 
     const btnChange = app.querySelector('#btnChangeToken');
@@ -195,17 +214,72 @@
         // Блок 2: Рекрутер 4 Центру Рекрутингу (з CRM)
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:12px">' +
           '<div style="display:flex;align-items:flex-start;gap:12px">' +
-            '<div style="width:38px;height:38px;background:#16a34a;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">4ЦР</div>' +
+            '<div style="width:38px;height:38px;flex-shrink:0">' + LOGO_4CR_SVG + '</div>' +
             '<div>' +
-              '<div style="font-size:11px;color:#16a34a;font-weight:700;letter-spacing:0.3px">Рекрутер 4 Центру Рекрутингу</div>' +
+              '<div style="font-size:11px;color:#166534;font-weight:800;letter-spacing:0.3px;text-transform:uppercase">4 Центр Рекрутингу Сил ТрО</div>' +
               '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px">' + escapeHtml(c.center_recruiter_name || c.recruiter_name || 'Рекрутер 4 Центру') + '</div>' +
-              ((c.center_recruiter_phone || c.recruiter_phone) ? '<div style="margin-top:4px"><a href="tel:' + escapeHtml(c.center_recruiter_phone || c.recruiter_phone) + '" style="color:#16a34a;font-weight:700;font-size:12px;text-decoration:none">📞 ' + escapeHtml(c.center_recruiter_phone || c.recruiter_phone) + '</a></div>' : '') +
+              ((c.center_recruiter_phone || c.recruiter_phone) ? '<div style="margin-top:4px"><a href="tel:' + escapeHtml(c.center_recruiter_phone || c.recruiter_phone) + '" style="color:#166534;font-weight:700;font-size:12px;text-decoration:none">📞 ' + escapeHtml(c.center_recruiter_phone || c.recruiter_phone) + '</a></div>' : '') +
             '</div>' +
           '</div>' +
           '<div class="recruiter-actions" style="display:flex;gap:6px">' +
-            ((c.center_recruiter_phone || c.recruiter_phone) ? '<a class="btn-icon btn-phone" href="tel:' + escapeHtml(c.center_recruiter_phone || c.recruiter_phone) + '" title="Зателефонувати рекрутеру">📞</a>' : '') +
+            ((c.center_recruiter_phone || c.recruiter_phone) ? '<a class="btn-icon btn-phone" href="tel:' + escapeHtml(c.center_recruiter_phone || c.recruiter_phone) + '" title="Зателефонувати рекрутеру" style="background:#166534">📞</a>' : '') +
             ((c.center_recruiter_phone || c.recruiter_phone) ? '<a class="btn-icon btn-wa" href="https://wa.me/' + escapeHtml((c.center_recruiter_phone || c.recruiter_phone).replace(/\D/g,'')) + '" target="_blank" title="Написати у WhatsApp">💬 WhatsApp</a>' : '') +
           '</div>' +
+        '</div>' +
+      '</div>' +
+
+      // Блок 3: Офіційна картка 4 Центру рекрутингу та сайту terytoria.org.ua
+      '<div class="terytoria-card">' +
+        '<div class="terytoria-header">' +
+          '<div class="terytoria-logo-box">' + LOGO_4CR_SVG + '</div>' +
+          '<div style="flex:1">' +
+            '<div class="terytoria-badge">4 ЦЕНТР РЕКРУТИНГУ СИЛ ТрО ЗСУ</div>' +
+            '<div class="terytoria-portal-title">Територія рекрутингу</div>' +
+            '<div class="terytoria-slogan">«Готові до спротиву!»</div>' +
+          '</div>' +
+        '</div>' +
+        '<p class="terytoria-desc">' +
+          'Офіційна платформа рекрутингу Сил територіальної оборони Збройних Сил України. Підбір підрозділу, вибір посади та гарантований супровід кандидата до зарахування у військову частину.' +
+        '</p>' +
+        '<div class="terytoria-links">' +
+          '<a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer" class="terytoria-btn primary">' +
+            '<div class="btn-left">' +
+              '<span class="btn-icon">🌐</span>' +
+              '<div class="btn-text-wrap">' +
+                '<b>Офіційний сайт terytoria.org.ua</b>' +
+                '<small>Головний портал рекрутингу Сил ТрО</small>' +
+              '</div>' +
+            '</div>' +
+            '<span class="terytoria-arrow">↗</span>' +
+          '</a>' +
+          '<a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer" class="terytoria-btn secondary">' +
+            '<div class="btn-left">' +
+              '<span class="btn-icon">🎯</span>' +
+              '<div class="btn-text-wrap">' +
+                '<b>Вакансії підрозділів ТрО</b>' +
+                '<small>Сотні бойових та тилових посад у 25+ бригадах</small>' +
+              '</div>' +
+            '</div>' +
+            '<span class="terytoria-arrow">↗</span>' +
+          '</a>' +
+          '<a href="tel:0800300163" class="terytoria-btn hotline">' +
+            '<div class="btn-left">' +
+              '<span class="btn-icon">📞</span>' +
+              '<div class="btn-text-wrap">' +
+                '<b>Гаряча лінія 4 Центру: 0 800 300 163</b>' +
+                '<small>Безкоштовно по всій Україні</small>' +
+              '</div>' +
+            '</div>' +
+          '</a>' +
+          '<a href="mailto:cr@terytoria.org.ua" class="terytoria-btn email">' +
+            '<div class="btn-left">' +
+              '<span class="btn-icon">✉️</span>' +
+              '<div class="btn-text-wrap">' +
+                '<b>Електронна пошта: cr@terytoria.org.ua</b>' +
+                '<small>Зв’язок із рекрутинговою групою</small>' +
+              '</div>' +
+            '</div>' +
+          '</a>' +
         '</div>' +
       '</div>' +
 
@@ -226,12 +300,11 @@
       '<div class="candidate-guide">' +
         '<div class="candidate-guide-header">' +
           '<div style="display:flex;align-items:center;gap:8px">' +
-            '<span class="candidate-guide-badge">📋 Пам’ятка</span>' +
+            '<span class="candidate-guide-badge" style="background:#166534">📋 Пам’ятка 4 Центру</span>' +
             '<span class="candidate-guide-title">Вимоги до фотографій та документів для особової справи</span>' +
           '</div>' +
-          '<span style="font-size:11px;color:#0284c7;font-weight:700">ЗСУ / ТрО</span>' +
+          '<a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:#166534;font-weight:700;text-decoration:none">Сили ТрО ЗСУ • terytoria.org.ua ↗</a>' +
         '</div>' +
-
         '<div class="guide-rules-grid">' +
           '<div class="guide-rule-item">' +
             '<span class="guide-rule-icon">📐</span>' +
@@ -240,7 +313,6 @@
               '<span>Покладіть документ рівно на однотонну поверхню. Тримайте телефон прямо над аркушем, не обрізайте краї.</span>' +
             '</div>' +
           '</div>' +
-
           '<div class="guide-rule-item">' +
             '<span class="guide-rule-icon">☀️</span>' +
             '<div class="guide-rule-text">' +
@@ -248,7 +320,6 @@
               '<span>Знімайте при доброму світлі. Спалах створює білі відблиски, через які неможливо розпізнати текст і печатки.</span>' +
             '</div>' +
           '</div>' +
-
           '<div class="guide-rule-item">' +
             '<span class="guide-rule-icon">🔍</span>' +
             '<div class="guide-rule-text">' +
@@ -256,7 +327,6 @@
               '<span>Текст, серія, номер, печатки та підписи мають бути абсолютно чіткими без розмиття чи тремтіння камери.</span>' +
             '</div>' +
           '</div>' +
-
           '<div class="guide-rule-item">' +
             '<span class="guide-rule-icon">📑</span>' +
             '<div class="guide-rule-text">' +
@@ -265,7 +335,6 @@
             '</div>' +
           '</div>' +
         '</div>' +
-
         '<div class="guide-warning-banner">' +
           '<span style="font-size:18px">⚠️</span>' +
           '<div>' +
@@ -298,19 +367,19 @@
       '</div>' +
 
       (templateItems.length > 0 ? '' +
-        '<div class="card" style="padding:14px 16px;margin-top:16px;background:#f0f9ff;border:1px solid #bae6fd">' +
+        '<div class="card" style="padding:14px 16px;margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0">' +
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
             '<span style="font-size:18px">📝</span>' +
-            '<div style="font-size:14px;font-weight:700;color:#0369a1">Бланки для друку та підпису</div>' +
+            '<div style="font-size:14px;font-weight:700;color:#166534">Бланки для друку та підпису</div>' +
           '</div>' +
-          '<p style="font-size:12px;color:#0369a1;margin:0 0 12px 0;line-height:1.4">' +
+          '<p style="font-size:12px;color:#166534;margin:0 0 12px 0;line-height:1.4">' +
             'Потрібні за умови, якщо рекрутер надіслав Вам бланки або Ви завантажили шаблони нижче, роздрукували та заповнили власноруч:' +
           '</p>' +
           templateItems.map(it => renderChecklistItem(it)).join('') +
         '</div>' : '') +
 
       '<details class="card" style="padding:12px 16px;margin-top:14px" id="extraDocCard">' +
-        '<summary style="font-size:13px;font-weight:700;color:#0284c7;cursor:pointer">＋ Надіслати додатковий документ</summary>' +
+        '<summary style="font-size:13px;font-weight:700;color:#166534;cursor:pointer">＋ Надіслати додатковий документ</summary>' +
         '<div style="margin-top:12px">' +
           '<p style="font-size:12px;color:#64748b;margin:0 0 10px 0">Якщо у Вас є посвідчення водія, УБД або інші додаткові довідки, Ви можете завантажити їх сюди:</p>' +
           '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
@@ -322,7 +391,7 @@
               '<option value="Копія свідоцтва про народження дітей">Свідоцтво про народження дитини</option>' +
               '<option value="Інший документ">Інший документ / довідка</option>' +
             '</select>' +
-            '<label class="upload-btn-label" style="margin:0">' +
+            '<label class="upload-btn-label" style="margin:0;background:#166534">' +
               '<span class="upload-btn-text">' + (isDesktop ? '📁 Вибрати файл' : '📷 Завантажити') + '</span>' +
               '<input type="file" accept="' + (isDesktop ? '.pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf' : 'image/*,application/pdf') + '"' + (isDesktop ? '' : ' capture="environment"') + ' id="extraDocInput">' +
             '</label>' +
@@ -343,15 +412,52 @@
         '</ul>' +
       '</div>';
 
+    // Official Footer of 4th Center of Recruiting
+    const footerHtml = '' +
+      '<footer class="portal-footer">' +
+        '<div class="portal-footer-top">' +
+          '<div class="portal-footer-brand">' +
+            '<div class="portal-footer-logo">' + LOGO_4CR_SVG + '</div>' +
+            '<div>' +
+              '<div class="footer-title">4 Центр рекрутингу Сил територіальної оборони ЗСУ</div>' +
+              '<div class="footer-sub">Офіційний супровід та комплектування підрозділів ТрО Збройних Сил України</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="footer-motto">«Готові до спротиву!»</div>' +
+        '</div>' +
+        '<div class="portal-footer-links">' +
+          '<a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer">🌐 Офіційний сайт: <b>terytoria.org.ua</b> ↗</a>' +
+          '<span class="footer-sep">•</span>' +
+          '<a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer">🎯 Вакансії Сил ТрО ↗</a>' +
+          '<span class="footer-sep">•</span>' +
+          '<a href="tel:0800300163">📞 Гаряча лінія: <b>0 800 300 163</b></a>' +
+          '<span class="footer-sep">•</span>' +
+          '<a href="mailto:cr@terytoria.org.ua">✉️ cr@terytoria.org.ua</a>' +
+        '</div>' +
+        '<div class="portal-footer-bottom">' +
+          '<div>© 2026 4 Центр рекрутингу Сил ТрО ЗСУ • Всі права захищено</div>' +
+          '<div>Конфіденційність та захист даних кандидатів гарантуються ЗСУ</div>' +
+        '</div>' +
+      '</footer>';
+
     // Combine into Responsive Layout
     app.innerHTML = '' +
       '<header class="portal-header">' +
         '<div class="portal-brand">' +
-          '<div class="portal-brand-badge">PSK</div>' +
-          '<div class="portal-brand-title">Особистий кабінет кандидата</div>' +
+          '<div class="portal-brand-logo">' + LOGO_4CR_SVG + '</div>' +
+          '<div>' +
+            '<div class="portal-brand-title">4 Центр рекрутингу</div>' +
+            '<div class="portal-brand-sub">Сили територіальної оборони ЗСУ</div>' +
+          '</div>' +
         '</div>' +
-        '<div class="device-indicator">' +
-          (isDesktop ? '💻 Комп’ютер' : '📱 Смартфон') +
+        '<div class="header-right-actions">' +
+          '<a href="https://terytoria.org.ua/" target="_blank" rel="noopener noreferrer" class="btn-site-header" title="Офіційний сайт 4 Центру рекрутингу Сил ТрО">' +
+            '<span>🌐 terytoria.org.ua</span>' +
+            '<span class="ext-icon">↗</span>' +
+          '</a>' +
+          '<div class="device-indicator">' +
+            (isDesktop ? '💻 Комп’ютер' : '📱 Смартфон') +
+          '</div>' +
         '</div>' +
       '</header>' +
       (isDesktop ?
@@ -360,7 +466,8 @@
           '<div class="portal-main">' + mainHtml + '</div>' +
         '</div>' :
         sidebarHtml + mainHtml
-      );
+      ) +
+      footerHtml;
 
     attachEvents();
   }

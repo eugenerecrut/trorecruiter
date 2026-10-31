@@ -3,13 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Кабінет кандидата — PSK_RECRUTER</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230f172a'/><text x='16' y='21' font-size='14' font-weight='bold' fill='%2338bdf8' text-anchor='middle'>PSK</text></svg>">
+  <title>Кабінет кандидата — 4 Центр рекрутингу Сил ТрО ЗСУ | terytoria.org.ua</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><path d='M24 3 L41 7.5 V23 C41 33.5 32.5 42 24 45.5 C15.5 42 7 33.5 7 23 V7.5 L24 3 Z' fill='%230f172a' stroke='%23ca8a04' stroke-width='2'/><path d='M24 5.5 L39 9.5 V23 C39 32.2 31.5 39.8 24 43 C16.5 39.8 9 32.2 9 23 V9.5 L24 5.5 Z' fill='%2314532d'/><path d='M14 12 H18 V15.5 H22 V12 H26 V15.5 H30 V12 H34 V18 H14 V12 Z' fill='%23eab308'/><path d='M24 18.5 V33' stroke='%23fef08a' stroke-width='2.2' stroke-linecap='round'/><path d='M20 22 C20 28 22 30 24 30 C26 30 28 28 28 22' stroke='%23fef08a' stroke-width='1.8' fill='none'/><circle cx='24' cy='37.5' r='4.5' fill='%23ca8a04'/><text x='24' y='40.2' font-size='7' font-weight='900' fill='%230f172a' text-anchor='middle' font-family='sans-serif'>4</text></svg>">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
-      --primary: #0284c7;
-      --primary-dark: #0369a1;
+      --primary: #166534;
+      --primary-dark: #14532d;
+      --primary-hover: #15803d;
+      --accent: #ca8a04;
+      --accent-light: #fef08a;
+      --tactical-dark: #0f172a;
+      --tactical-slate: #1e293b;
       --success: #16a34a;
       --warning: #f59e0b;
       --danger: #dc2626;
@@ -46,21 +51,63 @@
     .portal-brand {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
-    .portal-brand-badge {
-      background: #0f172a;
-      color: #38bdf8;
-      font-weight: 800;
-      font-size: 13px;
-      padding: 4px 8px;
-      border-radius: 6px;
-      letter-spacing: 0.5px;
+    .portal-brand-logo {
+      width: 42px;
+      height: 42px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .portal-brand-logo svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
     .portal-brand-title {
-      font-size: 15px;
-      font-weight: 700;
+      font-size: 16px;
+      font-weight: 800;
       color: var(--text);
+      line-height: 1.2;
+    }
+    .portal-brand-sub {
+      font-size: 11px;
+      font-weight: 700;
+      color: #166534;
+      letter-spacing: 0.3px;
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+    .header-right-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-site-header {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      color: #166534;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 20px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      box-shadow: 0 1px 2px rgba(22, 101, 52, 0.05);
+    }
+    .btn-site-header:hover {
+      background: #166534;
+      color: #ffffff;
+      border-color: #166534;
+    }
+    .btn-site-header .ext-icon {
+      font-size: 11px;
+      opacity: 0.85;
     }
     .device-indicator {
       font-size: 12px;
@@ -404,6 +451,252 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* 4th Center & terytoria.org.ua Card */
+    .terytoria-card {
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 55%, #14532d 100%);
+      border: 1px solid rgba(202, 138, 4, 0.45);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      color: #f8fafc;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18);
+      margin-bottom: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .terytoria-card::after {
+      content: '';
+      position: absolute;
+      top: -30px;
+      right: -30px;
+      width: 100px;
+      height: 100px;
+      background: radial-gradient(circle, rgba(202, 138, 4, 0.2) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .terytoria-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .terytoria-logo-box {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(202, 138, 4, 0.5);
+      border-radius: 10px;
+      padding: 3px;
+    }
+    .terytoria-logo-box svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .terytoria-badge {
+      display: inline-block;
+      background: rgba(202, 138, 4, 0.25);
+      border: 1px solid rgba(202, 138, 4, 0.6);
+      color: #fef08a;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .terytoria-portal-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+    .terytoria-slogan {
+      font-size: 11px;
+      font-weight: 700;
+      color: #ca8a04;
+      font-style: italic;
+      margin-top: 1px;
+    }
+    .terytoria-desc {
+      font-size: 12px;
+      line-height: 1.45;
+      color: #cbd5e1;
+      margin: 0 0 12px 0;
+    }
+    .terytoria-links {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .terytoria-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+    .terytoria-btn .btn-left {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .terytoria-btn .btn-icon {
+      font-size: 16px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .terytoria-btn .btn-text-wrap {
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+      line-height: 1.25;
+    }
+    .terytoria-btn .btn-text-wrap b {
+      font-size: 12px;
+    }
+    .terytoria-btn .btn-text-wrap small {
+      font-size: 10px;
+      opacity: 0.8;
+      font-weight: normal;
+    }
+    .terytoria-btn .terytoria-arrow {
+      font-size: 13px;
+      font-weight: 700;
+      opacity: 0.85;
+    }
+    .terytoria-btn.primary {
+      background: #166534;
+      border: 1px solid #22c55e;
+      color: #ffffff;
+    }
+    .terytoria-btn.primary:hover {
+      background: #15803d;
+      border-color: #4ade80;
+      box-shadow: 0 2px 8px rgba(34, 197, 94, 0.25);
+    }
+    .terytoria-btn.secondary {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+    }
+    .terytoria-btn.secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    .terytoria-btn.hotline {
+      background: rgba(202, 138, 4, 0.15);
+      border: 1px solid rgba(202, 138, 4, 0.45);
+      color: #fef08a;
+    }
+    .terytoria-btn.hotline:hover {
+      background: rgba(202, 138, 4, 0.28);
+      border-color: #ca8a04;
+    }
+    .terytoria-btn.email {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
+    }
+    .terytoria-btn.email:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+    }
+
+    /* Portal Footer */
+    .portal-footer {
+      margin-top: 36px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: #64748b;
+      font-size: 12px;
+    }
+    .portal-footer-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .portal-footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .portal-footer-logo {
+      width: 36px;
+      height: 36px;
+      flex-shrink: 0;
+    }
+    .portal-footer-logo svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .footer-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .footer-sub {
+      font-size: 11px;
+      color: #64748b;
+    }
+    .footer-motto {
+      font-size: 12px;
+      font-weight: 700;
+      color: #ca8a04;
+      font-style: italic;
+      background: #fefce8;
+      border: 1px solid #fef08a;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .portal-footer-links {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-bottom: 12px;
+      padding: 12px 16px;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .portal-footer-links a {
+      color: #166534;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.15s ease;
+    }
+    .portal-footer-links a:hover {
+      color: #14532d;
+      text-decoration: underline;
+    }
+    .footer-sep {
+      color: #cbd5e1;
+    }
+    .portal-footer-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+
     /* Desktop layout enhancement */
     @media (min-width: 860px) {
       .portal-container {
@@ -441,6 +734,6 @@
     </div>
   </div>
 
-  <script src="candidate-portal.js?v=1.2.153"></script>
+  <script src="candidate-portal.js?v=1.2.154"></script>
 </body>
 </html>
