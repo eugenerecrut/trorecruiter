@@ -26,7 +26,7 @@
   }
   const isPhotoRequirement = type => /фото\s*(?:3\s*[×xх\/]\s*4|9\s*[×xх\/]\s*12)/iu.test(String(type || '')) || /^фото/iu.test(String(type || '').trim());
   const isPhotoDoc = d => isPhotoRequirement(d.document_type || d.document_name || '');
-  const isAsAvailableOnly = type => /змін.*(?:імен|прізвищ)|посвідчення водія|групи крові/iu.test(String(type || ''));
+  const isAsAvailableOnly = type => /змін.*(?:імен|прізвищ)|посвідчення водія|групи крові|довідка влк|додаток\s*13|картка обстеження/iu.test(String(type || ''));
   function rows(c,requirements,documents) {
     const docs=latest(documents), p=conditions().value(c,'relatives');
     const children=Number(c.children_count)||(Array.isArray(p)?p.filter(r=>/син|доньк|дитин/iu.test(r.relationship||r.relation||'')).length:0);
