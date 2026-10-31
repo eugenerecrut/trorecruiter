@@ -88,4 +88,28 @@ const summaryConfirmed = sandbox.CRMDocumentState.summary(candidateConfirmed, re
 assert.strictEqual(summaryConfirmed.received, 1);
 assert.strictEqual(summaryConfirmed.verified, 1);
 
+// 5. Verify optional "при наявності" documents are NOT displayed when empty
+const reqsWithOptional = [
+  ...reqs,
+  { id: 'req-name-change', document_type: 'Свідоцтво про зміну імені / прізвища', is_required: false, active: true },
+  { id: 'req-driver', document_type: 'Копія посвідчення водія / інші посвідчення', is_required: false, active: true },
+  { id: 'req-blood', document_type: 'Довідка з визначенням групи крові та резус-фактору', is_required: false, active: true }
+];
+
+const rowsWithoutOptionalDocs = sandbox.CRMDocumentState.rows(candidateEmpty, reqsWithOptional, []);
+assert.strictEqual(rowsWithoutOptionalDocs.some(r => /змін.*(?:імен|прізвищ)/i.test(r.r.document_type)), false, 'Name change hidden when empty');
+assert.strictEqual(rowsWithoutOptionalDocs.some(r => /посвідчення водія/i.test(r.r.document_type)), false, 'Driver license hidden when empty');
+assert.strictEqual(rowsWithoutOptionalDocs.some(r => /групи крові/i.test(r.r.document_type)), false, 'Blood group cert hidden when empty');
+
+// When uploaded, they appear in rows and are optional
+const docsWithDriver = [
+  { id: 'doc-driver-1', document_type: 'Копія посвідчення водія / інші посвідчення', storage_path: 'driver.pdf', verification_status: 'Підтверджено' }
+];
+const rowsWithDriver = sandbox.CRMDocumentState.rows(candidateEmpty, reqsWithOptional, docsWithDriver);
+const driverRow = rowsWithDriver.find(r => /посвідчення водія/i.test(r.r.document_type));
+assert.ok(driverRow, 'Driver license row appears when uploaded');
+assert.strictEqual(driverRow.r.is_required, false, 'Driver license is optional (необов’язковий)');
+assert.strictEqual(driverRow.received, true);
+
 console.log('PASS: Unified photo bundle, single digital photo sufficiency, and physical photos confirmation checkbox verified successfully.');
+console.log('PASS: Name change, driver license, and blood type cert are hidden by default and only display when present.');

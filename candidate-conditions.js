@@ -7,7 +7,7 @@
  const unitTypes=['Припис про направлення','Реєстр кандидата'];
  const isUnit=c=>value(c,'case_mode')==='unit';
  const unitDocument=type=>/рекомендаційн.*лист/iu.test(String(type||''))||unitTypes.includes(type);
- const optionalDocument=type=>/УБД|нагород|витягу? з наказу/iu.test(String(type||''));
+ const optionalDocument=type=>/УБД|нагород|витягу? з наказу|посвідчення водія|змін.*(?:імен|прізвищ)|групи крові/iu.test(String(type||''));
  const normalizeRequirement=r=>optionalDocument(r.document_type)?{...r,is_required:false,condition_field:null,condition_value:null,condition_note:'За наявності документа.'}:{...r};
  const isMobilization=c=>/мобілізац/iu.test(String(profile(c).service_type||c.service_type||String(profile(c).form_data?.additional_notes||'').match(/Вид служби:\s*([^\n]+)/iu)?.[1]||''));
  const militaryDocument=t=>/військов.*(?:квит|облік|обліков)|резерв\s*\+|тимчасов.*посвідч|приписн/iu.test(t||'');
