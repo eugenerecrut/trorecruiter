@@ -148,10 +148,13 @@ async function create(state){
    });
    signatureTop=Math.min(currentTop+2*line,700); // наприкінці 2 відступи, Совіна підтягувати до кінця полів у гору
   }
+  const tableBottom=762.12,signatureEnd=signatureTop+62.12;
   for(const x of [85.34,156.86,228.41,493.06,571.08])rule(2,x,126.2,x,signatureTop);
-  const signatureEnd=signatureTop+62.12;
-  for(const t of [126.2,signatureTop,signatureEnd])rule(2,85.34,t,571.08,t);
   for(const x of [85.34,571.08])rule(2,x,signatureTop,x,signatureEnd);
+  if(signatureEnd<tableBottom){
+   for(const x of [85.34,156.86,228.41,493.06,571.08])rule(2,x,signatureEnd,x,tableBottom);
+  }
+  for(const t of [126.2,signatureTop,signatureEnd,tableBottom])rule(2,85.34,t,571.08,t);
   draw({label:'Підписний блок',page:2,box:[85.34,signatureTop,571.08,signatureEnd],value:sign});
  }
  if(state.served===false){rect(3,[28.32,262.3,510.34,769.44]);for(const t of [262.3,289.3,342.5,769.44])rule(3,28.56,t,510.1,t);for(const x of [28.56,510.1])rule(3,x,262.3,x,769.44);for(const x of [70.7,120.4,324.8,445.2])rule(3,x,342.5,x,769.44);draw({label:'Підписний блок',page:3,box:[28.56,289.3,510.1,342.5],value:sign});}
