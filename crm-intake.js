@@ -70,10 +70,12 @@ function fieldHint(plan,row){
 }
 function reviewedFill(item,fresh,candidate,row=null){
  if(!item?.plan?.supported||!fresh?.supported||!confirmationMatches(item.doc,fresh.document,candidate))throw Error('Джерело змінилося. Оновіть питання перед перенесенням.');
- const same=(a,b)=>a.target===b.target&&a.key===b.key&&a.reason===b.reason&&reviewEqual(a.incoming,b.incoming)&&reviewEqual(a.current??null,b.current??null);
+ const emptyVal=v=>v===null||v===undefined||v==='';
+ const eqVal=(a,b)=>reviewEqual(a??null,b??null)||(emptyVal(a)&&emptyVal(b));
+ const same=(a,b)=>a.target===b.target&&a.key===b.key&&a.reason===b.reason&&reviewEqual(a.incoming,b.incoming)&&eqVal(a.current,b.current);
  if(row){
   if(row.action!=='fill'||!item.plan.rows.some(r=>r.action==='fill'&&same(row,r))||!fresh.rows.some(r=>r.action==='fill'&&same(row,r)))throw Error('Значення поля змінилося. Оновіть питання.');
-  let selection=fresh.selections.find(s=>s.target===row.target&&s.key===row.key&&reviewEqual(s.incoming,row.incoming)&&reviewEqual(s.expected_current??null,row.current??null));
+  let selection=fresh.selections.find(s=>s.target===row.target&&s.key===row.key&&reviewEqual(s.incoming,row.incoming)&&eqVal(s.expected_current,row.current));
   const match=/^relatives\.(0|[1-9]\d*)\.([a-z_]+)$/.exec(row.key);
   if(!selection&&row.target==='profile'&&match){
    const index=Number(match[1]),field=match[2],aggregate=fresh.selections.find(s=>s.target==='profile'&&s.key==='relatives'&&s.relative_sources===true&&s.merge_relatives===true);
@@ -85,7 +87,7 @@ function reviewedFill(item,fresh,candidate,row=null){
   if(!selection)throw Error('Для цього запису потрібне перенесення через перевірку документа.');
   return {...fresh,selections:[selection],rows:fresh.rows.filter(r=>r.action==='fill'&&same(row,r))};
  }
- const selections=fresh.selections.filter(s=>item.plan.selections.some(old=>old.target===s.target&&old.key===s.key&&reviewEqual(old.incoming,s.incoming)&&reviewEqual(old.expected_current??null,s.expected_current??null)));
+ const selections=fresh.selections.filter(s=>item.plan.selections.some(old=>old.target===s.target&&old.key===s.key&&reviewEqual(old.incoming,s.incoming)&&eqVal(old.expected_current,s.expected_current)));
  if(selections.length!==fresh.selections.length)throw Error('Пропозиції змінилися. Оновіть питання перед пакетним перенесенням.');
  return {...fresh,selections,rows:fresh.rows.filter(r=>r.action==='fill'&&item.plan.rows.some(old=>old.action==='fill'&&same(old,r)))};
 }
@@ -127,7 +129,7 @@ async function review(host,candidate,documents){
   if(b.dataset.intakeDelete){if(await CRMWorkspace.guard()){await deleteDocument(b.dataset.intakeDelete);await window.openCandidateCard(candidate.id);}}
   if(b.dataset.intakeReview){if(await CRMWorkspace.guard())await reviewDocumentData(b.dataset.intakeReview);}
   if(b.dataset.intakeConfirm)await run(async()=>{const id=b.dataset.intakeConfirm,current=CRMResponsibility.latest(await getCandidateDocuments(candidate.id));const shown=rows.find(r=>r.doc.id===id)?.doc,fresh=current.find(d=>d.id===id);if(!confirmationMatches(shown,fresh,candidate))throw Error('Документ або результат AI змінився. Оновіть картку й повторно звірте оригінал.');const user=await getCurrentUser();if(!user)throw Error('Увійдіть повторно.');let update=supabaseClient.from('documents').update({verification_status:'Підтверджено',verified_by:user.id,verified_at:new Date().toISOString()}).eq('id',id).eq('candidate_id',candidate.id).is('deleted_at',null);for(const key of ['ai_processed_at','processing_status','verification_status','verified_at','storage_path','version_group_id','version_number','file_hash'])if(fresh[key]!==undefined)update=fresh[key]===null?update.is(key,null):update.eq(key,fresh[key]);const changed=await update.select('id');if(changed.error)throw changed.error;if(!changed.data?.length)throw Error('Документ не підтверджено.');const report=await CRMDocumentSync.preview(supabaseClient,id);if(report.supported){if(!report.document||report.document.verification_status!=='Підтверджено'||report.document.ai_processed_at!==fresh.ai_processed_at||report.document.processing_status!==fresh.processing_status||!reviewEqual(reviewSource(fresh),reviewSource(report.document)))throw Error('Файл підтверджено, але джерело вже змінилося. Дані не перенесено; оновіть картку.');await CRMDocumentSync.apply(supabaseClient,report);}});
- }catch(e){status.textContent=e.message;}};
+ }catch(e){status.textContent=e.message;alert(e.message);}};
 }
 window.CRMIntake={items,review,reasonText,questionTitle,unavailableText,confirmationMatches,reviewedFill,canFillField,fieldHint};
 })();

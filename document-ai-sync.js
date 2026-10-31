@@ -192,7 +192,7 @@
         else if(recommendation&&target==='candidate'&&['phone','military_rank'].includes(key)){action='conflict';reason=key==='phone'?'Номер у рекомендаційному листі може належати контактній особі. Потрібно підтвердити телефон кандидата.':'Чинне військове звання потрібно підтвердити військово-обліковим документом. ШПК у рекомендаційному листі не є підтвердженням звання.';}
         else action='fill';
       }
-      add(target,key,value,action,reason,protectedValue);
+      add(target,key,value,action,reason,action==='fill'?(current??null):protectedValue);
       if(action==='fill')selections.push({target,key,incoming:value,expected_current:current??null,fill_only:structured||!(Array.isArray(current)&&current.length===0),...(structured?{merge_records:true,structured_records:true}:{}),expected_ai:document.ai_extracted});
     };
     for(const key of ['full_name','name_nominative','name_genitive','birth_date','birth_place','rnokpp','phone','sex','military_rank','civilian_profession','desired_position','tcc','military_specialty']){
