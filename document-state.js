@@ -26,7 +26,8 @@
   }
   const isPhotoRequirement = type => /фото\s*(?:3\s*[×xх\/]\s*4|9\s*[×xх\/]\s*12)/iu.test(String(type || '')) || /^фото/iu.test(String(type || '').trim());
   const isPhotoDoc = d => isPhotoRequirement(d.document_type || d.document_name || '');
-  const isAsAvailableOnly = type => /змін.*(?:імен|прізвищ)|посвідчення водія|групи крові|довідка влк|додаток\s*13|картка обстеження/iu.test(String(type || ''));
+  const isAsAvailableOnly = type => /змін.*(?:імен|прізвищ)|посвідчення водія|групи крові|довідка влк|додаток\s*13|картка обстеження|убд|витяг.*наказ|нагород/iu.test(String(type || ''));
+  const isMilitaryTicket = type => /військов.*квит/iu.test(String(type || ''));
   function rows(c,requirements,documents) {
     const docs=latest(documents), p=conditions().value(c,'relatives');
     const children=Number(c.children_count)||(Array.isArray(p)?p.filter(r=>/син|доньк|дитин/iu.test(r.relationship||r.relation||'')).length:0);
@@ -78,6 +79,8 @@
       const allFiles=files(r,docs), child=r.condition_field==='has_children';
       const mark=window.CRMDocumentPresence?.entry(r,c);
       if(isAsAvailableOnly(r.document_type)&&allFiles.length===0&&!mark)continue;
+      const served=conditions().bool(conditions().value(c,'served_before'));
+      if(served!==true&&isMilitaryTicket(r.document_type)&&allFiles.length===0&&!mark)continue;
       const count=child&&condition===true?Math.max(1,children):1;
       for(let i=0;i<count;i++) {
         const rowFiles=child?(i===count-1?allFiles.slice(i):allFiles.slice(i,i+1)):allFiles;

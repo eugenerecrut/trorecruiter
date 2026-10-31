@@ -120,5 +120,50 @@ const vlkRow = rowsWithUploaded.find(r => /довідка влк/i.test(r.r.docu
 assert.ok(vlkRow, 'VLK row appears when uploaded');
 assert.strictEqual(vlkRow.received, true);
 
+// 6. Verify military documents depending on served_before
+const reqsWithMilitary = [
+  ...reqsWithOptional,
+  { id: 'req-ticket', document_type: 'Копія військового квитка', is_required: true, active: true },
+  { id: 'req-ubd', document_type: 'Копія УБД', is_required: false, active: true },
+  { id: 'req-order', document_type: 'Копія витягу з наказу', is_required: false, active: true },
+  { id: 'req-awards', document_type: 'Нагороди', is_required: false, active: true },
+  { id: 'req-reserve', document_type: 'Військовий облік (витяг Резерв+ / приписне)', is_required: true, active: true }
+];
+
+// 6a. Candidate NOT served (served_before = false) -> ticket, UBD, orders, awards hidden
+const candidateNotServed = { id: 'cand-not-served', profile_data: { service_type: 'За мобілізацією', served_before: false } };
+const rowsNotServed = sandbox.CRMDocumentState.rows(candidateNotServed, reqsWithMilitary, []);
+assert.strictEqual(rowsNotServed.some(r => /військов.*квит/i.test(r.r.document_type)), false, 'Ticket hidden when not served');
+assert.strictEqual(rowsNotServed.some(r => /убд/i.test(r.r.document_type)), false, 'UBD hidden when not served');
+assert.strictEqual(rowsNotServed.some(r => /витяг.*наказ/i.test(r.r.document_type)), false, 'Order extract hidden when not served');
+assert.strictEqual(rowsNotServed.some(r => /нагород/i.test(r.r.document_type)), false, 'Awards hidden when not served');
+
+// 6b. Candidate with served_before NOT SPECIFIED (null) -> ticket, UBD, orders, awards hidden
+const candidateUnspecified = { id: 'cand-unspecified', profile_data: { service_type: 'За мобілізацією' } };
+const rowsUnspecified = sandbox.CRMDocumentState.rows(candidateUnspecified, reqsWithMilitary, []);
+assert.strictEqual(rowsUnspecified.some(r => /військов.*квит/i.test(r.r.document_type)), false, 'Ticket hidden when unspecified');
+assert.strictEqual(rowsUnspecified.some(r => /убд/i.test(r.r.document_type)), false, 'UBD hidden when unspecified');
+assert.strictEqual(rowsUnspecified.some(r => /витяг.*наказ/i.test(r.r.document_type)), false, 'Order extract hidden when unspecified');
+assert.strictEqual(rowsUnspecified.some(r => /нагород/i.test(r.r.document_type)), false, 'Awards hidden when unspecified');
+
+// 6c. Candidate SERVED (served_before = true) -> ticket is required, UBD/orders/awards hidden unless uploaded
+const candidateServed = { id: 'cand-served', profile_data: { service_type: 'За мобілізацією', served_before: true } };
+const rowsServed = sandbox.CRMDocumentState.rows(candidateServed, reqsWithMilitary, []);
+const ticketRow = rowsServed.find(r => /військов.*квит/i.test(r.r.document_type));
+assert.ok(ticketRow, 'Ticket appears when served');
+assert.strictEqual(ticketRow.r.is_required, true, 'Ticket is required for served candidate');
+assert.strictEqual(rowsServed.some(r => /убд/i.test(r.r.document_type)), false, 'UBD hidden when empty even if served');
+assert.strictEqual(rowsServed.some(r => /витяг.*наказ/i.test(r.r.document_type)), false, 'Orders hidden when empty even if served');
+assert.strictEqual(rowsServed.some(r => /нагород/i.test(r.r.document_type)), false, 'Awards hidden when empty even if served');
+
+// 6d. Candidate SERVED with UBD uploaded -> UBD appears as optional
+const rowsServedWithUBD = sandbox.CRMDocumentState.rows(candidateServed, reqsWithMilitary, [
+  { id: 'doc-ubd-1', document_type: 'Копія УБД', storage_path: 'ubd.pdf', verification_status: 'Підтверджено' }
+]);
+const ubdRow = rowsServedWithUBD.find(r => /убд/i.test(r.r.document_type));
+assert.ok(ubdRow, 'UBD appears when uploaded for served candidate');
+assert.strictEqual(ubdRow.r.is_required, false, 'UBD is optional');
+
 console.log('PASS: Unified photo bundle, single digital photo sufficiency, and physical photos confirmation checkbox verified successfully.');
 console.log('PASS: Name change, driver license, blood type cert, VLK and Dodatok 13 are hidden by default and only display when present.');
+console.log('PASS: Military ticket, UBD, orders, awards hidden when not served/unspecified; ticket required and UBD/orders/awards optional when served.');
