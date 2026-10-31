@@ -137,7 +137,7 @@
     const header = document.createElement('section'); header.className = 'cc-v3-header'; header.setAttribute('aria-label','Кандидат');
     const syncTop = () => { header.style.top = (document.querySelector('.header')?.getBoundingClientRect().height || 0)+'px';header.style.setProperty('--v3-sticky-top',header.style.top); };
     syncTop(); window.addEventListener('resize',syncTop);
-    header.innerHTML = '<div class="cc-v3-photo"></div><div class="cc-v3-identity"><h1 data-v3-name></h1><div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px"><a data-v3-phone></a><button type="button" class="cc-v3-wa-btn" data-v3-wa style="display:none;align-items:center;gap:3px;background:#25D366;color:#fff;border:none;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;line-height:1.4" title="Написати кандидату у WhatsApp">💬 WhatsApp</button><button type="button" class="cc-v3-portal-btn" data-v3-portal style="display:none;align-items:center;gap:3px;background:#0284c7;color:#fff;border:none;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;line-height:1.4" title="Посилання на особистий кабінет кандидата">🔗 Кабінет</button></div><span data-v3-stage></span></div><div class="cc-v3-context"><span>Бажана посада</span><b data-v3-position></b><span>Військова частина</span><b data-v3-unit></b></div><div class="cc-v3-owner"></div><div class="cc-v3-indicators"></div><div class="cc-v3-tools"></div>';
+    header.innerHTML = '<div class="cc-v3-photo"></div><div class="cc-v3-identity"><h1 data-v3-name></h1><div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px"><a data-v3-phone></a><button type="button" class="cc-v3-wa-btn" data-v3-wa style="display:none;align-items:center;gap:3px;background:#25D366;color:#fff;border:none;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;line-height:1.4" title="Написати кандидату у WhatsApp">💬 WhatsApp</button><button type="button" class="cc-v3-portal-btn" data-v3-portal style="display:none;align-items:center;gap:3px;background:#0284c7;color:#fff;border:none;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer;line-height:1.4" title="Посилання на особистий кабінет кандидата">🔗 Кабінет</button></div><span data-v3-stage></span></div><div class="cc-v3-context"><span>Бажана посада</span><b data-v3-position></b><span>Військова частина</span><b data-v3-unit></b></div><div class="cc-v3-unit-recruiter"><span>Рекрутер ВЧ</span><b data-v3-unit-recruiter></b><span>Телефон ВЧ</span><b data-v3-unit-phone-box><a data-v3-unit-phone></a></b></div><div class="cc-v3-owner"></div><div class="cc-v3-indicators"></div><div class="cc-v3-tools"></div>';
     form.prepend(header);
     const overview=form.querySelector('[data-card-photo]');
     const modes=document.createElement('div');modes.className='cc-v3-modes';
@@ -297,6 +297,32 @@
       }
       const posEl = header.querySelector('[data-v3-position]'); if (posEl) posEl.textContent = value('desired_position') || 'Не вказана';
       const unitEl = header.querySelector('[data-v3-unit]'); if (unitEl) unitEl.textContent = parse(candidate.profile_data).military_unit || value('military_unit') || candidate.recommender_unit || 'Не вказана';
+      const prof = parse(candidate.profile_data);
+      const unitRecruiterName = value('recruiter_name') || prof.recruiter_name || prof.unit_representative || (prof.signatory ? prof.signatory + ' (підписант)' : '') || 'Не вказано';
+      const unitPhone = value('unit_phone') || prof.unit_phone || prof.recruiter_phone || prof.contact_phone || prof.recommender_phone || '';
+      const unitRecruiterEl = header.querySelector('[data-v3-unit-recruiter]');
+      if (unitRecruiterEl) {
+        unitRecruiterEl.textContent = unitRecruiterName;
+        if (prof.signatory && prof.recruiter_name && prof.signatory !== prof.recruiter_name) {
+          unitRecruiterEl.title = 'Підписант РЛ: ' + prof.signatory;
+        } else {
+          unitRecruiterEl.removeAttribute('title');
+        }
+      }
+      const unitPhoneEl = header.querySelector('[data-v3-unit-phone]');
+      if (unitPhoneEl) {
+        if (unitPhone) {
+          unitPhoneEl.textContent = unitPhone;
+          unitPhoneEl.href = 'tel:' + unitPhone.replace(/[^\d+]/g, '');
+          unitPhoneEl.style.color = 'var(--v3-accent)';
+          unitPhoneEl.title = 'Зателефонувати рекрутеру ВЧ';
+        } else {
+          unitPhoneEl.textContent = '—';
+          unitPhoneEl.removeAttribute('href');
+          unitPhoneEl.removeAttribute('title');
+          unitPhoneEl.style.color = 'var(--v3-muted)';
+        }
+      }
       const stageEl = header.querySelector('[data-v3-stage]'); if (stageEl) stageEl.textContent = value('case_mode') === 'unit' ? 'Оформлює ВЧ' : CRMWorkflow.label(candidate);
       const totals=window.CRMDocumentState?.summary(candidate,CRMWorkspace.card.requirements||[],documents);
       const packet=window.CRMDocumentState?.packageState(candidate,documents);
