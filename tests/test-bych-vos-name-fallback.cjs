@@ -1,9 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 global.window = global;
-require('D:/CRMGEMINI/crm-responsibility.js');
-require('D:/CRMGEMINI/candidate-conditions.js');
-const sync = require('D:/CRMGEMINI/document-ai-sync.js');
+require('../crm-responsibility.js');
+require('../candidate-conditions.js');
+const sync = require('../document-ai-sync.js');
 
 test('3-digit VOS is valid and fallback name from ai_raw_response avoids undefined owner', () => {
   assert.equal(sync.valid('military_specialty', '712'), true);

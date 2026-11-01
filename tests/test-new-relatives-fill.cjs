@@ -1,13 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 global.window = global;
-require('D:/CRMGEMINI/crm-responsibility.js');
-require('D:/CRMGEMINI/candidate-conditions.js');
-require('D:/CRMGEMINI/document-ai-sync.js');
+require('../crm-responsibility.js');
+require('../candidate-conditions.js');
+require('../document-ai-sync.js');
 const sync = global.window.CRMDocumentSync;
-require('D:/CRMGEMINI/crm-intake.js');
+require('../crm-intake.js');
 const intake = global.window.CRMIntake;
-require('D:/CRMGEMINI/crm-case-assistant.js');
+require('../crm-case-assistant.js');
 const assistant = global.window.CRMCaseAssistant;
 
 test('New relatives are cleanly planned as whole records and can be filled individually', () => {
