@@ -96,7 +96,7 @@ function cardSave(client,previous){
   const fd=new Map([['address','manual']]);
   const ctx=vm.createContext({
     supabaseClient:client,candidateId:'c1',pf:previous?structuredClone(previous):{},personalFileExists:!!previous,
-    fd,unit:false,status:{textContent:''},cardState:{dirty:true},workflowDraft:null,
+    fd,unit:false,status:{textContent:''},setStatus(msg){ctx.status.textContent=msg;},cardState:{dirty:true},workflowDraft:null,
     c:{profile_data:{passport_number:'AI number'},updated_at:aiVersion},candidatePatch:{profile_data:{}},profile:{},
     window:{CRMPhone:{normalize:value=>value}}
   });
