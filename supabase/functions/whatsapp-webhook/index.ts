@@ -8,6 +8,13 @@ const headers = {
 
 const respond = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers });
 
+function matchesSecret(actual: string, expected: string): boolean {
+  if (!expected || actual.length !== expected.length) return false;
+  let difference = 0;
+  for (let i = 0; i < expected.length; i++) difference |= actual.charCodeAt(i) ^ expected.charCodeAt(i);
+  return difference === 0;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers });
@@ -22,9 +29,8 @@ Deno.serve(async (req: Request) => {
     const challenge = url.searchParams.get('hub.challenge');
 
     if (mode === 'subscribe' && challenge) {
-      // Default verify token or custom secret
-      const expectedToken = Deno.env.get('WHATSAPP_VERIFY_TOKEN') || 'psk_recruiter_wa_token';
-      if (!token || token === expectedToken) {
+      const expectedToken = Deno.env.get('WHATSAPP_VERIFY_TOKEN') || '';
+      if (token && matchesSecret(token, expectedToken)) {
         return new Response(challenge, { status: 200, headers: { 'Content-Type': 'text/plain' } });
       }
       return new Response('Forbidden', { status: 403 });
@@ -36,6 +42,13 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return respond({ error: 'Method not allowed' }, 405);
   }
+
+  // Green API webhookUrlToken must be configured with the same Bearer secret.
+  // Keep the service-role client inaccessible until the sender is authenticated.
+  const secret = Deno.env.get('WHATSAPP_WEBHOOK_SECRET') || '';
+  if (!secret) return respond({ error: 'Webhook is not configured' }, 503);
+  const authorization = req.headers.get('authorization') || '';
+  if (!matchesSecret(authorization, 'Bearer ' + secret)) return respond({ error: 'Unauthorized' }, 401);
 
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,

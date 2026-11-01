@@ -27,6 +27,29 @@
     return digits;
   }
 
+  async function sendGatewayText(settings, digits, text, fetcher){
+    if(!settings || !settings.is_active) return null;
+    if(!/^\d+$/.test(String(settings.instance_id || '')) || !settings.api_token || !digits) {
+      throw new Error('Шлюз увімкнений, але реквізити підключення неповні.');
+    }
+    let res;
+    try {
+      res = await fetcher('https://api.green-api.com/waInstance' + settings.instance_id + '/sendMessage/' + settings.api_token, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({chatId:digits+'@c.us',message:text})
+      });
+    } catch (_) {
+      throw new Error('Немає відповіді шлюзу. Перевірте журнал Green API перед повторним надсиланням.');
+    }
+    if(!res.ok) throw new Error('Шлюз відхилив запит (HTTP '+res.status+').');
+    let result;
+    try { result = await res.json(); } catch (_) {}
+    if(!result || typeof result.idMessage !== 'string' || !result.idMessage.trim()) {
+      throw new Error('Шлюз не підтвердив приймання. Перевірте журнал Green API перед повтором.');
+    }
+    return result.idMessage;
+  }
+
   function getCandidateName(cand){
     const nom = String(cand.name_nominative || cand.full_name || '').trim();
     if(!nom) return 'Шановний кандидате';
@@ -126,10 +149,11 @@
     const sb = getSupabase();
     if(!sb) return null;
     try {
-      const { data } = await sb.from('whatsapp_settings').select('*').eq('id', 'default').maybeSingle();
+      const { data, error } = await sb.from('whatsapp_settings').select('*').eq('id', 'default').maybeSingle();
+      if(error) throw new Error('Немає доступу до налаштувань WhatsApp.');
       return data;
     } catch(e) {
-      return null;
+      throw e;
     }
   }
 
@@ -469,7 +493,7 @@
                   '</div>' : '') +
                 '<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:3px">' +
                   '<span style="font-size:10px;color:#667781">' + time + '</span>' +
-                  (isOut ? '<span style="font-size:11px;color:#53bdeb">✓✓</span>' : '') +
+                  (isOut ? '<span style="font-size:11px;color:#667781" title="' + escapeHtml(msg.status === 'read' ? 'Прочитано' : msg.status === 'delivered' ? 'Доставлено' : msg.status === 'failed' ? 'Помилка' : 'Прийнято шлюзом; доставку не підтверджено') + '">' + (msg.status === 'read' || msg.status === 'delivered' ? '✓✓' : msg.status === 'failed' ? '!' : '◷') + '</span>' : '') +
                 '</div>' +
               '</div>' +
             '</div>';
@@ -493,36 +517,23 @@
       try {
         // Check if Green API gateway is configured for direct send
         const settings = await getWhatsAppSettings();
-        let sentViaGateway = false;
-        if(settings && settings.is_active && settings.instance_id && settings.api_token && digits) {
-          try {
-            const gwUrl = 'https://api.green-api.com/waInstance' + settings.instance_id + '/sendMessage/' + settings.api_token;
-            const res = await fetch(gwUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chatId: digits + '@c.us', message: text })
-            });
-            if(res.ok) sentViaGateway = true;
-          } catch(gwErr) {
-            console.warn('Gateway send error:', gwErr);
-          }
+        const externalId = await sendGatewayText(settings, digits, text, fetch);
+        if(!externalId) {
+          openWaMe(targetPhone, text);
+          return;
         }
-
-        await sb.from('whatsapp_messages').insert({
+        input.value = '';
+        const { error: logError } = await sb.from('whatsapp_messages').insert({
           candidate_id: cand.id || null,
           phone: digits,
           direction: 'outbound',
           message_type: 'text',
           content: text,
-          status: sentViaGateway ? 'delivered' : 'sent'
+          external_id: externalId,
+          status: 'pending'
         });
-        input.value = '';
+        if(logError) throw new Error('Шлюз прийняв повідомлення, але журнал CRM не збережено. Не надсилайте повторно; перевірте журнал Green API.');
         await loadMessages();
-
-        // If not sent via background gateway, open wa.me
-        if(!sentViaGateway) {
-          openWaMe(targetPhone, text);
-        }
       } catch(err) {
         alert('Помилка відправки повідомлення: ' + err.message);
       } finally {
@@ -653,6 +664,7 @@
 
   root.CRMWhatsApp = {
     cleanDigits,
+    sendGatewayText,
     templates: standardTemplates,
     openWaMe,
     openTemplateModal,
