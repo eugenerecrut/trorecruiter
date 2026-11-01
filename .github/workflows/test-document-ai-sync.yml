@@ -15,6 +15,8 @@ jobs:
           node-version: '24'
       - name: Run synchronization and existing CRM regressions
         run: |
+          node --test tests/crm-whatsapp-webhook-auth.cjs
+          node tests/crm-whatsapp.cjs
           node --test tests/splav-pdf-raster.mjs tests/splav-render-probe.mjs tests/splav-pdf-zone-raster.mjs
           node --test tests/crm-manual-zone.cjs tests/crm-background-view.cjs
           node --test tests/crm-zone-coordinator.cjs
