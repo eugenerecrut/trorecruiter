@@ -7,7 +7,7 @@ create table candidates(id uuid primary key,profile_data jsonb,updated_at timest
 create table documents(id uuid primary key,candidate_id uuid,document_type text,ai_document_type text,deleted_at timestamptz,version_group_id uuid,version_number int,requirement_id uuid,ai_extracted jsonb,ai_warnings jsonb,ai_confidence numeric,verification_status text);
 create table personal_files(candidate_id uuid unique,updated_at timestamptz);create table document_requirements(id uuid,document_type text);`);
 await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261016122542_repair_document_sync_utf8_literals.sql'),'utf8'));
-await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261102113127_military_source_roles.sql'),'utf8'));
+await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261102114138_military_source_roles.sql'),'utf8'));
 const c='00000000-0000-0000-0000-000000000002',d='00000000-0000-0000-0000-000000000003',ai={military_specialty:'420182А'};
 await db.query('insert into candidates(id,profile_data,military_specialty) values($1,$2,$3)',[c,{manual:'preserve'},'999097']);
 await db.query('insert into documents(id,candidate_id,document_type,ai_extracted,verification_status) values($1,$2,$3,$4,$5)',[d,c,'Рекомендаційний лист',ai,'Підтверджено']);
