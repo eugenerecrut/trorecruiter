@@ -39,6 +39,10 @@
       const extracted=structuredClone(e);let documentType=d.ai_document_type||d.document_type;
       for(const input of dialog.querySelectorAll('[data-review-key]')){
         const key=input.dataset.reviewKey,value=input.value.trim();
+        if(key==='birth_date'&&value!==String(e.birth_date??'')){
+          extracted.birth_year=value?Number(value.slice(0,4)):null;
+          if(extracted.personal&&Object.prototype.hasOwnProperty.call(extracted.personal,'birth_year'))extracted.personal.birth_year=extracted.birth_year;
+        }
         if(key==='document_type'){documentType=value;continue;}
         if(key==='driver_license_categories'){extracted[key]=value?value.split(/[,;\s]+/).filter(Boolean):null;continue;}
         if(key.includes('.')){const parts=key.split('.');let target=extracted;for(const part of parts.slice(0,-1))target=target[part];target[parts.at(-1)]=value||null;}
