@@ -57,7 +57,7 @@ function documentFileHtml(d,r,allDocs,esc=docEscape,compact=false){
   const verified=d.verification_status==='Підтверджено';
   const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
   const zoneAction=r.ai_enabled!==false&&typeof window!=='undefined'&&window.CRMMilitaryZoneReview&&window.CRMMilitaryZoneContract?.family(d.document_type,d.ai_document_type)?'<button type="button" class="crm-button" data-doc-zone="'+esc(d.id)+'" data-doc-zone-view="'+(d.ai_extracted?._military_zone_report?'1':'0')+'">' +(d.ai_extracted?._military_zone_report?'Результат AI':'Опрацювати AI · автопілот')+'</button>':'';
-  const isPhoto=/фото/iu.test(d.document_type||d.document_name||d.file_name||'');  const cropAvatarAction=isPhoto&&d.storage_path?'<button type="button" class="crm-button" data-doc-crop-avatar="'+esc(d.id)+'" title="Відокремити одне фото 3×4 для аватара кандидата">✂️ Відділити фото 3×4</button>':'';  const actions=CRMResponsibility.documentInfo(d)+(typeof documentProcessingMetricsHtml==='function'?documentProcessingMetricsHtml(d,esc):'')+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+cropAvatarAction+(!verified?'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>':'')+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(typeof savedReviewButtonHtml==='function'?savedReviewButtonHtml(d,esc):'')+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
+  const isPhoto=/фото|id[-_\s]?карт|паспорт|водія|driver|квиток|убд/iu.test(d.document_type||d.document_name||d.file_name||'');  const cropAvatarAction=isPhoto&&d.storage_path?'<button type="button" class="crm-button" data-doc-crop-avatar="'+esc(d.id)+'" title="Виділити фото для аватара кандидата">✂️ Фото в аватар</button>':'';  const actions=CRMResponsibility.documentInfo(d)+(typeof documentProcessingMetricsHtml==='function'?documentProcessingMetricsHtml(d,esc):'')+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+cropAvatarAction+(!verified?'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>':'')+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(typeof savedReviewButtonHtml==='function'?savedReviewButtonHtml(d,esc):'')+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
   if(zoneAction){const extra=actions.replace(/<button\b[^>]*\bdata-doc-open="[^"]*"[^>]*>[\s\S]*?<\/button>/g,'');return '<div class="crm-document-file">'+info+'<div class="crm-document-primary"><button type="button" class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+zoneAction+'</div><details class="crm-document-more"><summary>Додатково</summary><div class="crm-document-details">'+manualZoneButtonHtml(d,r,esc)+extra+'</div></details></div>';}
   if(compact){
     const failed=d.processing_status==='AI помилка',attention=d.verification_status==='Потребує перевірки';
@@ -127,7 +127,7 @@ async function showDocuments(id,options={}){
   if(embedded){content.querySelector('#docBackCard').hidden=true;content.querySelector('.page-subtitle').hidden=true;const title=content.querySelector('.page-title');if(title)title.hidden=true;}
   content.querySelectorAll('button').forEach(b=>b.type='button');
   const totals=CRMDocumentState.summary(c,reqs,docs);
-  const pText = content.querySelector('#docProgressText'); if (pText) pText.textContent='Комплект: '+totals.verified+' із '+totals.total+' перевірено · '+totals.copies+' електронних копій · '+totals.paper+' без файла'+(totals.unknown?' · Уточнити умов: '+totals.unknown:'');
+  const pText = content.querySelector('#docProgressText'); if (pText) pText.textContent='Комплект: '+(totals.received||totals.verified)+' із '+totals.total+' завантажено'+(totals.verified?' ('+totals.verified+' перевірено)':'')+' · '+totals.copies+' електронних копій · '+totals.paper+' без файла'+(totals.unknown?' · Уточнити умов: '+totals.unknown:'');
   async function cropPhotoForAvatar(docId){
     if(CRMWorkspace.busy||!await ensureSaved())return;
     const doc=allDocs.find(d=>d.id===docId);if(!doc)return;
@@ -283,7 +283,7 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     if(!modal.isConnected)return;
     if(cr.error)throw cr.error;
     const reqs=allReqs.filter(r=>requirementCondition(r,cr.data)!==false);
-    const options='<option value="">AI визначить тип автоматично</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId&&r.ai_enabled===false?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
+    const options='<option value="">AI визначить тип автоматично</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
     modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · СПЛАВ визначить типи документів, розпізнає та зіставить дані. Дочекайтеся підтвердження прийняття файлів. У фоновому режимі після цього вкладку можна закрити. Для документів без AI виберіть тип вручну.</p><details><summary>Додатково: указати тип вручну</summary><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label></details><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><div id="docDropZone" class="crm-dropzone" style="margin:14px 0;padding:24px 16px;border:2px dashed #94a3b8;border-radius:12px;background:#f8fafc;text-align:center;cursor:pointer;transition:border-color .15s ease,background-color .15s ease"><div style="font-size:32px;line-height:1;margin-bottom:8px">📥</div><div style="font-size:14px;font-weight:600;color:#1e293b">Перетягніть файли сюди (Drag & Drop)</div><div style="font-size:12px;color:#64748b;margin-top:4px">прямо з чату WhatsApp, папки або <u>натисніть для вибору</u></div><input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display:none"></div><small class="muted">JPG/JPEG автоматично перетворюються на PDF перед завантаженням. Один знімок — один PDF, зі збереженням пропорцій.</small><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
     const notice=document.createElement('p');notice.className='crm-notice';notice.textContent='Завантаження доручає повний цикл СПЛАВ. Для кожного підтриманого односторінкового PDF: основне розпізнавання, за потреби до 13 зональних кроків і звірка. Можливі витрати AI; крок може мати кілька спроб сервісів. Початок зонального етапу дозволений протягом доби. Багатосторінкові файли проходять основне розпізнавання; їхні зони автоматично не запускаються. Ручні значення збережено.';modal.querySelector('#docUploadButton').parentElement.before(notice);
     modal.querySelector('#docUploadButton').textContent='Завантажити й опрацювати';
@@ -291,8 +291,14 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     const input=modal.querySelector('#docFileInput'),rootType=modal.querySelector('#docRequirement'),plan=modal.querySelector('#docFilePlan'),upload=modal.querySelector('#docUploadButton');
     const render=()=>{
       const files=Array.from(input.files||[]);
-      plan.innerHTML=files.map((file,i)=>'<div class="crm-review-field"><strong>'+docEscape(file.name)+'</strong><small style="display:block;margin:6px 0">'+formatDocSize(file.size)+'</small><details><summary>Змінити тип вручну</summary><select aria-label="Тип документа" data-file-type="'+i+'" class="crm-search">'+options+'</select></details><small data-file-mode="'+i+'"></small></div>').join('');
-      plan.querySelectorAll('select').forEach(select=>select.value=rootType.value);updateMode();
+      plan.innerHTML=files.map((file,i)=>{
+        const guessed=!rootType.value?guessRequirementFromFilename(file.name,reqs):null;
+        const initialVal=rootType.value||guessed?.id||'';
+        const fileOptions='<option value="">AI визначить тип автоматично</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===initialVal?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
+        const guessedBadge=guessed?' <span style="display:inline-block;padding:1px 6px;border-radius:4px;background:#e8f2cc;color:#5d741f;font-size:11px;font-weight:700">автоматично: '+docEscape(guessed.document_type)+'</span>':'';
+        return '<div class="crm-review-field"><strong>'+docEscape(file.name)+guessedBadge+'</strong><small style="display:block;margin:6px 0">'+formatDocSize(file.size)+'</small><details '+(initialVal?'':'open')+'><summary>Тип: '+(initialVal?(reqs.find(x=>x.id===initialVal)?.document_type||'Вказано'):'Змінити вручну')+'</summary><select aria-label="Тип документа" data-file-type="'+i+'" class="crm-search">'+fileOptions+'</select></details><small data-file-mode="'+i+'"></small></div>';
+      }).join('');
+      updateMode();
     };
     const updateMode=()=>{
       const selections=[...plan.querySelectorAll('[data-file-type]')];
@@ -334,7 +340,14 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
         if(e.dataTransfer?.files?.length) setDroppedFiles(e.dataTransfer.files);
       }
     });
-    rootType.addEventListener('change',()=>{plan.querySelectorAll('select').forEach(s=>s.value=rootType.value);updateMode()});
+    rootType.addEventListener('change',()=>{
+      plan.querySelectorAll('select').forEach((s,i)=>{
+        const file=input.files?.[i];
+        const guessed=!rootType.value&&file?guessRequirementFromFilename(file.name,reqs):null;
+        s.value=rootType.value||guessed?.id||'';
+      });
+      updateMode();
+    });
     plan.addEventListener('change',updateMode);
     modal.querySelector('#closeDocModal').onclick=async()=>{if(CRMWorkspace.busy)return;if(modal.querySelector('#docFileInput')?.files?.length&&modal.dataset.uploadComplete!=='true'&&!confirm('Файли ще не завантажені. Закрити вікно та відкинути вибір?'))return;modal.close();modal.remove();await reloadDocumentView(id)};
     modal.addEventListener('cancel',e=>{e.preventDefault();if(!CRMWorkspace.busy)modal.querySelector('#closeDocModal').click()});
@@ -457,6 +470,48 @@ async function resumeSplavJobs(candidateId){
 function acceptedServerReconciliation(ai,documentId){const r=ai?.sync_result;return r?.version===1&&r.document_id===documentId&&ai.document_revision&&r.source_revision===ai.document_revision&&['completed','needs_review','superseded','failed'].includes(r.state)?r:null;}
 function normName(s){return String(s||'').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi,'')}
 function findCandidateByName(name,candidates){const n=normName(name);if(!n)return null;return candidates.find(c=>{const cn=normName(c.full_name);return cn===n||cn.includes(n)||n.includes(cn)})||null}
+function guessRequirementFromFilename(fileName, reqs) {
+  if (!fileName || !Array.isArray(reqs)) return null;
+  const name = String(fileName).toLowerCase().replace(/[_–—]/g, ' ').replace(/\s+/g, ' ').trim();
+  const rules = [
+    { pattern: /\bвлк\b|довідк.*влк|vlk/i, type: /довідка влк/i },
+    { pattern: /резус|груп.*кров|групи кров/i, type: /групи крові/i },
+    { pattern: /додаток\s*13|картк.*обстежен|мед.*огляд/i, type: /додаток 13/i },
+    { pattern: /несудим|мвс|довідк.*мвс/i, type: /несудимість|довідка з мвс/i },
+    { pattern: /паспорт|айді|\bid\b|id\s*карт/i, type: /паспорт|id карт/i },
+    { pattern: /рнокпп|іпн|ідентифікаційн|податков.*номер/i, type: /ідентифікаційн/i },
+    { pattern: /диплом|атестат|diploma|certificate.*education/i, type: /диплом/i },
+    { pattern: /трудов|трудовая|пфу/i, type: /трудову діяльність/i },
+    { pattern: /автобіограф/i, type: /автобіографія друкована/i },
+    { pattern: /резерв|reserve|приписн|євод|evod|військово-обліков/i, type: /резерв|приписне/i },
+    { pattern: /військов.*квиток|воєн.*квиток/i, type: /військового квитка/i },
+    { pattern: /розлучен|розірван.*шлюб/i, type: /розірвання шлюбу/i },
+    { pattern: /шлюб|одружен|marriage/i, type: /шлюб/i },
+    { pattern: /народжен.*діт|birth.*cert/i, type: /народження дітей/i },
+    { pattern: /свідоцтв.*народжен|акт.*народжен/i, type: /свідоцтво про народження$/i },
+    { pattern: /фото.*9\s*[xх×]\s*12|9\s*[xх×]\s*12/i, type: /фото 9×12/i },
+    { pattern: /фото.*3\s*[xх×]\s*4|3\s*[xх×]\s*4|фото|photo/i, type: /фото 3×4/i },
+    { pattern: /рекомендац|відношен|(?:^|[\s_.,-])рл(?:[\s_.,-]|$)/i, type: /рекомендаційного листа/i },
+    { pattern: /витяг.*проживан|довідк.*проживан|прописк|реєстрац.*місц/i, type: /місце проживання/i },
+    { pattern: /iban|банк|рахунок|account.*card/i, type: /iban/i },
+    { pattern: /псих|наркол/i, type: /психіатра та нарколога/i },
+    { pattern: /гінеколог/i, type: /гінеколог/i },
+    { pattern: /убд/i, type: /убд/i },
+    { pattern: /водій|права|driver/i, type: /водія/i },
+    { pattern: /характеристик/i, type: /характеристика/i },
+    { pattern: /послужн/i, type: /послужний/i }
+  ];
+  for (const r of rules) {
+    if (r.pattern.test(name)) {
+      const match = reqs.find(req => r.type.test(req.document_type));
+      if (match) return match;
+    }
+  }
+  return null;
+}
+window.guessRequirementFromFilename = guessRequirementFromFilename;
+
+
 function identityDocumentTypeValue(documentType=''){
 const type=String(documentType||'').toLocaleLowerCase('uk-UA').replace(/\s+/g,' ').trim();
 if(/(?:свідоцтво|акт(?:овий|ового) запис|витяг).{0,35}народження/u.test(type)&&!/дитин|дітей/u.test(type))return'birth';
@@ -469,7 +524,12 @@ if(CRMUploadPDF.isJPEG(file)){const status=document.getElementById('docUploadSta
 file=await CRMUploadPDF.prepare(file);
 const name=String(file.name||'').toLowerCase(),mime=String(file.type||'').toLowerCase();
 const ok=mime==='application/pdf'||mime==='image/jpeg'||mime==='image/png'||mime==='application/msword'||mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||/\.(pdf|jpe?g|png|docx?)$/i.test(name);if(!ok)throw new Error('Підтримуються PDF, JPG, JPEG, PNG, DOC та DOCX');if(file.size>DOC_MAX_SIZE)throw new Error('Файл більший за 20 МБ');
-const reqs=await getDocumentRequirements(),forced=reqs.find(r=>r.id===requirementId),tempType=forced?.document_type||'Обробка AI';
+const reqs=await getDocumentRequirements();
+let forced=reqs.find(r=>r.id===requirementId);
+if(!forced){
+  forced=guessRequirementFromFilename(file.name,reqs);
+}
+const tempType=forced?.document_type||'Обробка AI';
 const aiEnabled=forced?.ai_enabled!==false;
 const ext=(name.match(/\.[a-z0-9]+$/i)||[''])[0].toLowerCase();
 const safeName=Date.now()+'_'+Math.random().toString(36).slice(2,10)+ext;

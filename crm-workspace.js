@@ -72,12 +72,12 @@ window.CRMWorkspace = {
       await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');
       const images=await pdfToImages(new File([blob],'photo.pdf',{type:'application/pdf'}),1);
       const raw=images[0]||null;
-      if(raw&&window.CandidatePhotos?.cropDataUrl)return await window.CandidatePhotos.cropDataUrl(raw);
+      if(raw&&window.CandidatePhotos?.cropDataUrl)return await window.CandidatePhotos.cropDataUrl(raw, documentRecord);
       return raw;
     }
     if(blob.type.startsWith('image/')){
       const raw=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});
-      if(raw&&window.CandidatePhotos?.cropDataUrl)return await window.CandidatePhotos.cropDataUrl(raw);
+      if(raw&&window.CandidatePhotos?.cropDataUrl)return await window.CandidatePhotos.cropDataUrl(raw, documentRecord);
       return raw;
     }
     return null;

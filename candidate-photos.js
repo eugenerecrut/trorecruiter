@@ -105,6 +105,16 @@
     const centerLum = getLum(cx, cy);
     if (centerLum < 175) return false;
 
+    // Single portrait check: a single photo has a head centered at cx.
+    // If there is ANY dark subject pixel (lum < 145) down the vertical midline in the face region, it is a centered person!
+    for (let y = Math.floor(h * 0.15); y < Math.floor(h * 0.55); y += 3) {
+      if (getLum(cx, y) < 145) return false;
+    }
+    // Also horizontal midline must not cross a dark subject in the center
+    for (let x = Math.floor(w * 0.35); x < Math.floor(w * 0.65); x += 3) {
+      if (getLum(x, cy) < 145) return false;
+    }
+
     // Vertical center gutter must be bright paper
     let vertWhite = 0, vertTotal = 0;
     for (let y = Math.floor(h * 0.15); y < Math.floor(h * 0.85); y += 4) {
@@ -124,10 +134,45 @@
     // 4 quadrant centers must contain dark subjects (heads/faces)
     const q1 = getLum(Math.floor(w * 0.25), Math.floor(h * 0.25));
     const q2 = getLum(Math.floor(w * 0.75), Math.floor(h * 0.25));
-    const q3 = getLum(Math.floor(w * 0.25), Math.floor(h * 0.75));
-    const q4 = getLum(Math.floor(w * 0.75), Math.floor(h * 0.75));
+    const q3 = Math.min(getLum(Math.floor(w * 0.25), Math.floor(h * 0.75)), getLum(Math.floor(w * 0.25), Math.floor(h * 0.65)));
+    const q4 = Math.min(getLum(Math.floor(w * 0.75), Math.floor(h * 0.75)), getLum(Math.floor(w * 0.75), Math.floor(h * 0.65)));
     const avgQuad = (q1 + q2 + q3 + q4) / 4;
     return avgQuad < 155 && (centerLum - avgQuad > 25);
+  }
+
+  function findSheetBounds(canvas) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return { x: 0, y: 0, w: canvas.width, h: canvas.height };
+    const w = canvas.width, h = canvas.height;
+    let imgData;
+    try { imgData = ctx.getImageData(0, 0, w, h); } catch (_) { return { x: 0, y: 0, w, h }; }
+    const data = imgData.data;
+    const getLum = (x, y) => {
+      const idx = (Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))) * 4;
+      return 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+    };
+
+    let left = 0, right = w - 1, top = 0, bottom = h - 1;
+    const midY = Math.floor(h / 2), midX = Math.floor(w / 2);
+    if (getLum(0, midY) < 160 || getLum(w - 1, midY) < 160 || getLum(midX, 0) < 160 || getLum(midX, h - 1) < 160) {
+      for (let x = 0; x < Math.floor(w * 0.4); x += 2) {
+        if (getLum(x, midY) > 170) { left = x; break; }
+      }
+      for (let x = w - 1; x > Math.floor(w * 0.6); x -= 2) {
+        if (getLum(x, midY) > 170) { right = x; break; }
+      }
+      for (let y = 0; y < Math.floor(h * 0.4); y += 2) {
+        if (getLum(midX, y) > 170) { top = y; break; }
+      }
+      for (let y = h - 1; y > Math.floor(h * 0.6); y -= 2) {
+        if (getLum(midX, y) > 170) { bottom = y; break; }
+      }
+    }
+    const sw = right - left, sh = bottom - top;
+    if (sw > w * 0.4 && sh > h * 0.4) {
+      return { x: left, y: top, w: sw, h: sh };
+    }
+    return { x: 0, y: 0, w, h };
   }
 
   function frameSinglePortrait(canvas) {
@@ -215,10 +260,11 @@
 
     // 4. Standalone photo: 4-up sheet vs single photo
     if (isTrue4UpSheet(canvas)) {
-      const cropW = Math.round(w * 0.44);
-      const cropH = Math.round(h * 0.44);
-      const cropX = Math.round(w * 0.04);
-      const cropY = Math.round(h * 0.04);
+      const b = findSheetBounds(canvas);
+      const cropX = Math.round(b.x + b.w * 0.04);
+      const cropY = Math.round(b.y + b.h * 0.02);
+      const cropW = Math.round(b.w * 0.44);
+      const cropH = Math.round(b.h * 0.46);
       return cropAndScale(canvas, cropX, cropY, cropW, cropH, 120, 160);
     }
 
@@ -356,7 +402,7 @@
     try {
       for (let i = 0; i < candidates.length; i += 100) {
         const {data, error} = await supabaseClient.from('documents')
-          .select('id,candidate_id,document_type,document_name,storage_path,file_name,mime_type,created_at,version_group_id,version_number,deleted_at')
+          .select('id,candidate_id,document_type,document_name,storage_path,file_name,mime_type,created_at,version_group_id,version_number,deleted_at,ai_extracted')
           .in('candidate_id', candidates.slice(i, i + 100).map(candidate => candidate.id))
           .or('document_type.ilike.%фото%,document_name.ilike.%фото%,document_type.ilike.%id-картка%,document_type.ilike.%паспорт%,document_type.ilike.%водія%,document_type.ilike.%квиток%,document_type.ilike.%убд%')
           .order('created_at', {ascending: false}).order('id', {ascending: false});
