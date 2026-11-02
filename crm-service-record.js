@@ -104,7 +104,7 @@ function model(c,pf={}){
   [stacked(r.start_date),stacked(r.end_date),[r.position,r.military_specialty].filter(Boolean).join(', '),r.unit,[r.order_issuer,r.order_number,date(r.order_date)].filter(Boolean).join(' ')].forEach((v,j)=>add('training_'+i+'_'+j,['Початок','Завершення','Посада та ВОС','Частина','Наказ'][j]+' зборів · '+(i+1),9,[cols[j],top,cols[j+1],end],v,'Збори в запасі'));
  });
  const printWarnings=[];
- for(const f of fields)if(typeof p.service_record_print?.[f.key]==='string'){const override=p.service_record_print[f.key];if(override!==f.value)printWarnings.push('Друкована правка «'+f.label+'» відрізняється від картки. Звірте перед формуванням.');f.source_value=f.value;f.print_override=true;f.value=override;}
+ for(const f of fields){if(f.source_value===undefined)f.source_value=f.value;if(typeof p.service_record_print?.[f.key]==='string'){const override=p.service_record_print[f.key];if(override!==f.value)printWarnings.push('Друкована правка «'+f.label+'» відрізняється від картки. Звірте перед формуванням.');f.source_value=f.value;f.print_override=true;f.value=override;}}
  for(const field of fields)if(field.key.startsWith('work_')){field.center=true;field.verticalCenter=true;}
  return {fields,worked,served,name:c.name_nominative||c.full_name,issues:[...printWarnings,...(rankOrders.length>1?['Для чинного звання є кілька різних наказів. Звірте поле «Наказ про присвоєння звання» за документами.']:[]),...(ambiguousParents.length?['Для батьків є кілька різних записів ('+ambiguousParents.map(r=>r.toLocaleLowerCase('uk-UA')).join(', ')+'). Звірте поле «Батько та мати» за документами.']:[])]};
 }
@@ -188,11 +188,87 @@ async function open(c,pf,{save}){
  if(readiness)state.issues=[...new Set([...state.issues,...readiness.issues.map(r=>r.label+': '+r.text)])];
  if(window.CRMDocumentCrosscheck){try{const evidence=await CRMDocumentCrosscheck.load(supabaseClient,c);for(const e of evidence.filter(e=>['conflict','needs_review'].includes(e.status)))state.issues.push('Розбіжність між документами: '+({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич '+(e.subject||''),education_records:'Освіта',work_records:'Періоди роботи / служби'}[e.key]||e.key)+'. Джерела: '+e.sources.map(s=>s.file_name||s.document_type).join('; '));}catch(e){state.issues.push('Не вдалося звірити пакет документів: '+e.message)}}
  const groups=[...new Set(state.fields.map(f=>f.group))];
- dialog.innerHTML='<h2>Послужний список</h2><p>'+esc(state.name)+'</p>'+state.issues.map(text=>'<p class="crm-notice" role="alert">'+esc(text)+'</p>').join('')+'<p>10 сторінок для двостороннього друку. Змінюється лише текст для цього PDF. Повні дані картки зберігаються. Тексти можна уточнити за підтвердженими документами. Зміни в редакторі діють лише для поточного PDF.</p><p>Рядки жетона, складання документа та підписів залишаються порожніми. Реквізити наказу про звання вносьте лише за військовим документом.</p>'+groups.map((g,i)=>'<details '+(!i?'open':'')+'><summary>'+esc(g)+'</summary>'+state.fields.filter(f=>f.group===g).map(f=>'<label style="display:block;margin:10px 0">'+esc(f.label)+'<textarea data-service-field="'+esc(f.key)+'" rows="'+(f.box[3]-f.box[1]>70?4:2)+'" style="display:block;width:100%;box-sizing:border-box">'+esc(f.value)+'</textarea></label>').join('')+'</details>').join('')+'<p data-service-status role="status"></p><div class="crm-actions"><button type="button" data-service-preview>Переглянути PDF</button><button type="button" data-service-save>Зберегти у справі та завантажити PDF</button><button type="button" data-service-close>Закрити</button></div>';
+ const multilineKeys=new Set(['education_civil','scientific_works','injuries','foreign_trips','elected_bodies','captivity','parents','family','not_worked','not_served','discharge']);
+ const isMulti=f=>multilineKeys.has(f.key)||String(f.value).includes('\n')||(f.box[3]-f.box[1]>60);
+ const fieldHtml=f=>{
+  const wide=isMulti(f);
+  const rows=Math.max(2,Math.min(5,String(f.value).split('\n').length+1));
+  const control=wide
+   ?'<textarea name="'+esc(f.key)+'" data-service-field="'+esc(f.key)+'" rows="'+rows+'" style="width:100%;box-sizing:border-box;resize:vertical">'+esc(f.value)+'</textarea>'
+   :'<input type="text" name="'+esc(f.key)+'" data-service-field="'+esc(f.key)+'" value="'+esc(f.value)+'" style="width:100%;box-sizing:border-box">';
+  return '<label style="'+(wide?'grid-column:1/-1;':'')+'display:grid;gap:6px;font-weight:600">'+esc(f.label)+control+'</label>';
+ };
+ const formContent=groups.map(g=>{
+  const inGroup=state.fields.filter(f=>f.group===g);
+  return '<div style="grid-column:1/-1;margin-top:16px;padding:6px 0 4px;border-bottom:2px solid #cfd8dc;display:flex;justify-content:space-between;align-items:center"><strong style="font-size:14px;color:#18232d">'+esc(g)+'</strong><span style="font-size:12px;color:#61717b">'+inGroup.length+' '+(inGroup.length===1?'поле':'полів')+'</span></div>'+inGroup.map(fieldHtml).join('');
+ }).join('');
+ dialog.innerHTML='<h2>Послужний список</h2><p><strong>'+esc(state.name)+'</strong> · 10 сторінок для двостороннього друку (5 аркушів). Редагуйте будь-яке поле перед друком; оригінальні первинні документи картки зберігаються.</p>'+(state.issues.length?state.issues.map(text=>'<p class="crm-notice" role="alert">'+esc(text)+'</p>').join(''):'')+'<form class="crm-workflow-grid">'+formContent+'<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px;padding:8px 0;border-top:1px solid #e5eaed"><label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#34414a;cursor:pointer"><input type="checkbox" data-service-persist checked style="width:18px;height:18px;accent-color:#5d741f;margin:0"> Запам’ятати правки для друку</label><button type="button" data-service-reset style="font-size:12px;padding:6px 12px;background:#f5f7f8;border:1px solid #cfd8dc;border-radius:6px;cursor:pointer">↺ Скинути до значень із картки</button></div><p data-service-status role="status" style="grid-column:1/-1;margin:6px 0;min-height:1.2em;font-weight:600"></p><div style="grid-column:1/-1;display:flex;gap:12px;flex-wrap:wrap"><button type="submit" data-service-submit style="flex:1;min-height:44px;background:#18232d;color:#fff;font-weight:700;border-radius:8px;border:none;cursor:pointer">Сформувати PDF</button><button type="button" data-service-save style="flex:1;min-height:44px;background:#446123;color:#fff;font-weight:700;border-radius:8px;border:none;cursor:pointer">Зберегти у справі та завантажити PDF</button></div></form><iframe title="Послужний список — PDF" hidden style="width:100%;height:65vh;border:1px solid #cfd8dc;border-radius:8px;margin-top:14px"></iframe><div style="display:flex;gap:10px;align-items:center;margin-top:10px"><a data-download hidden style="display:inline-block;padding:10px 18px;background:#18232d;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Завантажити PDF</a></div><div class="crm-actions"><button type="button" data-service-close>Закрити</button></div>';
  document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null;const status=dialog.querySelector('[data-service-status]');
  const close=()=>{if(busy)return;dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
- async function build(saving){if(busy||CRMWorkspace.busy)return;busy=true;CRMWorkspace.busy=true;dialog.querySelectorAll('button,textarea').forEach(el=>el.disabled=true);try{state.fields.forEach(f=>f.value=dialog.querySelector('[data-service-field="'+f.key+'"]').value);if(status)status.textContent='Формуємо та перевіряємо PDF…';const blob=await create(state);if(saving){const fresh=await supabaseClient.from('candidates').select('updated_at').eq('id',c.id).single();if(fresh.error)throw fresh.error;if(fresh.data.updated_at!==c.updated_at)throw Error('Дані картки змінилися. Закрийте й відкрийте послужний повторно.');await save(blob);if(status)status.textContent='Послужний збережено у справі та завантажено.';}else{if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(blob);let iframe=dialog.querySelector('iframe');if(!iframe){iframe=document.createElement('iframe');iframe.title='Послужний список — PDF';iframe.style='width:100%;height:65vh;border:1px solid #ddd';dialog.querySelector('.crm-actions').before(iframe);}iframe.src=previewUrl;if(status)status.textContent='PDF готовий: 10 сторінок. Перевірте всі сторінки перед збереженням.';}}catch(e){if(status){status.textContent=e.message;status.scrollIntoView({block:'nearest'});}}finally{busy=false;CRMWorkspace.busy=false;dialog.querySelectorAll('button,textarea').forEach(el=>el.disabled=false);}}
- dialog.querySelector('[data-service-preview]').onclick=()=>build(false);dialog.querySelector('[data-service-save]').onclick=()=>build(true);return dialog;
+ dialog.querySelector('[data-service-reset]').onclick=()=>{
+  for(const f of state.fields){
+   const el=dialog.querySelector('[data-service-field="'+f.key+'"]');
+   if(el)el.value=f.source_value??'';
+   f.value=f.source_value??'';
+  }
+  if(status)status.textContent='Значення полів скинуто до вихідних даних із картки.';
+ };
+ async function build(saving){
+  if(busy||CRMWorkspace.busy)return;busy=true;CRMWorkspace.busy=true;
+  dialog.querySelectorAll('button,input,textarea').forEach(el=>el.disabled=true);
+  try{
+   state.fields.forEach(f=>{
+    const el=dialog.querySelector('[data-service-field="'+f.key+'"]');
+    if(el)f.value=el.value;
+   });
+   const persist=dialog.querySelector('[data-service-persist]')?.checked;
+   if(persist){
+    const overrides={...(obj(c.profile_data).service_record_print||{})};let changed=false;
+    for(const f of state.fields){
+     if(f.value!==(f.source_value??'')){overrides[f.key]=f.value;changed=true;}
+     else if(overrides[f.key]!==undefined){delete overrides[f.key];changed=true;}
+    }
+    if(changed){
+     const pd={...(obj(c.profile_data)||{})};pd.service_record_print=overrides;c.profile_data=pd;
+     try{
+      const up=await supabaseClient.from('candidates').update({profile_data:pd}).eq('id',c.id).select('updated_at').single();
+      if(!up.error&&up.data?.updated_at)c.updated_at=up.data.updated_at;
+     }catch{}
+    }
+   }
+   if(status)status.textContent='Формуємо та перевіряємо PDF…';
+   const blob=await create(state);
+   if(!dialog.isConnected)return;
+   if(previewUrl)URL.revokeObjectURL(previewUrl);
+   previewUrl=URL.createObjectURL(blob);
+   const iframe=dialog.querySelector('iframe');
+   if(iframe){iframe.src=previewUrl;iframe.hidden=false;}
+   const a=dialog.querySelector('[data-download]');
+   if(a){
+    a.href=previewUrl;
+    a.download='Послужний_список_'+String(state.name||'Кандидат').replace(/[<>:"/\\|?*\x00-\x1f\s]+/g,'_')+'.pdf';
+    a.hidden=false;
+   }
+   if(saving){
+    const fresh=await supabaseClient.from('candidates').select('updated_at').eq('id',c.id).single();
+    if(fresh.error)throw fresh.error;
+    if(fresh.data.updated_at!==c.updated_at)throw Error('Дані картки змінилися. Закрийте й відкрийте послужний повторно.');
+    await save(blob);
+    if(status)status.textContent='Послужний список (10 сторінок) збережено у справі та завантажено.';
+   }else{
+    if(status)status.textContent='PDF готовий: 10 сторінок. Перевірте документ у вікні перегляду нижче.';
+    iframe?.scrollIntoView({behavior:'smooth',block:'start'});
+   }
+  }catch(e){
+   if(status){status.textContent=e.message;status.scrollIntoView({block:'nearest'});}
+  }finally{
+   busy=false;CRMWorkspace.busy=false;
+   dialog.querySelectorAll('button,input,textarea').forEach(el=>el.disabled=false);
+  }
+ }
+ dialog.querySelector('form').onsubmit=ev=>{ev.preventDefault();build(false);};
+ dialog.querySelector('[data-service-save]').onclick=()=>build(true);
+ return dialog;
 }
 window.CRMServiceRecord={model,create,open,wrapText};
 })();
