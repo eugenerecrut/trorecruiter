@@ -71,6 +71,7 @@
     if(empty(v))return true;if(typeof v!=='string'&&typeof v!=='number')return false;
     if(/birth_date|death_date/.test(key))return date(v,key!=='birth_date'||key.startsWith('relative.'));
     if(key==='military_specialty'||key==='recommendation_military_specialty')return /^\d{3,6}[А-ЯІЇЄҐA-Z]?$/u.test(String(v).trim());
+    if(key==='military_rank'&&norm(v)==='рекрут')return true;
     if(key==='shpk'||key==='military_rank')return ranks.has(norm(v));
     if(key==='tariff_grade')return /^\d{1,2}$/.test(String(v).trim())&&Number(v)>=1&&Number(v)<=99;
     if(key==='service_type')return !!service(v);
