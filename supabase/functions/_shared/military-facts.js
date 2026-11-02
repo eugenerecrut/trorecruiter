@@ -8,7 +8,8 @@ const types=/військов(?:ий|ого) квит|посвідчення о�
 const norm=v=>String(v??'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('uk-UA');
 const text=v=>typeof v==='string'&&v.trim().length>0&&v.trim().length<=2000?v.trim():null;
 const date=v=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')))return null;const d=new Date(v+'T00:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v?v:null;};
-const unit=v=>/^[АA]\d{4}$/u.test(String(v||'').trim().toUpperCase())?'А'+String(v).trim().slice(1):null;
+// Historical tickets also contain five-digit units; keep their original format.
+const unit=v=>{const s=String(v||'').trim().toUpperCase();return /^[АA]\d{4}$/u.test(s)?'А'+s.slice(1):/^\d{5}$/u.test(s)?s:null;};
 const ranks=new Set('солдат|старший солдат|матрос|старший матрос|молодший сержант|сержант|старший сержант|головний сержант|штаб-сержант|майстер-сержант|старший майстер-сержант|головний майстер-сержант|старшина|головний старшина|молодший лейтенант|лейтенант|старший лейтенант|капітан|майор|підполковник|полковник|бригадний генерал|генерал-майор|генерал-лейтенант|генерал'.split('|'));
 const ignored=new Set(['source_document_id','source_pages','raw_text','requires_review','accepted_by_ai','confirmed_by_user','confirmed_by_document','source_record_index']);
 const isDocument=type=>types.test(String(type||''))&&!/УБД|учасника бойових дій/iu.test(String(type||''));
