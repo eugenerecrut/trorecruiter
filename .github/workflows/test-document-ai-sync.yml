@@ -15,6 +15,7 @@ jobs:
           node-version: '24'
       - name: Run synchronization and existing CRM regressions
         run: |
+          node --test tests/crm-military-source-roles.cjs tests/crm-whatsapp-webhook-auth.cjs tests/crm-whatsapp-send.cjs
           node --test tests/splav-pdf-raster.mjs tests/splav-render-probe.mjs tests/splav-pdf-zone-raster.mjs
           node --test tests/crm-manual-zone.cjs tests/crm-background-view.cjs
           node --test tests/crm-zone-coordinator.cjs
@@ -39,6 +40,8 @@ jobs:
           node --test tests/crm-archive-edge.cjs
       - name: Install isolated PostgreSQL test runtime
         run: npm ci --prefix tests/sql-runtime --ignore-scripts
+      - name: Verify military source roles in isolated PostgreSQL
+        run: node tests/crm-military-source-roles-sql.cjs
       - name: Verify source-bound decisions in isolated PostgreSQL
         run: node tests/crm-review-source-sql.cjs
       - name: Verify processor isolation in isolated PostgreSQL

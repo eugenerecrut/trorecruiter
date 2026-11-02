@@ -1,0 +1,24 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {PGlite}=require(process.env.CRM_TEST_PGLITE||'./sql-runtime/node_modules/@electric-sql/pglite');
+(async()=>{const db=new PGlite();try{
+await db.exec(`create schema auth;create function auth.uid() returns uuid language sql as $$select '00000000-0000-0000-0000-000000000001'::uuid$$;
+create table crm_staff(user_id uuid,active boolean);insert into crm_staff values(auth.uid(),true);
+create table candidates(id uuid primary key,profile_data jsonb,updated_at timestamptz,military_specialty text,military_rank text,tcc text);
+create table documents(id uuid primary key,candidate_id uuid,document_type text,ai_document_type text,deleted_at timestamptz,version_group_id uuid,version_number int,requirement_id uuid,ai_extracted jsonb,ai_warnings jsonb,ai_confidence numeric,verification_status text);
+create table personal_files(candidate_id uuid unique,updated_at timestamptz);create table document_requirements(id uuid,document_type text);`);
+await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261016122542_repair_document_sync_utf8_literals.sql'),'utf8'));
+await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261102114138_military_source_roles.sql'),'utf8'));
+const c='00000000-0000-0000-0000-000000000002',d='00000000-0000-0000-0000-000000000003',ai={military_specialty:'420182А'};
+await db.query('insert into candidates(id,profile_data,military_specialty) values($1,$2,$3)',[c,{manual:'preserve'},'999097']);
+await db.query('insert into documents(id,candidate_id,document_type,ai_extracted,verification_status) values($1,$2,$3,$4,$5)',[d,c,'Рекомендаційний лист',ai,'Підтверджено']);
+const selection=(key,incoming='420182А',target='profile')=>({target,key,incoming,expected_current:null,expected_ai:ai,fill_only:true});
+const call=s=>db.query('select crm_apply_document_fields($1,$2)',[d,s]);
+await call([selection('recommendation_military_specialty')]);
+let row=(await db.query('select * from candidates')).rows[0];assert.equal(row.military_specialty,'999097');assert.equal(row.profile_data.recommendation_military_specialty,'420182А');assert.equal(row.profile_data.manual,'preserve');
+await assert.rejects(()=>call([selection('recommendation_military_specialty','111111')]));
+await assert.rejects(()=>call([{target:'candidate',key:'military_specialty',incoming:'420182А',expected_ai:ai}]));
+await assert.rejects(()=>call([{target:'profile',key:'military_unit',incoming:'А5268',expected_ai:ai}]));
+await db.query("update documents set document_type='Резерв+' where id=$1",[d]);
+await assert.rejects(()=>call([{target:'profile',key:'recommendation_military_specialty',incoming:'420182А',expected_ai:ai,expected_current:'420182А',fill_only:true}]));
+console.log('PASS source-bound destination VOS, legacy-role block and unchanged current registry; isolated PostgreSQL');
+}finally{await db.close()}})().catch(e=>{console.error(e);process.exitCode=1});

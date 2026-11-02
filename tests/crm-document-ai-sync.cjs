@@ -32,14 +32,14 @@ test('Flat and nested RL yield identical validated selections and preserve mobil
   const nested=sync.plan(document({personal:personal(),service:service()}),candidate());
   const flat=sync.plan(document({...personal(),...service()}),candidate());
   assert.deepEqual(nested.selections.map(({expected_ai,...s})=>s),flat.selections.map(({expected_ai,...s})=>s));
-  for(const key of ['military_specialty','shpk','tariff_grade','recruiter_name','recruiter_phone','unit_phone','military_unit','signatory','desired_position'])assert(nested.selections.some(s=>s.key===key));
+  for(const key of ['recommendation_military_specialty','shpk','tariff_grade','recruiter_name','recruiter_phone','unit_phone','desired_unit','signatory','desired_position'])assert(nested.selections.some(s=>s.key===key));
   assert.equal(nested.rows.find(r=>r.key==='service_type').action,'conflict');assert(!nested.selections.some(s=>s.key==='service_type'));
 });
 test('Invalid Parfionenko SHPK and mixed Latin OCR are rejected, valid VOS retained',()=>{
   const s={...service(),shpk:'сола aT в',full_name:'Мродвонеєко Masur Gpricobic',military_specialty:'218121'};
   const report=sync.plan(document({...personal(),...s}),candidate());
   assert.equal(report.rows.find(r=>r.key==='shpk').action,'conflict');assert(!report.selections.some(x=>x.key==='shpk'));
-  assert(report.selections.some(x=>x.key==='military_specialty'));assert(!report.selections.some(x=>x.key==='full_name'));
+  assert(report.selections.some(x=>x.key==='recommendation_military_specialty'));assert(!report.selections.some(x=>x.key==='full_name'));
 });
 test('Missing VOS stays missing; nested fallback supports flat nulls',()=>{
   const e={...personal(),service:service(),military_specialty:null};assert.equal(sync.flatten(e).military_specialty,'225256А');
@@ -73,14 +73,14 @@ test('Preview makes no writes; apply persists and reload/re-upload are idempoten
   const first=JSON.stringify(state.c);await sync.sync(client,'d1');assert.equal(JSON.stringify(state.c),first);assert.equal(state.c.profile_data.relatives.length,1);assert.equal(state.d.ai_warnings.length,1);
 });
 test('Concurrent manual edit, changed AI and read/write errors never report success',async()=>{
-  const m=memory(candidate(),document({...personal(),...service()}));const p=await sync.preview(m.client,'d1');m.state.c.military_specialty='manual';await assert.rejects(sync.apply(m.client,p),e=>e.message==='Concurrent edit');assert.equal(m.state.c.profile_data.shpk,undefined);
+  const m=memory(candidate(),document({...personal(),...service()}));const p=await sync.preview(m.client,'d1');m.state.c.profile_data.recommendation_military_specialty='manual';await assert.rejects(sync.apply(m.client,p),e=>e.message==='Concurrent edit');assert.equal(m.state.c.profile_data.shpk,undefined);
   const n=memory(candidate(),document({...personal(),...service()}));const q=await sync.preview(n.client,'d1');n.state.d.ai_extracted.shpk='сержант';await assert.rejects(sync.apply(n.client,q),e=>e.message==='AI changed');
   n.state.fail='Read failed';await assert.rejects(sync.preview(n.client,'d1'),e=>e.message==='Read failed');
 });
 test('Active upload syncs exact document without redundant browser OCR',async()=>{
   const source=fs.readFileSync(path.join(root,'documents.js'),'utf8');const code=source.slice(source.indexOf('function acceptedServerReconciliation('),source.indexOf('function normName('))+source.slice(source.indexOf('async function processOneDocument('),source.indexOf('async function uploadSelectedDocuments('));
   const m=memory(candidate(),document({...personal(),...service()}));let invoked,ocr=0;const context={enqueueSplavDocument:async()=>null,CRMUploadPDF:uploadPDF,supabaseClient:m.client,DOC_MAX_SIZE:20e6,DOC_BUCKET:'candidate-documents',getDocumentRequirements:async()=>[{id:'r1',document_type:'Рекомендаційний лист'}],extractPdfText:async()=>'',pdfToImages:async()=>['image'],runOcr:async()=>{ocr++;return 'text'},classifyStoredDocument:async(id)=>{invoked=id;Object.assign(m.state.d,{processing_status:'AI оброблено',ai_extracted:{...personal(),...service()},ai_confidence:0.99});return {document_type:'Рекомендаційний лист',confidence:0.99,extracted:{...personal(),...service()}}},findCandidateByName:()=>null,document:{getElementById:()=>null},CRMDocumentSync:sync,console};vm.createContext(context);vm.runInContext(code,context);
-  await context.processOneDocument({name:'test.pdf',type:'application/pdf',size:100},'r1',{id:'u1'},[], 'c1');assert.equal(invoked,'d1');assert.equal(m.state.writes,3);assert.equal(ocr,0);assert.equal(m.state.rpcs,1);assert.equal(m.state.c.military_specialty,'225256А');
+  await context.processOneDocument({name:'test.pdf',type:'application/pdf',size:100},'r1',{id:'u1'},[], 'c1');assert.equal(invoked,'d1');assert.equal(m.state.writes,3);assert.equal(ocr,0);assert.equal(m.state.rpcs,1);assert.equal(m.state.c.profile_data.recommendation_military_specialty,'225256А');assert.equal(m.state.c.military_specialty,undefined);
 });
 test('Recommendation form supports both formats and saves canonical service/relative fields',async()=>{
   let extracted={...personal(),...service()};
@@ -191,7 +191,7 @@ test('late-mounted relatives editor respects archive lock and blocks stale click
 
 test('Contradictory flat/nested OCR and malformed relative entries become conflicts',()=>{
   const d=document({...personal(),military_specialty:'218121',service:service(),relatives:[null]});
-  const p=sync.plan(d,candidate());assert.equal(p.rows.find(r=>r.key==='military_specialty').action,'conflict');assert(!p.selections.some(s=>s.key==='military_specialty'));assert(p.rows.some(r=>r.key==='relatives'&&r.action==='conflict'));
+  const p=sync.plan(d,candidate());assert.equal(p.rows.find(r=>r.key==='recommendation_military_specialty').action,'conflict');assert(!p.selections.some(s=>s.key==='recommendation_military_specialty'));assert(p.rows.some(r=>r.key==='relatives'&&r.action==='conflict'));
 });
 test('Retry and review use the same document-scoped planner; no legacy time-window writes',()=>{
   const s=fs.readFileSync(path.join(root,'documents.js'),'utf8');const retry=s.slice(s.indexOf('async function retryDocumentAI'),s.indexOf('async function openDocument'));
@@ -232,7 +232,7 @@ test('Document transfer advances candidate and personal file versions to reject 
 });
 
 test('Automatic pipeline fills safe blanks and persists recruiter escalation without overwriting mobilization',async()=>{
- const m=memory(candidate(),{...document({...personal(),...service()}),ai_confidence:0.98});const r=await sync.automate(m.client,'d1');assert(r.needsRecruiter);assert(r.autoFilled>0);assert.equal(m.state.c.military_specialty,'225256А');assert.equal(m.state.c.profile_data.service_type,'За мобілізацією');assert.equal(m.state.d.verification_status,'Потребує перевірки');assert(m.state.d.ai_warnings.some(w=>w.startsWith('[Рекрутер]')));
+ const m=memory(candidate(),{...document({...personal(),...service()}),ai_confidence:0.98});const r=await sync.automate(m.client,'d1');assert(r.needsRecruiter);assert(r.autoFilled>0);assert.equal(m.state.c.profile_data.recommendation_military_specialty,'225256А');assert.equal(m.state.c.military_specialty,undefined);assert.equal(m.state.c.profile_data.service_type,'За мобілізацією');assert.equal(m.state.d.verification_status,'Потребує перевірки');assert(m.state.d.ai_warnings.some(w=>w.startsWith('[Рекрутер]')));
 });
 test('Low confidence and unreadable evidence do not silently enter a card',async()=>{
  const m=memory(candidate(),{...document({...personal(),military_specialty:'225256А'}),ai_confidence:0.4});const r=await sync.automate(m.client,'d1');assert(r.needsRecruiter);assert.equal(m.state.c.military_specialty,undefined);
@@ -242,7 +242,7 @@ test('Unmapped service-record sources explicitly request recruiter review',async
  const m=memory(candidate(),document({...personal(),name_change:{previous_full_name:'Тестов Іван Петрович',new_full_name:'Тестенко Іван Петрович'}},'Свідоцтво про зміну імені / прізвища'));const r=await sync.automate(m.client,'d1');assert(r.needsRecruiter);assert.equal(m.state.rpcs,0);assert.equal(m.state.d.verification_status,'Потребує перевірки');
 });
 test('Clear source with no conflicting stored values does not trigger a recruiter exception',async()=>{
- const m=memory(candidate(),{...document({...personal(),military_specialty:'225256А'}),ai_confidence:0.99});const r=await sync.automate(m.client,'d1');assert.equal(r.needsRecruiter,false);assert.equal(m.state.c.military_specialty,'225256А');assert.notEqual(m.state.d.verification_status,'Підтверджено');
+ const m=memory(candidate(),{...document({...personal(),military_specialty:'225256А'}),ai_confidence:0.99});const r=await sync.automate(m.client,'d1');assert.equal(r.needsRecruiter,false);assert.equal(m.state.c.profile_data.recommendation_military_specialty,'225256А');assert.equal(m.state.c.military_specialty,undefined);assert.notEqual(m.state.d.verification_status,'Підтверджено');
 });
 
 
