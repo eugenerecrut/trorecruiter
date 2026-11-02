@@ -92,7 +92,7 @@ window.CRMWorkspace = {
     if(cr.error)throw cr.error;if(pr.error)throw pr.error;const c=cr.data,pf=pr.data||{};
     let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
     this.setContext(id,c.name_nominative||c.full_name);
-    const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*3\s*[×xх\/]\s*4/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(dr).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||''));
+    const photoDoc=window.CandidatePhotos?.findPhotoDoc?window.CandidatePhotos.findPhotoDoc(dr):(CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*3\s*[×xх\/]\s*4/i.test(d.document_type||d.document_name||''))||CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''))||CRMResponsibility.latest(dr).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||'')));
     const education=CRMCaseInformation.education(c,pf);
     const work=this.employmentInformation(c,p,pf);
     const servedValue=c.served_before??p.served_before;

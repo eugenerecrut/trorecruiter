@@ -297,7 +297,7 @@
     caseMode.addEventListener('change',applyCaseLayout);
     formForNavigation.addEventListener('change',applyCaseLayout);
     applyCaseLayout();
-    const photoDoc=CRMResponsibility.latest(docs).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(docs).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||''));
+    const photoDoc=window.CandidatePhotos?.findPhotoDoc?window.CandidatePhotos.findPhotoDoc(docs):(CRMResponsibility.latest(docs).reverse().find(d=>/фото\s*3\s*[×xх\/]\s*4/i.test(d.document_type||d.document_name||''))||CRMResponsibility.latest(docs).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||''))||CRMResponsibility.latest(docs).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||'')));
     CRMWorkspace.photo(photoDoc).then(photo=>{
       if(!formForNavigation.isConnected)return;
       const image=content.querySelector('#crmCardPhoto');
