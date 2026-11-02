@@ -10,6 +10,7 @@
  const optionalDocument=type=>/УБД|нагород|витягу? з наказу|посвідчення водія|змін.*(?:імен|прізвищ)|групи крові/iu.test(String(type||''));
  const normalizeRequirement=r=>optionalDocument(r.document_type)?{...r,is_required:false,condition_field:null,condition_value:null,condition_note:'За наявності документа.'}:{...r};
  const isMobilization=c=>/мобілізац/iu.test(String(profile(c).service_type||c.service_type||String(profile(c).form_data?.additional_notes||'').match(/Вид служби:\s*([^\n]+)/iu)?.[1]||''));
+ const formsPersonalFile=c=>!isMobilization(c)&&!isUnit(c);
  const militaryDocument=t=>/військов.*(?:квит|облік|обліков)|резерв\s*\+|тимчасов.*посвідч|приписн/iu.test(t||'');
  const photoDocument=t=>/фото/iu.test(String(t||''));
  const mobilizationDocument=t=>unitDocument(t)||militaryDocument(t)||/паспорта|ID Картки|ідентифікаційного коду|Фото |посвідчення водія|Довідка ВЛК|Додаток 13|групи крові|місце проживання|Довідка з МВС|гінеколога|Сертифікат психологічного тестування|УБД|диплом|атестат|документи про освіту|трудов|трудову діяльність|свідоцтв.*змін.*(?:імен|прізвищ)/iu.test(t||'');
@@ -39,7 +40,7 @@
   if(isUnit(c))return unitDocument(type);
   if(unitTypes.includes(type))return true;
   if(/гінеколога/iu.test(type)){if(!isMobilization(c))return false;const sex=value(c,'sex');return sex==='female'?true:sex==='male'?false:null;}
-  if(isMobilization(c)){if(!mobilizationDocument(type))return false;if(/трудов|трудову діяльність/iu.test(type))return bool(value(c,'worked_before'));if(/групи крові/iu.test(type))return bool(value(c,'blood_data_in_passport'))!==true;return true;}
+  if(isMobilization(c)){if(!mobilizationDocument(type))return false;if(/трудов|трудову діяльність/iu.test(type))return false;if(/групи крові/iu.test(type))return bool(value(c,'blood_data_in_passport'))!==true;return true;}
   const t=String(type||'').toLocaleLowerCase('uk-UA');
   if(optionalDocument(type))return true;
   if(/резерв\s*\+|припис|військовий облік/.test(t)){const b=bool(value(c,'served_before'));return b===null?null:!b;}
@@ -81,7 +82,7 @@
    }
    fields(['children_count','children_info'],bool(get('has_children'))===false);
    fields(['work_history'],bool(get('worked_before'))===false);
-   fields(['military_unit','military_position','service_start_date','service_end_date','combat_days','military_service_history'],bool(get('served_before'))===false);
+   fields(['previous_military_unit','military_position','service_start_date','service_end_date','combat_days','military_service_history'],bool(get('served_before'))===false);
    form.querySelectorAll('[data-relative-row]').forEach(row=>{
     const relation=row.querySelector('[name="relationship"]')?.value||'';
     row.hidden=(bool(get('has_children'))===false&&/син|доньк|дочк|дитин/i.test(relation))||(marital(get('marital_status'))==='single'&&/дружин|чоловік/i.test(relation));
@@ -89,5 +90,5 @@
   };
   form.addEventListener('change',update);form.addEventListener('click',()=>queueMicrotask(update));update();return update;
  }
- window.CRMCandidateConditions={isMobilization,militaryDocument,photoDocument,hasPhotosConfirmed,forCandidate,covered,value,bool,marital,documentCondition,requirement,bind,isUnit,unitDocument,applyNewCaseMode,normalizeRequirement};
+ window.CRMCandidateConditions={formsPersonalFile,isMobilization,militaryDocument,photoDocument,hasPhotosConfirmed,forCandidate,covered,value,bool,marital,documentCondition,requirement,bind,isUnit,unitDocument,applyNewCaseMode,normalizeRequirement};
 })();

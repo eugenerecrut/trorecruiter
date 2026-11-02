@@ -456,10 +456,10 @@
         education: fd.has('education')?(String(fd.get('education')||'').trim()||null):(pf.education??null),
         updated_at: new Date().toISOString()
       };
-      const { data: savedPersonalFile, error: pe } = unit?{data:null,error:null}:await savePersonalFileCAS(supabaseClient, candidateId, pfPatch, personalFileExists ? pf : null);
+      const { data: savedPersonalFile, error: pe } = (unit||/мобілізац/iu.test(String(c.profile_data?.service_type||'')))?{data:null,error:null}:await savePersonalFileCAS(supabaseClient, candidateId, pfPatch, personalFileExists ? pf : null);
       if (pe) { setStatus('Кандидата збережено, але особову справу не вдалося оновити: ' + pe.message); return false; }
       setStatus('Готово. Дані кандидата оновлено.');
-      if(!unit){Object.assign(pf,savedPersonalFile);personalFileExists=true;}profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;
+      if(!unit&&!/мобілізац/iu.test(String(c.profile_data?.service_type||''))){Object.assign(pf,savedPersonalFile);personalFileExists=true;}profile=c.profile_data||candidatePatch.profile_data;cardState.dirty=false;
       if(workflowDraft){const progress=CRMWorkspace.workflow.form;for(const input of progress.elements){if(!input.name)continue;if(input.type==='checkbox')input.checked=workflowDraft.has(input.name);else input.value=workflowDraft.get(input.name)||'';}progress.dispatchEvent(new Event('change',{bubbles:true}));}
       return true;
     };

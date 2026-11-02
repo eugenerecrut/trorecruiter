@@ -10,6 +10,7 @@ function date(v){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(v||'')))return false;cons
 function review(c,pf={},documents=[]){
  pf=pf&&(!pf.candidate_id||pf.candidate_id===c.id)?pf:{};
  const raw=object(c.profile_data),p=root.CRMBiographyFacts?root.CRMBiographyFacts.profile(raw):raw,issues=[],notes=[];
+ if(root.CRMCandidateConditions?.formsPersonalFile?.(c)===false||/мобілізац/iu.test(String(raw.service_type||c.service_type||'')))return {form:'service_record',applicable:false,ready:false,issues:[],notes:['Особова справа та послужний список не формуються.'],checkedGroups:0};
  const candidateDocs=documents.filter(d=>!d.candidate_id||d.candidate_id===c.id);
  const docs=root.CRMResponsibility?.latest(candidateDocs)||candidateDocs.filter(d=>!d.deleted_at);
  function add(fieldId,text,record,sourceFields=[]){const field=root.CRMFieldRegistry.fields.find(f=>f.id===fieldId);const records=Array.isArray(record)?record:[record],ids=[...new Set(records.flatMap(r=>sourceFields.length?sourceFields.map(key=>Object.hasOwn(object(r?.field_sources),key)?object(r.field_sources)[key]:r?.source_document_id):[r?.source_document_id]).filter(id=>typeof id==='string'&&id))];issues.push({fieldId,label:field?.label||fieldId,text,sources:field?.sources||[],documents:docs.filter(d=>ids.includes(d.id)).map(d=>({id:d.id,name:d.file_name||d.document_type}))});}

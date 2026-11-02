@@ -131,6 +131,7 @@ async function showDocuments(id,options={}){
   const pBar = content.querySelector('#docProgress > div'); if (pBar) pBar.style.width=(totals.total?Math.round(totals.verified/totals.total*100):0)+'%';
   const packageState=CRMDocumentState.packageState(c,docs);
   const packageInfo=document.createElement('details');packageInfo.className='crm-package-readiness';
+  packageInfo.hidden=CRMCandidateConditions.formsPersonalFile?.(c)===false;
   packageInfo.innerHTML='<summary>PDF «Анкета»: '+(packageState.ready?'готовий до формування':'потрібно уточнити '+packageState.missing.length+' пунктів')+'</summary>'+packageState.rows.map(r=>'<p><b>'+esc(r.title)+'</b> · '+esc(r.state)+'</p>').join('');
   content.querySelector('#docProgress')?.after(packageInfo);
   const bStatus = content.querySelector('#docBatchStatus'); if (bStatus) bStatus.textContent='Комплектність враховує обов’язкові файли та позначки «Є в наявності». Для PDF-пакета потрібні електронні копії.';

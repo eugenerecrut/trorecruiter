@@ -26,7 +26,7 @@ test('late queue response cannot update a different or newly archived view',asyn
  }
 });
 function setup(options={}){
- const state={candidate:{id:'c',full_name:name,birth_date:'1990-01-01',rnokpp:'1234567890',worked_before:true,served_before:false,profile_data:{service_type:'За мобілізацією'}},docs:[],uploads:[],calls:[],browserPatches:[],automations:0,rpcs:0};
+ const state={candidate:{id:'c',full_name:name,birth_date:'1990-01-01',rnokpp:'1234567890',worked_before:true,served_before:false,profile_data:{service_type:'За контрактом'}},docs:[],uploads:[],calls:[],browserPatches:[],automations:0,rpcs:0};
  const responses={
   'birth.pdf':{document_type:'Свідоцтво про народження',extracted:{full_name:name,birth_date:'1990-01-01',birth_place:'Дніпро',relatives:[{relationship:'Мати',full_name:'ТЕСТЕНКО Олена Петрівна',birth_date:'1970-01-01'}]}},
   'diploma.pdf':{document_type:'Копія диплома',extracted:{education_records:[{owner_full_name:name,owner_birth_date:'1990-01-01',degree:'кваліфікований робітник',institution:'Тестове училище',diploma_number:'123',diploma_series:'К',diploma_present:true,graduation_year:2008}]}},
@@ -75,7 +75,7 @@ test('batch upload classifies, persists facts, isolates exceptions, reloads and 
  const {c,state,upload}=setup();const report=await upload(['birth.pdf','diploma.pdf','fail.pdf','work.pdf','rl.pdf','other.pdf','birth.pdf']);
  assert.equal(state.docs.length,6);assert.equal(state.calls.length,6);assert.equal(state.uploads.length,6);assert(report.includes('точний дублікат'));assert(report.includes('Тестова помилка AI'));
  assert.equal(state.docs.find(d=>d.file_name==='fail.pdf').processing_status,'AI помилка');
- assert.equal(state.candidate.birth_place,'Дніпро');assert.equal(state.candidate.profile_data.recommendation_military_specialty,'225256А');assert.equal(state.candidate.profile_data.service_type,'За мобілізацією');assert.equal(state.candidate.profile_data.shpk,undefined);
+ assert.equal(state.candidate.birth_place,'Дніпро');assert.equal(state.candidate.profile_data.recommendation_military_specialty,'225256А');assert.equal(state.candidate.profile_data.service_type,'За контрактом');assert.equal(state.candidate.profile_data.shpk,undefined);
  assert.equal(state.candidate.profile_data.relatives.length,1);assert.equal(state.candidate.profile_data.education_records.length,1);assert.equal(state.candidate.profile_data.education_records[0].degree,'професійна');assert.equal(state.candidate.profile_data.work_records.length,1);
  const other=state.docs.find(d=>d.file_name==='other.pdf');assert.equal(other.verification_status,'Потребує перевірки');assert(!JSON.stringify(state.candidate).includes('Чуже місце'));
  const reloaded=JSON.parse(JSON.stringify(state.candidate)),before=JSON.stringify(reloaded);await c.CRMDocumentSync.sync(c.supabaseClient,state.docs[0].id);assert.equal(JSON.stringify(state.candidate),before);

@@ -30,14 +30,14 @@
     }));
     const service = report.serviceRecord;
     const readiness = {
-      serviceRecord: { ready: service?.ready ?? null, missing: service?.issues || [], scope: 'дані; геометрія PDF перевіряється генератором' },
-      questionnaire: { ready: report.package.ready, missing: report.package.missing, scope: 'електронні копії для PDF «Анкета»' },
+      serviceRecord: { applicable:service?.applicable!==false,ready: service?.ready ?? null, missing: service?.issues || [], scope: 'дані; геометрія PDF перевіряється генератором' },
+      questionnaire: { applicable:report.package.applicable!==false,ready: report.package.ready, missing: report.package.missing, scope: 'електронні копії для PDF «Анкета»' },
       information: { ready: null, missing: [], scope: 'перевіряється чинним генератором; окремий контракт не задано' },
       fullPackage: { ready: null, missing: [], scope: 'склад і місткість перевіряються чинним генератором' }
     };
     // Optional explicit contracts may add blockers, but must never assert layout readiness.
     for (const [key, contract] of Object.entries(templateRequirements)) {
-      if (!readiness[key] || !Array.isArray(contract?.missing)) continue;
+      if (!readiness[key] || readiness[key].applicable===false || !Array.isArray(contract?.missing)) continue;
       const missing = [...readiness[key].missing, ...contract.missing];
       readiness[key] = { ...readiness[key], ready: missing.length || readiness[key].ready === false ? false : null, missing };
     }
@@ -49,7 +49,7 @@
       : issues.length ? { kind: 'review', text: 'Перевірити питання: ' + issues.length }
       : selected === 'serviceRecord' && !service ? { kind: 'review', text: 'Перевірка даних послужного недоступна. Оновіть сторінку.' }
       : missing.length || report.fills.length || report.missingData.length ? { kind: 'review', text: 'Доповнити дані для обраної форми' }
-      : { kind: 'case', text: 'Перейти до формування та перевірки PDF' };
+      : { kind: 'case', text: service?.applicable===false?'Перевірити комплект і завершити оформлення':'Перейти до формування та перевірки PDF' };
     return {
       identity: { name: candidate.full_name || p.name_nominative || '', phone: candidate.phone || '',
         responsible: candidate.responsible_recruiter_id || null, serviceType: p.service_type || personalFile?.service_type || '',

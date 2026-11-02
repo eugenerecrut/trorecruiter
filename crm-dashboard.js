@@ -34,6 +34,7 @@
     return s.received?'Додати документи':'Очікуємо документи';
   }
   function serviceDataLabel(summary) {
+    if(summary?.state==='not_applicable')return 'Особова справа не формується';
     if(summary?.state==='ready')return 'Послужний: основні дані заповнені';
     if(summary?.state==='missing'&&Number.isInteger(summary.issueCount)&&summary.issueCount>0)return 'Послужний: уточнити дані ('+summary.issueCount+')';
     return 'Послужний: перевірка недоступна';
@@ -44,6 +45,7 @@
       const matches=files.filter(p=>p.candidate_id===candidate.id);if(matches.length>1)return null;
       const report=window.CRMServiceReadiness.review(candidate,matches[0]||{},docs);
       if(!Array.isArray(report?.issues))return null;
+      if(report.applicable===false)return {state:'not_applicable',issueCount:0};
       if(report.ready===true&&report.issues.length===0)return {state:'ready',issueCount:0};
       if(report.ready===false&&report.issues.length>0)return {state:'missing',issueCount:report.issues.length};
     }catch(error){/* Keep document counts available if data validation fails. */}

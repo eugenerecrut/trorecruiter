@@ -13,8 +13,8 @@ assert(C.isMobilization({profile_data:JSON.stringify(m.profile_data)}));console.
 
 assert.equal(C.requirement(r('Копія диплома та атестата з додатками'),m),true);
 assert.equal(C.requirement(r('Документи про освіту'),m),true);
-assert.equal(C.requirement(r('Документи про трудову діяльність'),{profile_data:{...m.profile_data,worked_before:true}}),true);
+assert.equal(C.requirement(r('Документи про трудову діяльність'),{profile_data:{...m.profile_data,worked_before:true}}),false);
 assert.equal(C.requirement(r('Документи про трудову діяльність'),{profile_data:{...m.profile_data,worked_before:false}}),false);
-assert.equal(C.requirement(r('Документи про трудову діяльність'),m),null);
+assert.equal(C.requirement(r('Документи про трудову діяльність'),m),false);
 assert.equal(C.requirement(r('Сертифікат психологічного тестування (перша сторінка)'),m),true);
-console.log('PASS: mobilization education required, work conditional, psychology certificate required.');
+console.log('PASS: mobilization education required, work not required, psychology certificate required.');
