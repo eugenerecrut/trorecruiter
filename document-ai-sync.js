@@ -70,7 +70,7 @@
   function valid(key,v){
     if(empty(v))return true;if(typeof v!=='string'&&typeof v!=='number')return false;
     if(/birth_date|death_date/.test(key))return date(v,key!=='birth_date'||key.startsWith('relative.'));
-    if(key==='military_specialty')return /^\d{3,6}[А-ЯІЇЄҐA-Z]?$/u.test(String(v).trim());
+    if(key==='military_specialty'||key==='recommendation_military_specialty')return /^\d{3,6}[А-ЯІЇЄҐA-Z]?$/u.test(String(v).trim());
     if(key==='shpk'||key==='military_rank')return ranks.has(norm(v));
     if(key==='tariff_grade')return /^\d{1,2}$/.test(String(v).trim())&&Number(v)>=1&&Number(v)<=99;
     if(key==='service_type')return !!service(v);
@@ -206,7 +206,7 @@
     }
     if(military&&root.CRMMilitary.review(e,candidate,p,document.id).blocked)ownerIssue='Потрібна перевірка власника військового документа';
     if(vlk&&root.CRMVLK.review(e,candidate).issues?.length)ownerIssue='Потрібна перевірка власника ВЛК';
-    const propose=(target,key,value)=>{
+    const propose=(target,key,value,sourceKey=key)=>{
       const current=target==='candidate'?candidate[key]:p[key];
       const legacy=p.form_data?.[key]??(key==='military_specialty'?p[key]:null);
       const protectedValue=!empty(current)?current:legacy;
@@ -214,8 +214,8 @@
       if(key==='full_name'&&educationOwnerMatch&&!ownerIssue&&!equal(value,candidate.full_name)){add(target,key,value,'leave','Диплом містить ім’я та прізвище; повне ПІБ картки збережено',current);return;}
       if(birth&&key==='full_name'&&!ownerIssue&&!empty(value)&&root.CRMNameHistory?.matches(value,candidate)&&!equal(value,candidate.full_name)){add(target,key,value,'leave','ПІБ при народженні підтверджене історією зміни; чинне ПІБ збережено',current);return;}
       if(!empty(value)){
-        if(e.field_evidence?.[key]?.requires_review||e.meta?.field_evidence?.[key]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[key]?.legibility||e.meta?.field_evidence?.[key]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
-        else if(e._sync_format_conflicts.includes(key)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
+        if(e.field_evidence?.[sourceKey]?.requires_review||e.meta?.field_evidence?.[sourceKey]?.requires_review||['low','unreadable'].includes(e.field_evidence?.[sourceKey]?.legibility||e.meta?.field_evidence?.[sourceKey]?.legibility)){action='conflict';reason='AI позначив поле як нерозбірливе';}
+        else if(e._sync_format_conflicts.includes(sourceKey)){action='conflict';reason='Плоске і вкладене значення AI не збігаються';}
         else if(!(['driver_license','ubd_certificate','registration_records','marriage_record','education_records','work_records','work_events'].includes(key)?typeof value==='object'&&!empty(value):valid(key,value))){action='conflict';reason='Некоректне OCR-значення'+(ownerIssue?'; '+ownerIssue:'');}
         else if(!empty(protectedValue)&&typeof value!=='object'&&equal(key==='service_type'?service(protectedValue):comparable(key,protectedValue),comparable(key,value))){action='leave';reason=ownerIssue?'Значення збігається з карткою; документ потребує перевірки':'';}
         else if(ownerIssue){action='conflict';reason=ownerIssue;}
@@ -240,6 +240,8 @@
       if(action==='fill')selections.push({target,key,incoming:value,expected_current:current??null,fill_only:structured||!(Array.isArray(current)&&current.length===0),...(structured?{merge_records:true,structured_records:true}:{}),expected_ai:document.ai_extracted});
     };
     for(const key of ['full_name','name_nominative','name_genitive','birth_date','birth_place','rnokpp','phone','sex','military_rank','civilian_profession','desired_position','tcc','military_specialty']){
+      // Recommendation describes a future position, never the current registry.
+      if(recommendation&&['military_specialty','tcc'].includes(key))continue;
       if(biography)continue;
       if(birth&&!['full_name','birth_date','birth_place'].includes(key))continue;
       if(tax&&!['full_name','birth_date','rnokpp'].includes(key))continue;
@@ -249,9 +251,11 @@
       propose('candidate',key,v);
     }
     if(recommendation){
+      propose('profile','recommendation_military_specialty',e.military_specialty,'military_specialty');
+      propose('profile','desired_unit',e.desired_unit||e.military_unit);
       if(empty(e.unit_phone) && !empty(e.recruiter_phone)) e.unit_phone = e.recruiter_phone;
       if(empty(e.recruiter_phone) && !empty(e.unit_phone)) e.recruiter_phone = e.unit_phone;
-      for(const key of ['shpk','tariff_grade','recruiter_name','recruiter_phone','unit_phone','military_unit','desired_unit','recommender_unit','signatory','service_type']){
+      for(const key of ['shpk','tariff_grade','recruiter_name','recruiter_phone','unit_phone','recommender_unit','signatory','service_type']){
         let val = e[key];
         if(['recruiter_phone','unit_phone'].includes(key) && !empty(val) && root.CRMPhone) val = root.CRMPhone.normalize(val);
         propose('profile',key,key==='service_type'&&!empty(val)?service(val)||val:val);

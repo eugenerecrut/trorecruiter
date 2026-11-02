@@ -15,7 +15,7 @@ test('3-digit VOS is valid and fallback name from ai_raw_response avoids undefin
     full_name: 'БИЧ Валентина Анатоліївна',
     birth_date: '1990-11-20',
     military_specialty: '712',
-    profile_data: { military_specialty: '712' }
+    profile_data: { military_specialty: '712', recommendation_military_specialty: '712' }
   };
 
   const doc = {
@@ -39,7 +39,7 @@ test('3-digit VOS is valid and fallback name from ai_raw_response avoids undefin
   };
 
   const plan = sync.plan(doc, cand);
-  const vosRow = plan.rows.find(r => r.key === 'military_specialty');
+  const vosRow = plan.rows.find(r => r.key === 'recommendation_military_specialty');
   assert.equal(vosRow.action, 'leave');
   assert.equal(vosRow.incoming, '712');
   const conflicts = plan.rows.filter(r => r.action === 'conflict');
