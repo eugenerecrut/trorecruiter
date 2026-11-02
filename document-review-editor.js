@@ -28,17 +28,31 @@
     if(kind==='driver')fields.push(['Номер посвідчення водія','driver_license_number',e.driver_license_number||e.document_number],['Дійсне до','driver_license_expiry_date',e.driver_license_expiry_date||e.passport_expiry_date,'date'],['Категорії водія','driver_license_categories',(e.driver_license_categories||[]).join(', ')]);
     if(kind==='marriage')fields.push(['Номер актового запису','marriage_record.act_number',e.marriage_record?.act_number],['Дата реєстрації шлюбу','marriage_record.registration_date',e.marriage_record?.registration_date,'date'],['Номер свідоцтва','marriage_record.certificate_number',e.marriage_record?.certificate_number]);
     const military=/військов(?:ий|ого) квит(?:ок|ка)/iu.test(String(d.document_type));
-    if(military)fields.push(['Номер військового квитка','military_document_number',e.military_document_number],['ТЦК та СП','tcc',e.tcc],['Дата взяття на облік','military_registration_date',e.military_registration_date,'date'],['Військова підготовка','military_training_status',e.military_training_status]);
+    if(military){
+      fields.push(['Номер військового квитка','military_document_number',e.military_document_number],['ТЦК та СП','tcc',e.tcc],['Дата взяття на облік','military_registration_date',e.military_registration_date,'date'],['Військова підготовка','military_training_status',e.military_training_status],['Звання у військовому квитку','military_rank',e.military_rank],['Освіта у військовому квитку','education',e.education],['Цивільна спеціальність у ВК','civilian_profession',e.civilian_profession]);
+      for(const [key,title,keys] of [
+        ['military_oath','Присяга',[['Дата','date','date'],['Військова частина','unit'],['Сторінка PDF','page','number'],['Текст із документа','raw_text']]],
+        ['military_discharge','Звільнення',[['Військова частина','unit'],['Підстава','basis'],['Номер наказу','order_number'],['Дата наказу','order_date','date'],['Сторінка PDF','page','number'],['Текст із документа','raw_text']]]
+      ])if(e[key]&&typeof e[key]==='object'&&!Array.isArray(e[key]))for(const [label,field,type] of keys)fields.push([title+' · '+label,key+'.'+field,e[key][field],type]);
+      (Array.isArray(e.military_service_records)?e.military_service_records:[]).forEach((r,i)=>{
+        for(const [label,key,type] of [['Військова частина','unit'],['Початок','start_date','date'],['Завершення','end_date','date'],['Посада','position'],['ВОС','military_specialty'],['Наказ про зарахування','order_number'],['Наказ про виключення','end_order_number'],['Сторінка PDF','page','number'],['Текст із документа','raw_text']])fields.push(['Служба '+(i+1)+' · '+label,'military_service_records.'+i+'.'+key,r[key],type]);
+      });
+    }
     const dialog=document.createElement('dialog');dialog.className='crm-dialog';
     dialog.innerHTML='<h2>Уточнити реквізити документа</h2><p>'+esc(d.file_name)+'</p><p>Вносьте лише дані, звірені з оригіналом. Початкова відповідь AI зберігається. Дані картки переносимо окремо після звірки.</p><button type="button" data-review-original>Відкрити оригінал</button><form><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">'+fields.map(([label,key,value,type])=>'<label>'+esc(label)+'<input style="width:100%" data-review-key="'+esc(key)+'" type="'+(type||'text')+'" value="'+esc(value||'')+'"></label>').join('')+'</div>'+(military?'<label><input type="checkbox" data-review-service> Періоди служби потребують ручної звірки</label>':'')+(Array.isArray(e.work_events)?'<details><summary>Події роботи / служби</summary>'+e.work_events.map((r,i)=>'<label style="display:block"><input type="checkbox" data-review-event="'+i+'" '+(r.requires_review?'checked':'')+'> Рядок '+(r.row_number||i+1)+': '+esc(r.employer)+' · '+esc(r.event_date)+' · наказ '+esc(r.order_number)+' — потребує звірки</label>').join('')+'</details>':'')+'<p role="status"></p><div class="crm-actions"><button type="submit">Зберегти уточнення</button><button type="button" data-review-close>Скасувати</button></div></form>';
     document.body.append(dialog);dialog.showModal();
+    if(military&&Array.isArray(e.military_service_records)){
+      const section=document.createElement('details');section.innerHTML='<summary>Помилкові фрагменти служби</summary><p>Позначте лише зайві фрагменти OCR. Оригінал та початкова відповідь AI зберігаються.</p>'+e.military_service_records.map((r,i)=>'<label style="display:block"><input type="checkbox" data-review-remove-service="'+i+'"> Прибрати фрагмент '+(i+1)+' · '+esc(r.unit||'Частину не визначено')+' · '+esc(r.start_date||'')+'</label>').join('');
+      dialog.querySelector('form').insertBefore(section,dialog.querySelector('[role="status"]'));
+    }
     dialog.querySelector('[data-review-original]').onclick=()=>openDocument(id);
     dialog.querySelector('[data-review-close]').onclick=()=>{dialog.close();dialog.remove();};
     dialog.querySelector('form').onsubmit=async event=>{
       event.preventDefault();const status=dialog.querySelector('[role="status"]');
       const extracted=structuredClone(e);let documentType=d.ai_document_type||d.document_type;
       for(const input of dialog.querySelectorAll('[data-review-key]')){
-        const key=input.dataset.reviewKey,value=input.value.trim();
+        const key=input.dataset.reviewKey,raw=input.value.trim(),value=input.type==='number'&&raw?Number(raw):raw;
+        if(input.type==='number'&&raw&&(!Number.isSafeInteger(value)||value<1)){status.textContent='Сторінка PDF має бути цілим додатним числом.';return;}
         if(key==='birth_date'&&value!==String(e.birth_date??'')){
           extracted.birth_year=value?Number(value.slice(0,4)):null;
           if(extracted.personal&&Object.prototype.hasOwnProperty.call(extracted.personal,'birth_year'))extracted.personal.birth_year=extracted.birth_year;
@@ -51,6 +65,8 @@
       if(!documentType){status.textContent='Вкажіть тип документа.';return;}
       if(extracted.driver_license_categories?.some(v=>!['A1','A','B1','B','C1','C','D1','D','BE','C1E','CE','D1E','DE','T'].includes(v.toUpperCase()))){status.textContent='Перевірте категорії водія.';return;}
       if(dialog.querySelector('[data-review-service]')?.checked)extracted.military_service_records=(extracted.military_service_records||[]).map(r=>({...r,requires_review:true}));
+      const removed=new Set([...dialog.querySelectorAll('[data-review-remove-service]:checked')].map(box=>Number(box.dataset.reviewRemoveService)));
+      if(removed.size)extracted.military_service_records=extracted.military_service_records.filter((_,i)=>!removed.has(i));
       for(const box of dialog.querySelectorAll('[data-review-event]'))extracted.work_events[Number(box.dataset.reviewEvent)].requires_review=box.checked;
       const policy=CRMDocumentPolicy.normalize({...d,document_type:documentType,ai_document_type:documentType,ai_extracted:extracted});
       policy.extracted.meta={...policy.extracted.meta,manual_review:{user_id:user.id,reviewed_at:new Date().toISOString()}};
