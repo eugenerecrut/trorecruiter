@@ -57,7 +57,7 @@ function documentFileHtml(d,r,allDocs,esc=docEscape,compact=false){
   const verified=d.verification_status==='Підтверджено';
   const info='<small>'+esc(d.file_name||'Файл')+' · '+formatDocSize(d.file_size)+'<br><span class="status '+(verified?'status-done':'status-work')+'">'+esc(documentDisplayState(d,r.ai_enabled!==false))+'</span></small>';
   const zoneAction=r.ai_enabled!==false&&typeof window!=='undefined'&&window.CRMMilitaryZoneReview&&window.CRMMilitaryZoneContract?.family(d.document_type,d.ai_document_type)?'<button type="button" class="crm-button" data-doc-zone="'+esc(d.id)+'" data-doc-zone-view="'+(d.ai_extracted?._military_zone_report?'1':'0')+'">' +(d.ai_extracted?._military_zone_report?'Результат AI':'Опрацювати AI · автопілот')+'</button>':'';
-  const actions=CRMResponsibility.documentInfo(d)+(typeof documentProcessingMetricsHtml==='function'?documentProcessingMetricsHtml(d,esc):'')+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+(!verified?'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>':'')+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(typeof savedReviewButtonHtml==='function'?savedReviewButtonHtml(d,esc):'')+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
+  const isPhoto=/фото/iu.test(d.document_type||d.document_name||d.file_name||'');  const cropAvatarAction=isPhoto&&d.storage_path?'<button type="button" class="crm-button" data-doc-crop-avatar="'+esc(d.id)+'" title="Відокремити одне фото 3×4 для аватара кандидата">✂️ Відділити фото 3×4</button>':'';  const actions=CRMResponsibility.documentInfo(d)+(typeof documentProcessingMetricsHtml==='function'?documentProcessingMetricsHtml(d,esc):'')+'<button class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+cropAvatarAction+(!verified?'<button class="crm-button" data-doc-replace="'+esc(d.id)+'">Нова версія</button>':'')+(CRMResponsibility.canDelete()?'<button class="crm-button crm-doc-delete" data-doc-delete="'+esc(d.id)+'">Видалити</button>':'')+versionHistory(d,allDocs)+(typeof savedReviewButtonHtml==='function'?savedReviewButtonHtml(d,esc):'')+(r.ai_enabled!==false&&d.ai_extracted?'<button class="crm-button" data-doc-data="'+esc(d.id)+'">Дані AI / перенесення</button><button class="crm-button" data-doc-sync="'+esc(d.id)+'">Перевірити синхронізацію</button>':'')+(d.ai_extracted?'<button class="crm-button" data-doc-edit-ai="'+esc(d.id)+'">Уточнити реквізити</button>':'')+(r.ai_enabled!==false?'<button class="crm-button" data-doc-retry="'+esc(d.id)+'">Повторити AI</button>':'')+(!verified?'<button class="crm-button" data-doc-confirm="'+esc(d.id)+'">Підтвердити</button>':'');
   if(zoneAction){const extra=actions.replace(/<button\b[^>]*\bdata-doc-open="[^"]*"[^>]*>[\s\S]*?<\/button>/g,'');return '<div class="crm-document-file">'+info+'<div class="crm-document-primary"><button type="button" class="crm-button" data-doc-open="'+esc(d.id)+'">Відкрити</button>'+zoneAction+'</div><details class="crm-document-more"><summary>Додатково</summary><div class="crm-document-details">'+manualZoneButtonHtml(d,r,esc)+extra+'</div></details></div>';}
   if(compact){
     const failed=d.processing_status==='AI помилка',attention=d.verification_status==='Потребує перевірки';
@@ -128,6 +128,30 @@ async function showDocuments(id,options={}){
   content.querySelectorAll('button').forEach(b=>b.type='button');
   const totals=CRMDocumentState.summary(c,reqs,docs);
   const pText = content.querySelector('#docProgressText'); if (pText) pText.textContent='Комплект: '+totals.verified+' із '+totals.total+' перевірено · '+totals.copies+' електронних копій · '+totals.paper+' без файла'+(totals.unknown?' · Уточнити умов: '+totals.unknown:'');
+  async function cropPhotoForAvatar(docId){
+    if(CRMWorkspace.busy||!await ensureSaved())return;
+    const doc=allDocs.find(d=>d.id===docId);if(!doc)return;
+    CRMWorkspace.busy=true;
+    const bStatus=content.querySelector('#docBatchStatus');
+    if(bStatus)bStatus.textContent='Відокремлення одного фото 3×4 для аватара…';
+    try{
+      const {data,error}=await supabaseClient.storage.from('candidate-documents').createSignedUrl(doc.storage_path,120);
+      if(error||!data?.signedUrl)throw new Error('Не вдалося отримати доступ до файлу');
+      const res=await fetch(data.signedUrl);if(!res.ok)throw new Error('Не вдалося завантажити файл');
+      const blob=await res.blob();
+      const croppedBlob=await window.CandidatePhotos?.cropBlob(blob,doc);
+      if(!croppedBlob)throw new Error('Не вдалося відокремити фото');
+      const reqs=await getDocumentRequirements();
+      const photo3x4Req=reqs.find(r=>/фото\s*3\s*[×xх\/]\s*4/iu.test(r.document_type));
+      const user=await getCurrentUser();
+      const file=new File([croppedBlob],(c.name_nominative||c.full_name||'Кандидат')+'_Фото_3x4.jpg',{type:'image/jpeg'});
+      await processOneDocument(file,photo3x4Req?.id||'',user,[c],c.id);
+      window.CandidatePhotos?.clear();
+      await reloadDocumentView(c.id);
+      if(bStatus)bStatus.textContent='Одне фото 3×4 успішно відділено та додано в аватар кандидата.';
+    }catch(err){alert('Помилка відділення фото: '+err.message);}
+    finally{CRMWorkspace.busy=false;}
+  }
   const pBar = content.querySelector('#docProgress > div'); if (pBar) pBar.style.width=(totals.total?Math.round(totals.verified/totals.total*100):0)+'%';
   const packageState=CRMDocumentState.packageState(c,docs);
   const packageInfo=document.createElement('details');packageInfo.className='crm-package-readiness';
@@ -169,6 +193,7 @@ async function showDocuments(id,options={}){
     if(!await ensureSaved())return;
     if(b.dataset.aiHistory)return CRMResponsibility.aiHistory(b.dataset.aiHistory).catch(error=>alert(error.message));
     if(b.dataset.docReplace){const d=allDocs.find(d=>d.id===b.dataset.docReplace);return makeDocumentInput(id,d.requirement_id||'',d.id)}
+    if(b.dataset.docCropAvatar)return cropPhotoForAvatar(b.dataset.docCropAvatar);
     if(b.hasAttribute('data-doc-add'))return openAddDocumentModal(id,b.dataset.docAdd);
     if(b.dataset.docOpen)return openDocument(b.dataset.docOpen);
     if(b.dataset.docZoneManual)return openManualZoneDocument(b.dataset.docZoneManual,allDocs,async()=>true).catch(error=>alert(error.message));

@@ -70,9 +70,16 @@ window.CRMWorkspace = {
     const blob=await r.blob();
     if(/pdf/i.test(documentRecord.mime_type||'')||/\.pdf$/i.test(documentRecord.file_name||'')){
       await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');
-      const images=await pdfToImages(new File([blob],'photo.pdf',{type:'application/pdf'}),1);return images[0]||null;
+      const images=await pdfToImages(new File([blob],'photo.pdf',{type:'application/pdf'}),1);
+      const raw=images[0]||null;
+      if(raw&&window.CandidatePhotos?.cropDataUrl)return await window.CandidatePhotos.cropDataUrl(raw);
+      return raw;
     }
-    if(blob.type.startsWith('image/'))return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});
+    if(blob.type.startsWith('image/')){
+      const raw=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});
+      if(raw&&window.CandidatePhotos?.cropDataUrl)return await window.CandidatePhotos.cropDataUrl(raw);
+      return raw;
+    }
     return null;
   },
   employmentInformation(c,p,pf) {return CRMCaseInformation.work({...c,profile_data:p||c.profile_data},pf);},
@@ -85,7 +92,7 @@ window.CRMWorkspace = {
     if(cr.error)throw cr.error;if(pr.error)throw pr.error;const c=cr.data,pf=pr.data||{};
     let p=c.profile_data||{};if(typeof p==='string'){try{p=JSON.parse(p)}catch(_){p={}}}
     this.setContext(id,c.name_nominative||c.full_name);
-    const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(dr).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||''));
+    const photoDoc=CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*3\s*[×xх\/]\s*4/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(dr).reverse().find(d=>/фото\s*9\s*[×xх\/]\s*12/i.test(d.document_type||d.document_name||'')) || CRMResponsibility.latest(dr).reverse().find(d=>/фото/i.test(d.document_type||d.document_name||''));
     const education=CRMCaseInformation.education(c,pf);
     const work=this.employmentInformation(c,p,pf);
     const servedValue=c.served_before??p.served_before;
