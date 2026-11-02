@@ -17,7 +17,7 @@ test('relative labels identify the saved person without altering the field key o
  assert.equal(typeof w.CRMCaseAssistant.label('toString'),'string');
  assert.equal(JSON.stringify(c),before);
 });
-const candidate=()=>({id:'c1',full_name:'Тестенко Іван',birth_date:'1990-01-01',birth_place:'Дніпро',phone:'+380000000000',worked_before:false,served_before:false,profile_data:{service_type:'За мобілізацією',education_level:'Середня',education_institution:'Школа'}});
+const candidate=()=>({id:'c1',full_name:'Тестенко Іван',birth_date:'1990-01-01',birth_place:'Дніпро',phone:'+380000000000',worked_before:false,served_before:false,profile_data:{service_type:'За контрактом',education_level:'Середня',education_institution:'Школа'}});
 test('report describes found values without promising transfer and opens their source',async()=>{
  const c=candidate();c.profile_data.relatives=[{full_name:'Тестова Олена'}];
  const d={id:'source',file_name:'bio.pdf',ai_extracted:{},rows:[{key:'relatives.0.deceased',action:'fill',incoming:false}]};

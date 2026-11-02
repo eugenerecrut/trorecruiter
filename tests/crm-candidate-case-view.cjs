@@ -5,13 +5,13 @@ const ctx={window:{},console,URLSearchParams};vm.createContext(ctx);
 for(const f of ['candidate-conditions.js','document-presence.js','document-state.js','candidate-field-registry.js','service-record-readiness.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),ctx);
 const w=ctx.window;w.CRMResponsibility={latest:docs=>docs.filter(d=>!d.deleted_at&&!d.replaced)};w.CRMDocumentSync={plan:d=>({rows:d.rows||[]})};
 for(const f of ['crm-case-assistant.js','candidate-case-view.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',f),'utf8'),ctx);
-const c=()=>({id:'c',full_name:'Тестова Олена Іванівна',worked_before:false,served_before:false,profile_data:{service_type:'За мобілізацією',relatives:[{full_name:'Мати',field_confirmations:{full_name:true}}]}});
+const c=()=>({id:'c',full_name:'Тестова Олена Іванівна',worked_before:false,served_before:false,profile_data:{service_type:'За контрактом',relatives:[{full_name:'Мати',field_confirmations:{full_name:true}}]}});
 const build=(candidate,docs=[],req=[])=>w.CRMCandidateCaseView.build(candidate,{},docs,req);
 test('changed projection is loaded with the current release cache key',()=>{
  const release=fs.readFileSync(path.join(__dirname,'../crm-release.js'),'utf8').match(/version:'([^']+)'/)[1];
  assert(fs.readFileSync(path.join(__dirname,'../index.html'),'utf8').includes('candidate-case-view.js?v='+release));
 });
-test('projection preserves all inputs and manual confirmations',()=>{const candidate=c(),docs=[{id:'one',ai_extracted:{},rows:[{key:'relatives',action:'conflict',current:'manual',incoming:'ai',reason:'Звірити'}]}];const before=JSON.stringify({candidate,docs});const view=build(candidate,docs);assert.equal(JSON.stringify({candidate,docs}),before);assert.equal(view.issues.length,1);assert.equal(view.issues[0].current,'manual');assert.equal(view.identity.serviceType,'За мобілізацією');assert.equal(view.nextAction.kind,'review');});
+test('projection preserves all inputs and manual confirmations',()=>{const candidate=c(),docs=[{id:'one',ai_extracted:{},rows:[{key:'relatives',action:'conflict',current:'manual',incoming:'ai',reason:'Звірити'}]}];const before=JSON.stringify({candidate,docs});const view=build(candidate,docs);assert.equal(JSON.stringify({candidate,docs}),before);assert.equal(view.issues.length,1);assert.equal(view.issues[0].current,'manual');assert.equal(view.identity.serviceType,'За контрактом');assert.equal(view.nextAction.kind,'review');});
 test('error and processing retain technical state despite previous confirmation/OCR',()=>{const docs=[{id:'one',verification_status:'Підтверджено',processing_status:'AI помилка',ai_extracted:{phone:'old'}},{id:'two',processing_status:'AI обробка',ai_extracted:{}}];const view=build(c(),docs);assert.equal(view.documents[0].aiState,'AI помилка');assert.equal(view.issues.length,1);assert.equal(view.nextAction.kind,'wait');});
 test('false, unknown, paper availability and electronic copies remain separate',()=>{const candidate=c();candidate.profile_data.service_type='За контрактом';candidate.profile_data.document_presence={anketa:{document_type:'Анкета на контракт',available:true,checked_by:'test',checked_at:'2026-10-22'}};const view=build(candidate,[],[{id:'anketa',document_type:'Анкета на контракт',is_required:true}]);assert.equal(view.completeness.verified,1);assert.equal(view.readiness.questionnaire.ready,false);assert.equal(view.readiness.fullPackage.ready,null);assert.equal(view.readiness.information.ready,null);assert.equal(view.report.questions.some(q=>q.key==='worked_before'),false);delete candidate.worked_before;assert(build(candidate).report.questions.some(q=>q.key==='worked_before'));});
 test('latest version scope and stable issue keys',()=>{const doc={id:'new',ai_extracted:{},rows:[{key:'phone',action:'conflict',reason:'Звірити',current:'a',incoming:'b'}]};const view=build(c(),[{id:'old',replaced:true,processing_status:'AI помилка'},doc]);assert.equal(view.documents.length,1);assert.equal(view.issues[0].id,build(c(),[doc]).issues[0].id);});
@@ -29,8 +29,8 @@ test('identity fallback rejects another candidate personal file and preserves ma
  }
  for(const pf of [{candidate_id:'c',service_type:'За контрактом'},{service_type:'За контрактом'}])
   assert.equal(w.CRMCandidateCaseView.build(candidate,pf,[],[]).identity.serviceType,'За контрактом');
- candidate.profile_data.service_type='За мобілізацією';
- assert.equal(w.CRMCandidateCaseView.build(candidate,{candidate_id:'other',service_type:'За контрактом'},[],[]).identity.serviceType,'За мобілізацією');
+ candidate.profile_data.service_type='За контрактом';
+ assert.equal(w.CRMCandidateCaseView.build(candidate,{candidate_id:'other',service_type:'За контрактом'},[],[]).identity.serviceType,'За контрактом');
 });
 
 test('explicitly inapplicable files stay visible without adding verification questions',()=>{
@@ -55,7 +55,7 @@ test('optional template contracts add blockers without clearing existing service
 });
 
 test('unavailable service validator cannot recommend forming a PDF',()=>{
- const candidate={id:'complete',full_name:'Тестовий Іван',birth_date:'1990-01-01',birth_place:'Дніпро',rnokpp:'1234567890',phone:'test',worked_before:false,served_before:false,profile_data:{service_type:'За мобілізацією',education_level:'Середня',education_institution:'Школа'}};
+ const candidate={id:'complete',full_name:'Тестовий Іван',birth_date:'1990-01-01',birth_place:'Дніпро',rnokpp:'1234567890',phone:'test',worked_before:false,served_before:false,profile_data:{service_type:'За контрактом',education_level:'Середня',education_institution:'Школа'}};
  const saved=w.CRMServiceReadiness;
  try{
   delete w.CRMServiceReadiness;

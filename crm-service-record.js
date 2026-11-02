@@ -182,6 +182,7 @@ async function create(state){
  pdf.setTitle('Послужний список — '+state.name);pdf.setAuthor('');pdf.setCreator('PSK_RECRUTER CRM');return new Blob([await pdf.save()],{type:'application/pdf'});
 }
 async function open(c,pf,{save}){
+ if(window.CRMCandidateConditions?.formsPersonalFile?.(c)===false)throw Error('Для цього виду оформлення послужний список не формується.');
  const state=model(c,pf),dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';
  const readiness=window.CRMServiceReadiness?.review(c,pf,window.CRMWorkspace?.card?.documents||[]);
  if(readiness)state.issues=[...new Set([...state.issues,...readiness.issues.map(r=>r.label+': '+r.text)])];
