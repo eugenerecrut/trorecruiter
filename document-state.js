@@ -3,7 +3,27 @@
   'use strict';
   const conditions=()=>window.CRMCandidateConditions;
   const latest=docs=>window.CRMResponsibility?.latest(docs||[])||(docs||[]).filter(d=>!d.deleted_at);
-  const match=(r,d)=>!!r.id&&r.id===d.requirement_id||r.document_type===d.document_type;
+  const match=(r,d)=>{
+    if(!r||!d)return false;
+    if(r.id&&d.requirement_id&&r.id===d.requirement_id)return true;
+    const rt=String(r.document_type||'').trim();
+    const dt=String(d.document_type||d.document_name||'').trim();
+    if(!rt||!dt)return false;
+    if(rt.toLowerCase()===dt.toLowerCase())return true;
+    if(/диплом.*атестат/i.test(rt)&&/освіт|диплом|атестат/i.test(dt))return true;
+    if(/свідоцтв.*шлюб/i.test(rt)&&/шлюб/i.test(dt)&&!/розірван/i.test(dt))return true;
+    if(/свідоцтв.*дітей|народження дітей/i.test(rt)&&/народження/i.test(dt))return true;
+    if(/трудов.*діяльн/i.test(rt)&&/трудов/i.test(dt))return true;
+    if(/рекомендаційн/i.test(rt)&&/рекомендаційн/i.test(dt))return true;
+    if(/банк.*iban/i.test(rt)&&/банк|рахунк|iban/i.test(dt))return true;
+    if(/місце проживання/i.test(rt)&&/місце проживання|витяг.*проживан/i.test(dt))return true;
+    if(/резерв\s*\+|військовий облік/i.test(rt)&&/резерв\s*\+|військовий облік/i.test(dt))return true;
+    if(/військов.*квит/i.test(rt)&&/військов.*квит/i.test(dt))return true;
+    if(/несудимість/i.test(rt)&&/несудимість|мвс/i.test(dt))return true;
+    if(/автобіографія.*друк/i.test(rt)&&/автобіографія.*друк/i.test(dt))return true;
+    if(/автобіографія.*рукопис/i.test(rt)&&/автобіографія.*рукопис/i.test(dt))return true;
+    return false;
+  };
   const files=(r,docs)=>latest(docs).filter(d=>match(r,d));
   const groups=[
     ['Анкета',/анкета на контракт/iu],
