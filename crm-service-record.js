@@ -260,6 +260,32 @@ function addRow(state,kind){
 }
 function removeRow(state,kind,id){state.fields=state.fields.filter(f=>!f.key.startsWith(kind+'_'+id+'_'));}
 const addServiceRow=state=>addRow(state,'service');
+async function renderEditablePreview(blob,state,pane,onEdit){
+ await loadExternalScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','pdfjsLib');
+ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await blob.arrayBuffer()),isEvalSupported:false}).promise;
+ const output=document.createDocumentFragment(),fields=new Map(state.fields.map(f=>[f.key,f]));
+ try{
+  for(let number=1;number<=pdf.numPages;number++){
+   const page=await pdf.getPage(number),base=page.getViewport({scale:1}),width=Math.max(240,pane.clientWidth-18);
+   const viewport=page.getViewport({scale:width/base.width}),sheet=document.createElement('div'),canvas=document.createElement('canvas');
+   sheet.style.cssText='position:relative;margin:0 auto 12px;background:white;width:'+viewport.width+'px;height:'+viewport.height+'px';
+   const ratio=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.ceil(viewport.width*ratio);canvas.height=Math.ceil(viewport.height*ratio);
+   canvas.style.cssText='display:block;width:100%;height:100%';sheet.append(canvas);
+   await page.render({canvasContext:canvas.getContext('2d'),viewport,transform:[ratio,0,0,ratio,0,0],annotationMode:pdfjsLib.AnnotationMode.ENABLE_FORMS}).promise;
+   for(const widget of await page.getAnnotations({intent:'display'})){
+    if(widget.fieldType!=='Tx')continue;
+    const key=widget.fieldName?.replace(/^service_\d+_/,''),field=fields.get(key);if(!field)continue;
+    const [x1,y1,x2,y2]=viewport.convertToViewportRectangle(widget.rect),control=document.createElement(widget.multiLine?'textarea':'input');
+    control.setAttribute('aria-label',field.label);control.value=field.value;control.dataset.pdfField=key;
+    control.style.cssText='position:absolute;box-sizing:border-box;border:0;background:rgba(228,236,255,.36);padding:1px 2px;resize:none;margin:0;font-family:"Times New Roman",serif;font-size:'+(12*viewport.scale)+'px;line-height:1.15;left:'+Math.min(x1,x2)+'px;top:'+Math.min(y1,y2)+'px;width:'+Math.abs(x2-x1)+'px;height:'+Math.abs(y2-y1)+'px;text-align:'+(field.center?'center':'left');
+    control.addEventListener('input',()=>onEdit(key,control.value));sheet.append(control);
+   }
+   output.append(sheet);page.cleanup();
+  }
+ }finally{await pdf.destroy();}
+ return output;
+}
 async function open(c,pf,{save}){
  if(window.CRMCandidateConditions?.formsPersonalFile?.(c)===false)throw Error('Для цього виду оформлення послужний список не формується.');
  const state=model(c,pf),dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';
@@ -295,16 +321,18 @@ async function open(c,pf,{save}){
  dialog.classList?.add('crm-service-split');
  dialog.style.cssText+=';width:96vw;max-width:1760px;height:92dvh;max-height:92dvh;box-sizing:border-box';
  const editor=dialog.querySelector('form'),frame=dialog.querySelector('iframe');
+ let livePane=null;
  if(editor&&frame&&typeof editor.before==='function'){
   const split=document.createElement('div'),preview=document.createElement('section'),hint=document.createElement('p');
   split.className='crm-service-panes';preview.className='crm-service-preview-pane';preview.setAttribute('aria-label','Перегляд PDF');
   hint.setAttribute('data-pdf-hint','');hint.textContent='Натисніть «Сформувати PDF», щоб переглянути послужний.';
   editor.before(split);split.append(editor,preview);preview.append(hint,frame);
+  livePane=document.createElement('div');livePane.style.cssText='flex:1;min-height:0;overflow:auto;max-height:68dvh;background:#e8edf1;padding:8px 0';preview.append(livePane);
   frame.addEventListener('load',()=>{hint.hidden=!frame.hidden;});
   const link=dialog.querySelector('[data-download]');if(link)preview.append(link);
  }
- document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null;const status=dialog.querySelector('[data-service-status]');
- const close=()=>{if(busy)return;dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+ document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null,refreshTimer=null,queued=false;const status=dialog.querySelector('[data-service-status]');
+ const close=()=>{if(busy)return;clearTimeout(refreshTimer);dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
  const readFields=()=>{for(const f of state.fields){const el=dialog.querySelector('[data-service-field="'+f.key+'"]');if(el)f.value=el.value;}};
  const invalidate=()=>{const frame=dialog.querySelector('iframe'),link=dialog.querySelector('[data-download]');if(frame)frame.hidden=true;if(link)link.hidden=true;const hint=dialog.querySelector('[data-pdf-hint]');if(hint)hint.hidden=false;};
  const renderRows=kind=>{const section=dialog.querySelector('[data-print-rows="'+kind+'"]');if(section)section.innerHTML=sectionFields(rowConfig[kind].group,kind);};
@@ -315,23 +343,28 @@ async function open(c,pf,{save}){
   const [kind,id]=remove?remove.dataset.removeRow.split(':'):[add.dataset.addRow];
   if(remove)removeRow(state,kind,id);
   else if(!addRow(state,kind).length){status.textContent='Досягнуто межі рядків бланка.';return;}
-  renderRows(kind);invalidate();status.textContent='Сформуйте PDF повторно, щоб оновити таблицю.';
+  renderRows(kind);invalidate();schedulePreview();
  });
  dialog.querySelector('[data-service-reset]').onclick=()=>{
   Object.assign(state,snapshot(initial));for(const kind of Object.keys(rowConfig))renderRows(kind);
   for(const f of state.fields){const el=dialog.querySelector('[data-service-field="'+f.key+'"]');if(el)el.value=f.value=f.source_value??'';}
-  invalidate();if(status)status.textContent='Рядки й значення відновлено з картки.';
+  invalidate();schedulePreview();
  };
+ function schedulePreview(){if(!livePane)return;clearTimeout(refreshTimer);const link=dialog.querySelector('[data-download]');if(link)link.hidden=true;refreshTimer=setTimeout(()=>{if(dialog.isConnected)build(false);},350);}
+ editor?.addEventListener?.('input',event=>{if(event.target.dataset?.serviceField!==undefined)schedulePreview();});
+ livePane?.addEventListener('focusout',event=>{if(event.target.dataset?.pdfField!==undefined)schedulePreview();});
  async function build(saving){
-  if(busy||CRMWorkspace.busy)return;busy=true;CRMWorkspace.busy=true;
-  dialog.querySelectorAll('button,input,textarea').forEach(el=>el.disabled=true);
+  if(busy){if(!saving)queued=true;return;}
+  if(saving&&CRMWorkspace.busy)return;
+  busy=true;if(saving){clearTimeout(refreshTimer);CRMWorkspace.busy=true;}
+  if(saving)dialog.querySelectorAll('button,input,textarea').forEach(el=>el.disabled=true);
   try{
    state.fields.forEach(f=>{
     const el=dialog.querySelector('[data-service-field="'+f.key+'"]');
     if(el)f.value=el.value;
    });
    const persist=dialog.querySelector('[data-service-persist]')?.checked;
-   if(persist){
+   if(saving&&persist){
     const overrides={...(obj(c.profile_data).service_record_print||{})};let changed=false;
     for(const f of state.fields){
      if(f.printOnly)continue;
@@ -347,12 +380,20 @@ async function open(c,pf,{save}){
     }
    }
    if(status)status.textContent='Формуємо та перевіряємо PDF…';
-   const blob=await create(state);
+   const current=snapshot(state),blob=await create(current);
+   let output=null;
+   if(livePane&&!saving)try{output=await renderEditablePreview(blob,current,livePane,(key,value)=>{
+    const field=state.fields.find(f=>f.key===key),input=dialog.querySelector('[data-service-field="'+key+'"]');
+    if(field)field.value=value;if(input)input.value=value;
+    const link=dialog.querySelector('[data-download]');if(link)link.hidden=true;
+   });}catch(e){if(status)status.textContent='Редагований перегляд недоступний: '+e.message;}
+   if(!saving&&(queued||current.fields.some(f=>dialog.querySelector('[data-service-field="'+f.key+'"]')?.value!==f.value)))return;
    if(!dialog.isConnected)return;
    if(previewUrl)URL.revokeObjectURL(previewUrl);
    previewUrl=URL.createObjectURL(blob);
    const iframe=dialog.querySelector('iframe');
-   if(iframe){iframe.src=previewUrl+'#view=FitH';iframe.hidden=false;}
+   if(output&&livePane){const offset=livePane.scrollTop;livePane.replaceChildren(output);livePane.hidden=false;livePane.scrollTop=offset;if(iframe)iframe.hidden=true;const hint=dialog.querySelector('[data-pdf-hint]');if(hint)hint.hidden=true;}
+   else if(iframe&&(!livePane||!saving)){if(livePane)livePane.hidden=true;iframe.src=previewUrl+'#view=FitH';iframe.hidden=false;}
    const a=dialog.querySelector('[data-download]');
    if(a){
     a.href=previewUrl;
@@ -366,18 +407,19 @@ async function open(c,pf,{save}){
     await save(blob);
     if(status)status.textContent='Послужний список (10 сторінок) збережено у справі та завантажено.';
    }else{
-    if(status)status.textContent='PDF готовий: 10 сторінок. Перевірте документ у панелі перегляду.';
-    iframe?.scrollIntoView({behavior:'smooth',block:'start'});
+    if(status)status.textContent=livePane&&!output?'PDF готовий. Двостороннє редагування зараз недоступне; змінюйте поля ліворуч.':'PDF готовий: 10 сторінок. Правки в обох панелях синхронізуються.';
+
    }
   }catch(e){
    if(status){status.textContent=e.message;status.scrollIntoView({block:'nearest'});}
   }finally{
-   busy=false;CRMWorkspace.busy=false;
-   dialog.querySelectorAll('button,input,textarea').forEach(el=>el.disabled=false);
+   busy=false;if(saving){CRMWorkspace.busy=false;dialog.querySelectorAll('button,input,textarea').forEach(el=>el.disabled=false);}
+   if(queued){queued=false;schedulePreview();}
   }
  }
  dialog.querySelector('form').onsubmit=ev=>{ev.preventDefault();build(false);};
  dialog.querySelector('[data-service-save]').onclick=()=>build(true);
+ if(livePane)schedulePreview();
  return dialog;
 }
 window.CRMServiceRecord={model,create,open,wrapText,addServiceRow,addRow,removeRow};
