@@ -133,6 +133,12 @@ async function create(state){
  function rect(page,box){const [x,t,r,b]=box;pdf.getPage(page).drawRectangle({x,y:pdf.getPage(page).getHeight()-b,width:r-x,height:b-t,color:PDFLib.rgb(1,1,1)});}
  function rule(page,x1,t1,x2,t2){const pg=pdf.getPage(page);pg.drawLine({start:{x:x1,y:pg.getHeight()-t1},end:{x:x2,y:pg.getHeight()-t2},thickness:.48});}
  const printFields=state.fields.map(f=>({...f,box:[...f.box]}));
+ const rowPages=new Map();
+ for(const f of printFields.filter(f=>/^service_\d+_\d+$/.test(f.key))){
+  const id=f.key.split('_')[1];if(!rowPages.has(id))rowPages.set(id,rowPages.size);
+  const i=rowPages.get(id),j=Number(f.key.split('_')[2]);f.page=i<5?3:4+Math.floor((i-5)/8);
+  const cols=serviceColumns[f.page];f.box[0]=cols[j];f.box[2]=cols[j+1];
+ }
  const serviceRows=printFields.filter(f=>/^service_\d+_\d+$/.test(f.key));
  const lastServicePage=serviceRows.length?Math.max(...serviceRows.map(f=>f.page)):3;
  for(const page of new Set(serviceRows.map(f=>f.page))){
@@ -153,7 +159,7 @@ async function create(state){
     currentTop+=contentHeight;
     if(i<rows.length-1)currentTop+=2*line; // між полями теж 2 відступи
    });
-   signatureTop=Math.min(currentTop+2*line,700); // наприкінці 2 відступи, Совіна підтягувати до кінця полів у гору
+   signatureTop=currentTop+2*line;if(signatureTop>700)throw Error('Рядки трудового стажу не вміщуються. Скоротіть текст або заберіть зайвий рядок.'); // наприкінці 2 відступи, Совіна підтягувати до кінця полів у гору
   }
   const tableBottom=762.12,signatureEnd=signatureTop+62.12;
   for(const x of [85.34,156.86,228.41,493.06,571.08])rule(2,x,126.2,x,signatureTop);
@@ -234,24 +240,33 @@ async function create(state){
  }
  pdf.setTitle('Послужний список — '+state.name);pdf.setAuthor('');pdf.setCreator('PSK_RECRUTER CRM');return new Blob([await pdf.save({updateFieldAppearances:false})],{type:'application/pdf'});
 }
-function addServiceRow(state){
- const fields=state.fields.filter(f=>/^service_\d+_\d+$/.test(f.key));
- const i=fields.length/5;
- if(i>=29)return [];
- const page=i<5?3:4+Math.floor((i-5)/8);
- const cols={3:[28.6,70.7,120.4,324.8,445.2,510.1],4:[85.4,127.5,177.2,381.6,502,566.9],5:[28.6,70.8,120.5,318.9,446.6,510.1],6:[85.4,127.6,177.3,368.7,503.4,566.9]}[page];
- if(state.served===false){state.served=true;state.fields=state.fields.filter(f=>f.key!=='not_served');}
- const added=['Початок','Завершення','Посада та ВОС','Частина','Наказ'].map((label,j)=>({key:'service_'+i+'_'+j,label:label+' · '+(i+1),page,box:[cols[j],0,cols[j+1],0],value:'',source_value:'',group:'Військова служба',center:j!==2,verticalCenter:true,printOnly:true}));
- state.fields.push(...added);
- return added;
+const serviceColumns={3:[28.6,70.7,120.4,324.8,445.2,510.1],4:[85.4,127.5,177.2,381.6,502,566.9],5:[28.6,70.8,120.5,318.9,446.6,510.1],6:[85.4,127.6,177.3,368.7,503.4,566.9]};
+const rowConfig={
+ service:{group:'Військова служба',flag:'served',empty:'not_served',max:29,labels:['Початок','Завершення','Посада та ВОС','Частина','Наказ']},
+ work:{group:'Трудова діяльність',flag:'worked',empty:'not_worked',max:11,labels:['Початок','Завершення','Підприємство та місцевість','Посада']}
+};
+const rowFields=(state,kind)=>state.fields.filter(f=>new RegExp('^'+kind+'_\\d+_\\d+$').test(f.key));
+function addRow(state,kind){
+ const cfg=rowConfig[kind],fields=rowFields(state,kind),count=fields.length/cfg.labels.length;
+ if(count>=cfg.max)return [];
+ const i=Math.max(-1,...fields.map(f=>Number(f.key.split('_')[1])))+1;
+ const page=kind==='work'?2:count<5?3:4+Math.floor((count-5)/8);
+ const cols=kind==='work'?[85.4,156.9,228.4,493.1,571.1]:serviceColumns[page];
+ state[cfg.flag]=true;state.fields=state.fields.filter(f=>f.key!==cfg.empty);
+ const added=cfg.labels.map((label,j)=>({key:kind+'_'+i+'_'+j,label:label+' · '+(count+1),page,box:[cols[j],0,cols[j+1],0],value:'',source_value:'',group:cfg.group,center:kind==='work'||j!==2,verticalCenter:true,printOnly:true}));
+ state.fields.push(...added);return added;
 }
+function removeRow(state,kind,id){state.fields=state.fields.filter(f=>!f.key.startsWith(kind+'_'+id+'_'));}
+const addServiceRow=state=>addRow(state,'service');
 async function open(c,pf,{save}){
  if(window.CRMCandidateConditions?.formsPersonalFile?.(c)===false)throw Error('Для цього виду оформлення послужний список не формується.');
  const state=model(c,pf),dialog=document.createElement('dialog');dialog.className='crm-dialog crm-workflow-dialog';
  const readiness=window.CRMServiceReadiness?.review(c,pf,window.CRMWorkspace?.card?.documents||[]);
  if(readiness)state.issues=[...new Set([...state.issues,...readiness.issues.map(r=>r.label+': '+r.text)])];
  if(window.CRMDocumentCrosscheck){try{const evidence=await CRMDocumentCrosscheck.load(supabaseClient,c);for(const e of evidence.filter(e=>['conflict','needs_review'].includes(e.status)))state.issues.push('Розбіжність між документами: '+({rnokpp:'РНОКПП',birth_date:'Дата народження',birth_place:'Місце народження',relatives:'Родич '+(e.subject||''),education_records:'Освіта',work_records:'Періоди роботи / служби'}[e.key]||e.key)+'. Джерела: '+e.sources.map(s=>s.file_name||s.document_type).join('; '));}catch(e){state.issues.push('Не вдалося звірити пакет документів: '+e.message)}}
- const groups=[...new Set(state.fields.map(f=>f.group))];
+ const snapshot=value=>({...value,fields:value.fields.map(f=>({...f,box:[...f.box]}))});
+ const initial=snapshot(state);
+ const groups=[...new Set([...state.fields.map(f=>f.group),'Трудова діяльність','Військова служба'])];
  const multilineKeys=new Set(['education_civil','scientific_works','injuries','foreign_trips','elected_bodies','captivity','parents','family','not_worked','not_served','discharge']);
  const isMulti=f=>multilineKeys.has(f.key)||String(f.value).includes('\n')||(f.box[3]-f.box[1]>60);
  const fieldHtml=f=>{
@@ -262,31 +277,37 @@ async function open(c,pf,{save}){
    :'<input type="text" name="'+esc(f.key)+'" data-service-field="'+esc(f.key)+'" value="'+esc(f.value)+'" style="width:100%;box-sizing:border-box">';
   return '<label style="'+(wide?'grid-column:1/-1;':'')+'display:grid;gap:6px;font-weight:600">'+esc(f.label)+control+'</label>';
  };
+ const sectionFields=(g,kind)=>{
+  const rows=rowFields(state,kind),ids=[...new Set(rows.map(f=>f.key.split('_')[1]))];
+  return state.fields.filter(f=>f.group===g&&!rows.includes(f)).map(fieldHtml).join('')+ids.map((id,i)=>
+   '<fieldset style="grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px"><legend>Рядок '+(i+1)+'</legend>'+
+   rows.filter(f=>f.key.split('_')[1]===id).map((f,j)=>fieldHtml({...f,label:rowConfig[kind].labels[j]})).join('')+
+   '<button type="button" data-remove-row="'+kind+':'+id+'">Забрати рядок</button></fieldset>').join('');
+ };
  const formContent=groups.map(g=>{
-  const inGroup=state.fields.filter(f=>f.group===g);
-  return '<div style="grid-column:1/-1;margin-top:16px;padding:6px 0 4px;border-bottom:2px solid #cfd8dc;display:flex;justify-content:space-between;align-items:center"><strong style="font-size:14px;color:#18232d">'+esc(g)+'</strong><span style="font-size:12px;color:#61717b">'+inGroup.length+' '+(inGroup.length===1?'поле':'полів')+'</span></div>'+inGroup.map(fieldHtml).join('')+(g==='Військова служба'?'<div data-service-new-rows style="display:contents"></div><button type="button" data-service-add style="grid-column:1/-1">＋ Додати рядок служби</button>':'');
+  const kind=Object.keys(rowConfig).find(k=>rowConfig[k].group===g);
+  const header='<div style="grid-column:1/-1;margin-top:16px;padding:6px 0 4px;border-bottom:2px solid #cfd8dc"><strong>'+esc(g)+'</strong></div>';
+  return header+(kind?'<div data-print-rows="'+kind+'" style="display:contents">'+sectionFields(g,kind)+'</div><button type="button" data-add-row="'+kind+'" style="grid-column:1/-1">＋ Додати рядок '+(kind==='work'?'трудового стажу':'служби')+'</button>':state.fields.filter(f=>f.group===g).map(fieldHtml).join(''));
  }).join('');
  dialog.innerHTML='<h2>Послужний список</h2><p><strong>'+esc(state.name)+'</strong> · 10 сторінок для двостороннього друку (5 аркушів). Завантажений PDF має редаговані поля. Зміни у PDF не оновлюють картку CRM. Редагуйте будь-яке поле перед друком; оригінальні первинні документи картки зберігаються.</p>'+(state.issues.length?state.issues.map(text=>'<p class="crm-notice" role="alert">'+esc(text)+'</p>').join(''):'')+'<form class="crm-workflow-grid">'+formContent+'<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px;padding:8px 0;border-top:1px solid #e5eaed"><label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#34414a;cursor:pointer"><input type="checkbox" data-service-persist checked style="width:18px;height:18px;accent-color:#5d741f;margin:0"> Запам’ятати правки для друку</label><button type="button" data-service-reset style="font-size:12px;padding:6px 12px;background:#f5f7f8;border:1px solid #cfd8dc;border-radius:6px;cursor:pointer">↺ Скинути до значень із картки</button></div><p data-service-status role="status" style="grid-column:1/-1;margin:6px 0;min-height:1.2em;font-weight:600"></p><div style="grid-column:1/-1;display:flex;gap:12px;flex-wrap:wrap"><button type="submit" data-service-submit style="flex:1;min-height:44px;background:#18232d;color:#fff;font-weight:700;border-radius:8px;border:none;cursor:pointer">Сформувати PDF</button><button type="button" data-service-save style="flex:1;min-height:44px;background:#446123;color:#fff;font-weight:700;border-radius:8px;border:none;cursor:pointer">Зберегти у справі та завантажити PDF</button></div></form><iframe title="Послужний список — PDF" hidden style="width:100%;height:65vh;border:1px solid #cfd8dc;border-radius:8px;margin-top:14px"></iframe><div style="display:flex;gap:10px;align-items:center;margin-top:10px"><a data-download hidden style="display:inline-block;padding:10px 18px;background:#18232d;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Завантажити PDF</a></div><div class="crm-actions"><button type="button" data-service-close>Закрити</button></div>';
  document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null;const status=dialog.querySelector('[data-service-status]');
  const close=()=>{if(busy)return;dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
- const addButton=dialog.querySelector('[data-service-add]');
- if(addButton)addButton.onclick=()=>{
-  if(busy)return;
-  const added=addServiceRow(state);
-  if(!added.length){status.textContent='У бланку є місце для 29 рядків служби.';return;}
-  dialog.querySelector('[data-service-field="not_served"]')?.closest('label')?.remove();
-  dialog.querySelector('[data-service-new-rows]').insertAdjacentHTML('beforeend',added.map(fieldHtml).join(''));
-  dialog.querySelector('[data-service-field="'+added[0].key+'"]')?.focus();
-  const preview=dialog.querySelector('iframe'),download=dialog.querySelector('[data-download]');if(preview)preview.hidden=true;if(download)download.hidden=true;
-  status.textContent='Рядок додано. Сформуйте PDF повторно, щоб оновити таблицю.';
- };
+ const readFields=()=>{for(const f of state.fields){const el=dialog.querySelector('[data-service-field="'+f.key+'"]');if(el)f.value=el.value;}};
+ const invalidate=()=>{const frame=dialog.querySelector('iframe'),link=dialog.querySelector('[data-download]');if(frame)frame.hidden=true;if(link)link.hidden=true;};
+ const renderRows=kind=>{const section=dialog.querySelector('[data-print-rows="'+kind+'"]');if(section)section.innerHTML=sectionFields(rowConfig[kind].group,kind);};
+ dialog.addEventListener('click',event=>{
+  const add=event.target.closest?.('[data-add-row]'),remove=event.target.closest?.('[data-remove-row]');
+  if(busy||!add&&!remove)return;
+  readFields();
+  const [kind,id]=remove?remove.dataset.removeRow.split(':'):[add.dataset.addRow];
+  if(remove)removeRow(state,kind,id);
+  else if(!addRow(state,kind).length){status.textContent='Досягнуто межі рядків бланка.';return;}
+  renderRows(kind);invalidate();status.textContent='Сформуйте PDF повторно, щоб оновити таблицю.';
+ });
  dialog.querySelector('[data-service-reset]').onclick=()=>{
-  for(const f of state.fields){
-   const el=dialog.querySelector('[data-service-field="'+f.key+'"]');
-   if(el)el.value=f.source_value??'';
-   f.value=f.source_value??'';
-  }
-  if(status)status.textContent='Значення полів скинуто до вихідних даних із картки.';
+  Object.assign(state,snapshot(initial));for(const kind of Object.keys(rowConfig))renderRows(kind);
+  for(const f of state.fields){const el=dialog.querySelector('[data-service-field="'+f.key+'"]');if(el)el.value=f.value=f.source_value??'';}
+  invalidate();if(status)status.textContent='Рядки й значення відновлено з картки.';
  };
  async function build(saving){
   if(busy||CRMWorkspace.busy)return;busy=true;CRMWorkspace.busy=true;
@@ -346,5 +367,5 @@ async function open(c,pf,{save}){
  dialog.querySelector('[data-service-save]').onclick=()=>build(true);
  return dialog;
 }
-window.CRMServiceRecord={model,create,open,wrapText,addServiceRow};
+window.CRMServiceRecord={model,create,open,wrapText,addServiceRow,addRow,removeRow};
 })();
