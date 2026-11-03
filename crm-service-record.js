@@ -184,7 +184,7 @@ async function create(state){
   const page=pdf.getPage(f.page),field=form.createTextField('service_'+index+'_'+f.key),zero=PDFLib.degrees(0);
   if(height>=size+line+2*inset)field.enableMultiline();
   if(f.center)field.setAlignment(PDFLib.TextAlignment.Center);
-  field.setText(f.value);field.addToPage(page,{x,y:page.getHeight()-bottom,width,height,font,borderWidth:0,backgroundColor:undefined});field.setFontSize(size);
+  field.setText(f.value);field.addToPage(page,{x,y:page.getHeight()-bottom,width,height,font,borderWidth:0,borderColor:undefined,backgroundColor:undefined});field.setFontSize(size);
   const textHeight=font.heightAtSize(size),blockHeight=textHeight+(rows.length-1)*line,firstY=f.verticalCenter?(height+blockHeight)/2-textHeight:height-inset-size;
   field.updateAppearances(font,()=>rows.flatMap((row,i)=>PDFLib.drawText(font.encodeText(row),{font:font.name,size,color:PDFLib.rgb(0,0,0),x:f.center?(width-font.widthOfTextAtSize(row,size))/2:inset,y:firstY-i*line,rotate:zero,xSkew:zero,ySkew:zero})));
  }
