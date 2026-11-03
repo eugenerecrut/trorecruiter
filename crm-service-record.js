@@ -332,7 +332,7 @@ async function open(c,pf,{save}){
   const link=dialog.querySelector('[data-download]');if(link)preview.append(link);
  }
  document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null,refreshTimer=null,queued=false;const status=dialog.querySelector('[data-service-status]');
- const close=()=>{if(busy)return;clearTimeout(refreshTimer);dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+ const close=()=>{if(busy)return;if(refreshTimer!==null)clearTimeout(refreshTimer);dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
  const readFields=()=>{for(const f of state.fields){const el=dialog.querySelector('[data-service-field="'+f.key+'"]');if(el)f.value=el.value;}};
  const invalidate=()=>{const frame=dialog.querySelector('iframe'),link=dialog.querySelector('[data-download]');if(frame)frame.hidden=true;if(link)link.hidden=true;const hint=dialog.querySelector('[data-pdf-hint]');if(hint)hint.hidden=false;};
  const renderRows=kind=>{const section=dialog.querySelector('[data-print-rows="'+kind+'"]');if(section)section.innerHTML=sectionFields(rowConfig[kind].group,kind);};
@@ -356,7 +356,7 @@ async function open(c,pf,{save}){
  async function build(saving){
   if(busy){if(!saving)queued=true;return;}
   if(saving&&CRMWorkspace.busy)return;
-  busy=true;if(saving){clearTimeout(refreshTimer);CRMWorkspace.busy=true;}
+  busy=true;if(saving){if(refreshTimer!==null)clearTimeout(refreshTimer);CRMWorkspace.busy=true;}
   if(saving)dialog.querySelectorAll('button,input,textarea').forEach(el=>el.disabled=true);
   try{
    state.fields.forEach(f=>{
