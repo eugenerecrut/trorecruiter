@@ -76,3 +76,15 @@ const w1=state.fields.find(f=>f.key==='work_1_0');
 assert.equal(w0.box[1], 126.2 + 2 * 13.8, 'Top of first employment record has 2 offsets from table header');
 assert.equal(w1.box[1], w0.box[3] + 2 * 13.8, 'Between employment records has 2 offsets');
 console.log('Work record 2-offset spacing and Sovin pull-up verified: PASS');
+
+const manualCandidate={full_name:'Тестенко Іван',served_before:false,profile_data:{}},manualBefore=JSON.stringify(manualCandidate);
+const manualState=model(manualCandidate,{});
+for(let i=0;i<29;i++){
+ const row=context.window.CRMServiceRecord.addServiceRow(manualState);
+ assert.equal(row.length,5);assert.equal(row[0].page,i<5?3:4+Math.floor((i-5)/8));
+ assert(row.every(f=>f.printOnly));
+}
+assert.equal(context.window.CRMServiceRecord.addServiceRow(manualState).length,0);
+assert.equal(manualState.fields.filter(f=>/^service_\d+_\d+$/.test(f.key)).length,145);
+assert.equal(value(manualState,'not_served'),undefined);
+assert.equal(JSON.stringify(manualCandidate),manualBefore);
