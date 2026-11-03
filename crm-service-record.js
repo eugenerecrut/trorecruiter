@@ -130,6 +130,12 @@ async function create(state){
  pdf.registerFontkit(window.fontkit);const font=await pdf.embedFont(fontBytes,{subset:false}),form=pdf.getForm(),size=12,line=13.8,pad=3;
  function lines(value,width,label){return wrapText(value,width,text=>font.widthOfTextAtSize(text,size));}
  function draw(f){if(!f.value.trim())return;const [x,top,right,bottom]=f.box,inset=bottom-top<20?1:pad,rows=lines(f.value,right-x-2*inset,f.label);if(size+(rows.length-1)*line+2*inset>bottom-top+.05)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');const pg=pdf.getPage(f.page),textHeight=font.heightAtSize(size),blockHeight=textHeight+(rows.length-1)*line,firstY=f.verticalCenter?pg.getHeight()-(top+bottom)/2+blockHeight/2-textHeight:pg.getHeight()-top-inset-size;rows.forEach((row,i)=>pg.drawText(row,{font,size,x:f.center?(x+right-font.widthOfTextAtSize(row,size))/2:x+inset,y:firstY-i*line}));}
+ function drawSignature(page,left,top,right,end){
+  draw({label:'Підписний блок',page,box:[left,top,right,top+34.2],value:sign.split('\n')[0]});
+  draw({label:'Звання підписанта',page,box:[left,top+32.2,left+172,end],value:'капітан'});
+  rule(page,left+56,top+48,left+202,top+48);
+  draw({label:'Підписант',page,box:[left+216.44,top+32.2,right,end],value:'Володимир СОВІН'});
+ }
  function rect(page,box){const [x,t,r,b]=box;pdf.getPage(page).drawRectangle({x,y:pdf.getPage(page).getHeight()-b,width:r-x,height:b-t,color:PDFLib.rgb(1,1,1)});}
  function rule(page,x1,t1,x2,t2){const pg=pdf.getPage(page);pg.drawLine({start:{x:x1,y:pg.getHeight()-t1},end:{x:x2,y:pg.getHeight()-t2},thickness:.48});}
  const printFields=state.fields.map(f=>({...f,box:[...f.box]}));
@@ -168,9 +174,9 @@ async function create(state){
    for(const x of [85.34,156.86,228.41,493.06,571.08])rule(2,x,signatureEnd,x,tableBottom);
   }
   for(const t of [126.2,signatureTop,signatureEnd,tableBottom])rule(2,85.34,t,571.08,t);
-  draw({label:'Підписний блок',page:2,box:[85.34,signatureTop,571.08,signatureEnd],value:sign});
+  drawSignature(2,85.34,signatureTop,571.08,signatureEnd);
  }
- if(state.served===false){rect(3,[28.32,262.3,510.34,769.44]);for(const t of [262.3,289.3,342.5,769.44])rule(3,28.56,t,510.1,t);for(const x of [28.56,510.1])rule(3,x,262.3,x,769.44);for(const x of [70.7,120.4,324.8,445.2])rule(3,x,342.5,x,769.44);draw({label:'Підписний блок',page:3,box:[28.56,289.3,510.1,342.5],value:sign});}
+ if(state.served===false){rect(3,[28.32,262.3,510.34,769.44]);for(const t of [262.3,289.3,342.5,769.44])rule(3,28.56,t,510.1,t);for(const x of [28.56,510.1])rule(3,x,262.3,x,769.44);for(const x of [70.7,120.4,324.8,445.2])rule(3,x,342.5,x,769.44);drawSignature(3,28.56,289.3,510.1,342.5);}
  else if(lastServicePage===3){
   let signatureTop=607.8;
   const serviceFields=printFields.filter(f=>/^service_\d+_\d+$/.test(f.key));
@@ -197,9 +203,7 @@ async function create(state){
   for(const t of [signatureTop,signatureEnd,769.44])rule(3,28.56,t,510.1,t);
   for(const x of [28.56,510.1])rule(3,x,signatureTop,x,769.44);
   for(const x of [70.7,120.4,324.8,445.2])rule(3,x,signatureEnd,x,769.44);
-  draw({label:'Підписний блок',page:3,box:[28.56,signatureTop,510.1,signatureTop+34.2],value:sign.split('\n')[0]});
-  draw({label:'Звання підписанта',page:3,box:[28.56,signatureTop+32.2,200,signatureEnd],value:'капітан'});
-  draw({label:'Підписант',page:3,box:[245,signatureTop+32.2,510.1,signatureEnd],value:'Володимир СОВІН'});
+  drawSignature(3,28.56,signatureTop,510.1,signatureEnd);
  }
  if(lastServicePage>3){
   for(const page of new Set(serviceRows.filter(f=>f.page<lastServicePage).map(f=>f.page))){
@@ -223,9 +227,7 @@ async function create(state){
   for(const y of [top,end,783])rule(lastServicePage,left,y,right,y);
   for(const x of [left,right])rule(lastServicePage,x,top,x,end);
   for(const x of cols)rule(lastServicePage,x,end,x,783);
-  draw({label:'Підписний блок',page:lastServicePage,box:[left,top,right,top+34.2],value:sign.split('\n')[0]});
-  draw({label:'Звання підписанта',page:lastServicePage,box:[left,top+32.2,left+172,end],value:'капітан'});
-  draw({label:'Підписант',page:lastServicePage,box:[left+216.44,top+32.2,right,end],value:'Володимир СОВІН'});
+  drawSignature(lastServicePage,left,top,right,end);
  }
  for(const [index,f] of printFields.entries()){
   if(f.key==='discharge'&&!f.value.trim()&&lastServicePage===3)continue;
