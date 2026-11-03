@@ -331,6 +331,24 @@ async function open(c,pf,{save}){
   frame.addEventListener('load',()=>{hint.hidden=!frame.hidden;});
   const link=dialog.querySelector('[data-download]');if(link)preview.append(link);
  }
+ if(livePane){
+  let syncing=false;
+  const follow=(source,target,from,to)=>{
+   if(syncing||source.clientHeight>=source.scrollHeight)return;
+   const top=source.getBoundingClientRect().top;
+   const fields=[...source.querySelectorAll('['+from+']')];
+   const anchor=fields.find(el=>el.getBoundingClientRect().bottom>top+8);
+   if(!anchor)return;
+   const key=anchor.getAttribute(from);
+   const match=[...target.querySelectorAll('['+to+']')].find(el=>el.getAttribute(to)===key);
+   if(!match)return;
+   const offset=match.getBoundingClientRect().top-target.getBoundingClientRect().top;
+   syncing=true;target.scrollTop+=offset-8;
+   requestAnimationFrame(()=>requestAnimationFrame(()=>{syncing=false;}));
+  };
+  editor.addEventListener('scroll',()=>follow(editor,livePane,'data-service-field','data-pdf-field'),{passive:true});
+  livePane.addEventListener('scroll',()=>follow(livePane,editor,'data-pdf-field','data-service-field'),{passive:true});
+ }
  document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null,refreshTimer=null,queued=false;const status=dialog.querySelector('[data-service-status]');
  const close=()=>{if(busy)return;if(refreshTimer!==null)clearTimeout(refreshTimer);dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
  const readFields=()=>{for(const f of state.fields){const el=dialog.querySelector('[data-service-field="'+f.key+'"]');if(el)f.value=el.value;}};
