@@ -88,3 +88,15 @@ assert.equal(context.window.CRMServiceRecord.addServiceRow(manualState).length,0
 assert.equal(manualState.fields.filter(f=>/^service_\d+_\d+$/.test(f.key)).length,145);
 assert.equal(value(manualState,'not_served'),undefined);
 assert.equal(JSON.stringify(manualCandidate),manualBefore);
+{
+const rowApi=context.window.CRMServiceRecord;
+const printOnly=model(manualCandidate,{});
+const w1=rowApi.addRow(printOnly,'work'),w2=rowApi.addRow(printOnly,'work'),s1=rowApi.addServiceRow(printOnly);
+w2[2].value='Залишити цей запис';
+rowApi.removeRow(printOnly,'work',w1[0].key.split('_')[1]);
+assert.equal(printOnly.fields.find(f=>f.key===w2[2].key).value,'Залишити цей запис');
+assert(printOnly.fields.includes(s1[0]));
+assert.equal(rowApi.addRow(printOnly,'work').length,4);
+assert.equal(JSON.stringify(manualCandidate),manualBefore);
+
+}
