@@ -343,7 +343,20 @@
         '</div>' +
       '</div>';
 
-    const mainHtml = '' + guideHtml +
+    const blankForms = /контракт/iu.test(c.service_type || '') ? [
+      ['Заява на контракт', 'contract-application-blank.pdf'],
+      ['Розписка кандидата', 'candidate-receipt-blank.pdf'],
+      ['Згода на обробку персональних даних', 'consent-processing-blank.pdf'],
+      ['Згода на збір та обробку даних', 'consent-collection-processing-blank.pdf'],
+      ['Анкета на контракт', 'contract-questionnaire-blank.pdf']
+    ] : [];
+    const blankFormsHtml = blankForms.length ?
+      '<section class="card" style="margin-bottom:16px"><h2 style="font-size:16px;margin:0 0 8px">Бланки для друку</h2>' +
+      '<ul style="margin:0;padding-left:20px">' + blankForms.map(([label,file]) =>
+        '<li style="margin:6px 0"><a href="templates/' + file + '" download>' + escapeHtml(label) + ' (PDF)</a></li>'
+      ).join('') + '</ul></section>' : '';
+
+    const mainHtml = '' + guideHtml + blankFormsHtml +
       '<div class="section-title">' +
         '<div>' +
           '<span style="font-size:16px">Необхідні документи</span>' +
