@@ -61,8 +61,8 @@ function model(c,pf={}){
   });
  }
  const oath=printableObject(p.military_oath),discharge=printableObject(p.military_discharge);
- add('callup','Призов / початок служби',3,[222.6,39,510.3,70.7],served===false?'':p.service_start_date?words(p.service_start_date)+(p.previous_service_type?' '+p.previous_service_type:''):'','Військова служба');
- add('oath','Присяга',3,[312,75,510.3,105.9],served===false?'':[date(oath.date),oath.unit&&'в/ч '+oath.unit].filter(Boolean).join(', '),'Військова служба');
+ add('callup','Призов / початок служби',3,[222.6,39,510.3,55.6],served===false?'':p.service_start_date?words(p.service_start_date)+(p.previous_service_type?' '+p.previous_service_type:''):'','Військова служба');
+ add('oath','Присяга',3,[102.3,89,425.5,105.4],served===false?'':[date(oath.date),oath.unit&&'в/ч '+oath.unit].filter(Boolean).join(', '),'Військова служба');
  const service=periods.filter(r=>['military_service','police_service'].includes(r.kind));
  if(served===false)add('not_served','Відомості про службу',3,[28.6,262.3,510.1,289.3],c.sex==='female'?'Військову службу не проходила':'Військову службу не проходив','Військова служба',true);
  else service.forEach((r,i)=>{
@@ -129,10 +129,17 @@ async function create(state){
  const [bytes,fontBytes]=await Promise.all(responses.map(r=>r.arrayBuffer())),pdf=await PDFLib.PDFDocument.load(bytes);if(pdf.getPageCount()!==10)throw Error('Бланк має містити 10 сторінок.');
  pdf.registerFontkit(window.fontkit);const font=await pdf.embedFont(fontBytes,{subset:false}),form=pdf.getForm(),size=12,line=13.8,pad=3;
  function lines(value,width,label){return wrapText(value,width,text=>font.widthOfTextAtSize(text,size));}
- function draw(f){if(!f.value.trim())return;const [x,top,right,bottom]=f.box,inset=bottom-top<20?1:pad,rows=lines(f.value,right-x-2*inset,f.label);if(size+(rows.length-1)*line+2*inset>bottom-top)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');const pg=pdf.getPage(f.page),textHeight=font.heightAtSize(size),blockHeight=textHeight+(rows.length-1)*line,firstY=f.verticalCenter?pg.getHeight()-(top+bottom)/2+blockHeight/2-textHeight:pg.getHeight()-top-inset-size;rows.forEach((row,i)=>pg.drawText(row,{font,size,x:f.center?(x+right-font.widthOfTextAtSize(row,size))/2:x+inset,y:firstY-i*line}));}
+ function draw(f){if(!f.value.trim())return;const [x,top,right,bottom]=f.box,inset=bottom-top<20?1:pad,rows=lines(f.value,right-x-2*inset,f.label);if(size+(rows.length-1)*line+2*inset>bottom-top+.05)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');const pg=pdf.getPage(f.page),textHeight=font.heightAtSize(size),blockHeight=textHeight+(rows.length-1)*line,firstY=f.verticalCenter?pg.getHeight()-(top+bottom)/2+blockHeight/2-textHeight:pg.getHeight()-top-inset-size;rows.forEach((row,i)=>pg.drawText(row,{font,size,x:f.center?(x+right-font.widthOfTextAtSize(row,size))/2:x+inset,y:firstY-i*line}));}
  function rect(page,box){const [x,t,r,b]=box;pdf.getPage(page).drawRectangle({x,y:pdf.getPage(page).getHeight()-b,width:r-x,height:b-t,color:PDFLib.rgb(1,1,1)});}
  function rule(page,x1,t1,x2,t2){const pg=pdf.getPage(page);pg.drawLine({start:{x:x1,y:pg.getHeight()-t1},end:{x:x2,y:pg.getHeight()-t2},thickness:.48});}
  const printFields=state.fields.map(f=>({...f,box:[...f.box]}));
+ const serviceRows=printFields.filter(f=>/^service_\d+_\d+$/.test(f.key));
+ const lastServicePage=serviceRows.length?Math.max(...serviceRows.map(f=>f.page)):3;
+ for(const page of new Set(serviceRows.map(f=>f.page))){
+  const fields=serviceRows.filter(f=>f.page===page),rows=[...new Set(fields.map(f=>f.key.split('_')[1]))].map(id=>fields.filter(f=>f.key.split('_')[1]===id));
+  const start=page===3?262.3:162.4,end=page===3?607.7:page===lastServicePage?729:783;
+  rows.forEach((row,i)=>row.forEach(f=>{f.box[1]=start+i*(end-start)/rows.length;f.box[3]=start+(i+1)*(end-start)/rows.length;}));
+ }
  if(state.worked===true){
   rect(2,[85.1,126.2,571.3,762.2]);
   const workFields=printFields.filter(f=>/^work_\d+_\d+$/.test(f.key));
@@ -158,7 +165,7 @@ async function create(state){
   draw({label:'Підписний блок',page:2,box:[85.34,signatureTop,571.08,signatureEnd],value:sign});
  }
  if(state.served===false){rect(3,[28.32,262.3,510.34,769.44]);for(const t of [262.3,289.3,342.5,769.44])rule(3,28.56,t,510.1,t);for(const x of [28.56,510.1])rule(3,x,262.3,x,769.44);for(const x of [70.7,120.4,324.8,445.2])rule(3,x,342.5,x,769.44);draw({label:'Підписний блок',page:3,box:[28.56,289.3,510.1,342.5],value:sign});}
- else if(!state.fields.find(f=>f.key==='discharge')?.value.trim()){
+ else if(lastServicePage===3){
   let signatureTop=607.8;
   const serviceFields=printFields.filter(f=>/^service_\d+_\d+$/.test(f.key));
   if(serviceFields.length&&serviceFields.every(f=>f.page===3)){
@@ -170,7 +177,17 @@ async function create(state){
     signatureTop=top;for(const x of [28.56,70.7,120.4,324.8,445.2,510.1])rule(3,x,262.3,x,signatureTop);
    }
   }
-  rect(3,[28.32,signatureTop-.2,510.34,769.7]);const signatureEnd=signatureTop+53.1;
+  const dischargeField=printFields.find(f=>f.key==='discharge');
+  if(dischargeField?.value.trim()){
+   const dischargeHeight=Math.max(22,size+(lines(dischargeField.value,475.5,dischargeField.label).length-1)*line+2*pad);
+   dischargeField.box=[28.6,signatureTop,510.1,signatureTop+dischargeHeight];
+   rect(3,[28.32,signatureTop-.2,510.34,signatureTop+dischargeHeight]);rule(3,28.56,signatureTop,510.1,signatureTop);
+   for(const x of [28.56,510.1])rule(3,x,signatureTop,x,signatureTop+dischargeHeight);
+   signatureTop+=dischargeHeight;
+  }
+  const signatureEnd=signatureTop+53.1;
+  if(signatureEnd>769.44)throw Error('Не вміщується блок звільнення та підпису. Скоротіть текст звільнення.');
+  rect(3,[28.32,signatureTop-.2,510.34,769.7]);
   for(const t of [signatureTop,signatureEnd,769.44])rule(3,28.56,t,510.1,t);
   for(const x of [28.56,510.1])rule(3,x,signatureTop,x,769.44);
   for(const x of [70.7,120.4,324.8,445.2])rule(3,x,signatureEnd,x,769.44);
@@ -178,9 +195,36 @@ async function create(state){
   draw({label:'Звання підписанта',page:3,box:[28.56,signatureTop+32.2,200,signatureEnd],value:'капітан'});
   draw({label:'Підписант',page:3,box:[245,signatureTop+32.2,510.1,signatureEnd],value:'Володимир СОВІН'});
  }
+ if(lastServicePage>3){
+  for(const page of new Set(serviceRows.filter(f=>f.page<lastServicePage).map(f=>f.page))){
+   const fields=serviceRows.filter(f=>f.page===page),left=Math.min(...fields.map(f=>f.box[0])),right=Math.max(...fields.map(f=>f.box[2]));
+   for(const y of new Set(fields.map(f=>f.box[3])))rule(page,left,y,right,y);
+  }
+  const fields=serviceRows.filter(f=>f.page===lastServicePage),rows=[...new Set(fields.map(f=>f.key.split('_')[1]))].map(id=>fields.filter(f=>f.key.split('_')[1]===id));
+  const cols=[...rows[0].map(f=>f.box[0]),rows[0].at(-1).box[2]],left=cols[0],right=cols.at(-1),start=162.4;
+  const heights=rows.map(row=>Math.max(...row.map(f=>size+(Math.max(1,lines(f.value,f.box[2]-f.box[0]-2*pad,f.label).length)-1)*line+2*pad))+2*line);
+  const compact=start+heights.reduce((a,b)=>a+b,0)<=729;
+  let top=start;
+  rect(3,[28.32,660.9,510.34,714.1]);for(const x of [28.56,510.1])rule(3,x,660.9,x,714.1);
+  rect(lastServicePage,[left-.2,start-.2,right+.2,783.2]);
+  rows.forEach((row,i)=>{
+   rule(lastServicePage,left,top,right,top);
+   const height=compact?heights[i]:(729-start)/rows.length,padding=compact?line:0;
+   row.forEach(f=>{f.box[1]=top+padding;f.box[3]=top+height-padding;});top+=height;
+  });
+  for(const x of cols)rule(lastServicePage,x,start,x,top);
+  const end=top+53.1;
+  for(const y of [top,end,783])rule(lastServicePage,left,y,right,y);
+  for(const x of [left,right])rule(lastServicePage,x,top,x,end);
+  for(const x of cols)rule(lastServicePage,x,end,x,783);
+  draw({label:'Підписний блок',page:lastServicePage,box:[left,top,right,top+34.2],value:sign.split('\n')[0]});
+  draw({label:'Звання підписанта',page:lastServicePage,box:[left,top+32.2,left+172,end],value:'капітан'});
+  draw({label:'Підписант',page:lastServicePage,box:[left+216.44,top+32.2,right,end],value:'Володимир СОВІН'});
+ }
  for(const [index,f] of printFields.entries()){
+  if(f.key==='discharge'&&!f.value.trim()&&lastServicePage===3)continue;
   const [x,top,right,bottom]=f.box,width=right-x,height=bottom-top,inset=height<20?1:pad,rows=lines(f.value,width-2*inset,f.label);
-  if(f.value.trim()&&size+(rows.length-1)*line+2*inset>height)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');
+  if(f.value.trim()&&size+(rows.length-1)*line+2*inset>height+.05)throw Error('Не вміщується поле «'+f.label+'». Скоротіть текст для друку; повні дані CRM збережені.');
   const page=pdf.getPage(f.page),field=form.createTextField('service_'+index+'_'+f.key),zero=PDFLib.degrees(0);
   if(height>=size+line+2*inset)field.enableMultiline();
   if(f.center)field.setAlignment(PDFLib.TextAlignment.Center);
@@ -189,6 +233,17 @@ async function create(state){
   field.updateAppearances(font,()=>rows.flatMap((row,i)=>PDFLib.drawText(font.encodeText(row),{font:font.name,size,color:PDFLib.rgb(0,0,0),x:f.center?(width-font.widthOfTextAtSize(row,size))/2:inset,y:firstY-i*line,rotate:zero,xSkew:zero,ySkew:zero})));
  }
  pdf.setTitle('Послужний список — '+state.name);pdf.setAuthor('');pdf.setCreator('PSK_RECRUTER CRM');return new Blob([await pdf.save({updateFieldAppearances:false})],{type:'application/pdf'});
+}
+function addServiceRow(state){
+ const fields=state.fields.filter(f=>/^service_\d+_\d+$/.test(f.key));
+ const i=fields.length/5;
+ if(i>=29)return [];
+ const page=i<5?3:4+Math.floor((i-5)/8);
+ const cols={3:[28.6,70.7,120.4,324.8,445.2,510.1],4:[85.4,127.5,177.2,381.6,502,566.9],5:[28.6,70.8,120.5,318.9,446.6,510.1],6:[85.4,127.6,177.3,368.7,503.4,566.9]}[page];
+ if(state.served===false){state.served=true;state.fields=state.fields.filter(f=>f.key!=='not_served');}
+ const added=['Початок','Завершення','Посада та ВОС','Частина','Наказ'].map((label,j)=>({key:'service_'+i+'_'+j,label:label+' · '+(i+1),page,box:[cols[j],0,cols[j+1],0],value:'',source_value:'',group:'Військова служба',center:j!==2,verticalCenter:true,printOnly:true}));
+ state.fields.push(...added);
+ return added;
 }
 async function open(c,pf,{save}){
  if(window.CRMCandidateConditions?.formsPersonalFile?.(c)===false)throw Error('Для цього виду оформлення послужний список не формується.');
@@ -209,11 +264,22 @@ async function open(c,pf,{save}){
  };
  const formContent=groups.map(g=>{
   const inGroup=state.fields.filter(f=>f.group===g);
-  return '<div style="grid-column:1/-1;margin-top:16px;padding:6px 0 4px;border-bottom:2px solid #cfd8dc;display:flex;justify-content:space-between;align-items:center"><strong style="font-size:14px;color:#18232d">'+esc(g)+'</strong><span style="font-size:12px;color:#61717b">'+inGroup.length+' '+(inGroup.length===1?'поле':'полів')+'</span></div>'+inGroup.map(fieldHtml).join('');
+  return '<div style="grid-column:1/-1;margin-top:16px;padding:6px 0 4px;border-bottom:2px solid #cfd8dc;display:flex;justify-content:space-between;align-items:center"><strong style="font-size:14px;color:#18232d">'+esc(g)+'</strong><span style="font-size:12px;color:#61717b">'+inGroup.length+' '+(inGroup.length===1?'поле':'полів')+'</span></div>'+inGroup.map(fieldHtml).join('')+(g==='Військова служба'?'<div data-service-new-rows style="display:contents"></div><button type="button" data-service-add style="grid-column:1/-1">＋ Додати рядок служби</button>':'');
  }).join('');
  dialog.innerHTML='<h2>Послужний список</h2><p><strong>'+esc(state.name)+'</strong> · 10 сторінок для двостороннього друку (5 аркушів). Завантажений PDF має редаговані поля. Зміни у PDF не оновлюють картку CRM. Редагуйте будь-яке поле перед друком; оригінальні первинні документи картки зберігаються.</p>'+(state.issues.length?state.issues.map(text=>'<p class="crm-notice" role="alert">'+esc(text)+'</p>').join(''):'')+'<form class="crm-workflow-grid">'+formContent+'<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px;padding:8px 0;border-top:1px solid #e5eaed"><label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#34414a;cursor:pointer"><input type="checkbox" data-service-persist checked style="width:18px;height:18px;accent-color:#5d741f;margin:0"> Запам’ятати правки для друку</label><button type="button" data-service-reset style="font-size:12px;padding:6px 12px;background:#f5f7f8;border:1px solid #cfd8dc;border-radius:6px;cursor:pointer">↺ Скинути до значень із картки</button></div><p data-service-status role="status" style="grid-column:1/-1;margin:6px 0;min-height:1.2em;font-weight:600"></p><div style="grid-column:1/-1;display:flex;gap:12px;flex-wrap:wrap"><button type="submit" data-service-submit style="flex:1;min-height:44px;background:#18232d;color:#fff;font-weight:700;border-radius:8px;border:none;cursor:pointer">Сформувати PDF</button><button type="button" data-service-save style="flex:1;min-height:44px;background:#446123;color:#fff;font-weight:700;border-radius:8px;border:none;cursor:pointer">Зберегти у справі та завантажити PDF</button></div></form><iframe title="Послужний список — PDF" hidden style="width:100%;height:65vh;border:1px solid #cfd8dc;border-radius:8px;margin-top:14px"></iframe><div style="display:flex;gap:10px;align-items:center;margin-top:10px"><a data-download hidden style="display:inline-block;padding:10px 18px;background:#18232d;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Завантажити PDF</a></div><div class="crm-actions"><button type="button" data-service-close>Закрити</button></div>';
  document.body.append(dialog);dialog.showModal();let busy=false,previewUrl=null;const status=dialog.querySelector('[data-service-status]');
  const close=()=>{if(busy)return;dialog.close();dialog.remove();if(previewUrl)URL.revokeObjectURL(previewUrl);};dialog.querySelector('[data-service-close]').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
+ const addButton=dialog.querySelector('[data-service-add]');
+ if(addButton)addButton.onclick=()=>{
+  if(busy)return;
+  const added=addServiceRow(state);
+  if(!added.length){status.textContent='У бланку є місце для 29 рядків служби.';return;}
+  dialog.querySelector('[data-service-field="not_served"]')?.closest('label')?.remove();
+  dialog.querySelector('[data-service-new-rows]').insertAdjacentHTML('beforeend',added.map(fieldHtml).join(''));
+  dialog.querySelector('[data-service-field="'+added[0].key+'"]')?.focus();
+  const preview=dialog.querySelector('iframe'),download=dialog.querySelector('[data-download]');if(preview)preview.hidden=true;if(download)download.hidden=true;
+  status.textContent='Рядок додано. Сформуйте PDF повторно, щоб оновити таблицю.';
+ };
  dialog.querySelector('[data-service-reset]').onclick=()=>{
   for(const f of state.fields){
    const el=dialog.querySelector('[data-service-field="'+f.key+'"]');
@@ -234,6 +300,7 @@ async function open(c,pf,{save}){
    if(persist){
     const overrides={...(obj(c.profile_data).service_record_print||{})};let changed=false;
     for(const f of state.fields){
+     if(f.printOnly)continue;
      if(f.value!==(f.source_value??'')){overrides[f.key]=f.value;changed=true;}
      else if(overrides[f.key]!==undefined){delete overrides[f.key];changed=true;}
     }
@@ -279,5 +346,5 @@ async function open(c,pf,{save}){
  dialog.querySelector('[data-service-save]').onclick=()=>build(true);
  return dialog;
 }
-window.CRMServiceRecord={model,create,open,wrapText};
+window.CRMServiceRecord={model,create,open,wrapText,addServiceRow};
 })();
