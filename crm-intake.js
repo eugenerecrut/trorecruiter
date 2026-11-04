@@ -28,14 +28,34 @@ function canAcceptConflict(row){
  return window.CRMDocumentSync?.valid?CRMDocumentSync.valid(row.key,row.incoming):true;
 }
 window.CRMReviewDecision={source:reviewSource,contextMatches:reviewContext,binding:reviewBinding,matches:reviewMatches,keepKind,canAcceptConflict};
-function items(candidate,docs){const owned=(Array.isArray(docs)?docs:[]).filter(doc=>doc&&(!doc.candidate_id||doc.candidate_id===candidate?.id));return CRMResponsibility.latest(owned).map(doc=>{
+function withVerifiedMarriageNames(candidate,latest){
+ const p=object(candidate?.profile_data)||{},history=Array.isArray(p.name_history)?p.name_history:[];
+ const norm=v=>String(v??'').normalize('NFKC').replace(/[’ʼ]/g,"'").replace(/\s+/g,' ').trim().toLocaleLowerCase('uk-UA');
+ const current=norm(candidate?.name_nominative||candidate?.full_name);
+ if(!candidate?.id||!current||!Array.isArray(p.name_change_records))return candidate;
+ const verified=p.name_change_records.flatMap(r=>{
+  if(!r||norm(r.reason)!=='укладення шлюбу'||norm(r.new_name)!==current||!norm(r.previous_name)||norm(r.previous_name)===current||!r.source_document_id||!r.act_number||!r.registration_date||!r.certificate_number)return [];
+  const doc=latest.find(d=>d.id===r.source_document_id&&d.candidate_id===candidate.id&&!d.deleted_at&&d.verification_status==='Підтверджено'&&!['AI обробка','AI помилка'].includes(d.processing_status)&&/шлюб/iu.test(d.document_type||''));
+  const e=object(doc?.ai_extracted),m=e?.marriage_record;
+  if(!m||norm(e.full_name)!==current||norm(m.act_number)!==norm(r.act_number)||m.registration_date!==r.registration_date||![m.certificate_number].flat().some(n=>norm(n)===norm(r.certificate_number)))return [];
+  return [{previous_full_name:r.previous_name,new_full_name:r.new_name,verified:true,source_document_id:doc.id}];
+ });
+ if(new Set(verified.map(r=>norm(r.previous_full_name))).size!==1)return candidate;
+ return {...candidate,profile_data:{...p,name_history:[...history,verified[0]]}};
+}
+function items(candidate,docs){const owned=(Array.isArray(docs)?docs:[]).filter(doc=>doc&&(!doc.candidate_id||doc.candidate_id===candidate?.id)),latest=CRMResponsibility.latest(owned),educationCandidate=withVerifiedMarriageNames(candidate,latest);return latest.map(doc=>{
  const pending=doc.processing_status==='AI обробка',failed=doc.processing_status==='AI помилка';
- let plan=null,error=null;try{if(doc.ai_extracted&&!pending&&!failed)plan=CRMDocumentSync.plan(doc,candidate);}catch(e){error=e.message;}
+ let plan=null,error=null;try{if(doc.ai_extracted&&!pending&&!failed)plan=CRMDocumentSync.plan(doc,window.CRMDocumentPolicy?.normalize(doc)?.category==='education'?educationCandidate:candidate);}catch(e){error=e.message;}
  if(plan&&window.CRMDocumentCrosscheck)CRMDocumentCrosscheck.guard(plan,CRMDocumentCrosscheck.compare(docs,candidate));
+ const extracted=object(doc.ai_extracted),records=extracted?.education_records,saved=object(candidate?.profile_data)?.education_records;
+ const alreadyRecorded=plan?.candidate===educationCandidate&&educationCandidate!==candidate&&doc.verification_status==='Підтверджено'&&Array.isArray(records)&&records.length>0&&Array.isArray(saved)&&records.every(r=>r?.diploma_number&&!r.requires_review&&window.CRMNameHistory?.matches(r.owner_full_name,educationCandidate)&&saved.some(s=>s?.source_document_id===doc.id&&s.diploma_number===r.diploma_number&&(s.diploma_series||'')===(r.diploma_series||'')&&s.diploma_issue_date===r.diploma_issue_date));
+ if(alreadyRecorded&&!plan.rows.some(r=>r.action==='conflict'&&['full_name','birth_date','rnokpp'].includes(r.key)))for(const row of plan.rows){
+  if(row.action==='conflict'&&(row.key==='education_records'&&row.reason.startsWith('Запис уже є, але відомості відрізняються або доповнені.')||row.key==='civilian_profession'&&row.reason==='Збережене значення має пріоритет'))row.action='leave';
+ }
  const contextCurrent=reviewContext(doc,candidate);
  if(plan)for(const row of plan.rows){const decisions=object(doc.ai_extracted)?._crm_review_decisions;const saved=(Array.isArray(decisions)?decisions:[]).find(d=>reviewMatches(doc,d,row,candidate,contextCurrent));if(saved&&row.action==='conflict')row.action='leave';}
  const conflicts=plan?.rows.filter(r=>r.action==='conflict')||[],fills=plan?.rows.filter(r=>r.action==='fill')||[];
- return {doc,plan,error,conflicts,fills,pending,failed,review:!pending&&(!!error||conflicts.length>0||doc.verification_status==='Потребує перевірки'||!!plan&&!plan.supported)};
+ return {doc,plan,error,conflicts,fills,pending,failed,review:!pending&&(!!error||conflicts.length>0||doc.verification_status==='Потребує перевірки'||!!plan&&!plan.supported&&doc.verification_status!=='Підтверджено')};
 });}
 function renderValue(value,key){if(value==null||value==='')return 'Не заповнено';if(typeof value==='boolean')return value?'Так':'Ні';if(typeof value==='object'&&window.CRMHistoryFormat)return CRMHistoryFormat.fields({[key]:value});return esc(typeof value==='object'?JSON.stringify(value):value);}
 function reasonText(row){
