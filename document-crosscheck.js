@@ -14,6 +14,18 @@ function birthplaceTokens(value){
  }
  return tokens.sort();
 }
+// Verified city renamings, scoped to Dnipropetrovsk oblast. Keep source spelling.
+function renamedBirthplace(value){
+ const tokens=birthplaceTokens(String(value??'').replace(/[()]/gu,' '));
+ if(!tokens.includes('дніпропетровська')||!tokens.includes('область'))return null;
+ const names=[['дніпродзержинськ',"кам'янське"],['дніпропетровськ','дніпро']];
+ const rest=tokens.filter(t=>!['україна','м','дніпропетровська','область'].includes(t));
+ return names.find(pair=>rest.length&&rest.every(t=>pair.includes(t)))?.[1]??null;
+}
+function sameRenamedBirthplace(values){
+ const ids=values.filter(v=>typeof v==='string'&&v.trim()).map(renamedBirthplace);
+ return ids.length>1&&ids[0]!==null&&ids.every(id=>id===ids[0]);
+}
 // Similar wording warrants review, never an automatic assertion of geographic identity.
 function birthplaceReview(sources,current){
  const values=[...sources.map(s=>s.value),current].filter(v=>typeof v==='string'&&v.trim());
@@ -79,7 +91,8 @@ function compare(documents,candidate){
   const values=new Set(sources.map(s=>norm(s.value))),current=candidate[key];
   return {key,current:current??null,sources,status:values.size>1||current!=null&&String(current).trim()&&sources.some(s=>norm(s.value)!==norm(current))?'conflict':new Set(sources.map(s=>s.fingerprint)).size>1?'corroborated':sources.length?'single_source':'missing',learning_eligible:false};
  });
- for(const entry of scalar)if(entry.key==='birth_place'&&birthplaceReview(entry.sources,entry.current)){entry.status='needs_review';entry.reason='Записи відрізняються форматом або повнотою. Тотожність місця потрібно підтвердити; картка не змінена.';}
+ for(const entry of scalar)if(entry.key==='birth_place'&&sameRenamedBirthplace([...entry.sources.map(s=>s.value),entry.current])){entry.status=new Set(entry.sources.map(s=>s.fingerprint)).size>1?'corroborated':entry.sources.length?'single_source':'missing';}
+ else if(entry.key==='birth_place'&&birthplaceReview(entry.sources,entry.current)){entry.status='needs_review';entry.reason='Записи відрізняються форматом або повнотою. Тотожність місця потрібно підтвердити; картка не змінена.';}
  return [...scalar,...structured(eligible,candidate),...periodLinks(eligible)];
 }
 function structured(documents,candidate){
@@ -219,7 +232,8 @@ function compareZones(documents,candidate,{reports=[],context,binding}={}){
   const conflict=values.size>1||current!=null&&String(current).trim()&&group.sources.some(s=>s.value!=='Не визначено'&&norm(s.value)!==norm(current));
   group.status=group.uncertain?'needs_review':conflict?'conflict':new Set(group.sources.map(s=>s.fingerprint)).size>1?'corroborated':'single_source';
   group.reason=group.uncertain?'Зональне читання непевне або має альтернативи; підтвердження потрібне.':'Зіставлено збережене зональне читання. Збіг не є ручним підтвердженням; картка не змінюється.';
-  if(!group.uncertain&&group.key==='birth_place'&&birthplaceReview(group.sources.filter(s=>s.value!=='Не визначено'),current)){group.status='needs_review';group.reason='Записи місця народження відрізняються форматом або повнотою; потрібне підтвердження, картка не змінена.';}
+  if(!group.uncertain&&group.key==='birth_place'&&sameRenamedBirthplace([...group.sources.map(s=>s.value),current])){group.status=new Set(group.sources.map(s=>s.fingerprint)).size>1?'corroborated':'single_source';}
+  else if(!group.uncertain&&group.key==='birth_place'&&birthplaceReview(group.sources.filter(s=>s.value!=='Не визначено'),current)){group.status='needs_review';group.reason='Записи місця народження відрізняються форматом або повнотою; потрібне підтвердження, картка не змінена.';}
   delete group.uncertain;return group;
  });
 }
@@ -288,5 +302,5 @@ function guard(report,evidence){report.crosscheck=evidence;const conflicts=evide
  for(const row of report.rows){if(row.action!=='fill'||!conflicts.some(e=>e.key===row.key)||!['candidate','profile'].includes(row.target))continue;row.action='conflict';row.reason='Розбіжність між документами кандидата';}
  report.selections=report.selections.filter(s=>!(['candidate','profile'].includes(s.target)&&conflicts.some(e=>e.key===s.key)));return report;
 }
-const api={compare,load,guard,dateRange,periodLinks,compareZones,compareZoneParents,compareZoneSubjects,maidenNameMatch};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+const api={compare,load,guard,dateRange,periodLinks,compareZones,compareZoneParents,compareZoneSubjects,maidenNameMatch,sameRenamedBirthplace};root.CRMDocumentCrosscheck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
