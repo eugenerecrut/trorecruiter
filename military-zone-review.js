@@ -51,6 +51,25 @@ function crosscheckHTML(evidence){
  (review.length?'<h3>Спочатку перевірте</h3>'+cards(review):'<p>Розбіжностей у придатних для цього зіставлення даних не знайдено. Це не ручне підтвердження документів.</p>')+
  (other.length?'<details data-crosscheck-other><summary>Інші відомості та джерела ('+other.length+')</summary><p>Збіги та одне джерело показані окремо. Вони не підтверджують якість непевного зонального читання.</p>'+cards(other)+'</details>':'');
 }
+function savedReviewGroups(job,saved){
+ if(!job?._detailed||!job.zone_summary||job.zone_summary.source_changed||
+  !['completed','needs_review'].includes(job.state)||!saved?.saved_at||saved.saved_at!==job.result?.saved_at||
+  saved.status!==job.result?.status)return null;
+ const {review_shadow:shadow,crosscheck}=job.result,issues=crosscheck?.issues;
+ if(!Array.isArray(issues)||issues.length<2||issues.length>24||shadow?.original_count!==issues.length||
+  !Array.isArray(shadow.groups)||shadow.groups.length!==shadow.group_count||shadow.group_count<1||shadow.group_count>=issues.length)return null;
+ const seen=new Set(),result=[];
+ for(const group of shadow.groups){
+  if(!Array.isArray(group?.items)||!group.items.length)return null;
+  const rows=[];
+  for(const i of group.items){
+   if(!Number.isInteger(i)||i<0||i>=issues.length||seen.has(i)||typeof issues[i]?.key!=='string')return null;
+   seen.add(i);rows.push({number:i+1,...issues[i]});
+  }
+  result.push(rows);
+ }
+ return seen.size===issues.length?result:null;
+}
 function evidenceTarget(source,current,candidateId){
  const n=source?.navigation;
  if(!n||!candidateId||n.candidate_id!==candidateId||current?.candidate_id!==candidateId||current.id!==n.document_id||source.document_id!==n.document_id||current.deleted_at||!current.storage_path||current.storage_path!==n.storage_path||(current.file_hash||current.storage_path)!==n.fingerprint||(current.ai_processed_at??null)!==n.revision||(current.version_group_id??null)!==n.version_group_id)throw Error('Джерело видалено, замінено або оновлено. Закрийте результат і відкрийте його знову для актуального зіставлення.');
@@ -435,9 +454,18 @@ async function open(doc,options={}){
    backgroundReportLoaded=true;
    supabaseClient.from('documents').select('ai_extracted').eq('id',doc.id).single().then(response=>{
     if(closed||viewVersion!==backgroundViewVersion)return;if(response.error){status('Не вдалося відкрити збережений звіт. Оновіть документ; AI не запускався.');return;}
-    const saved=backgroundReports(job,response.data?.ai_extracted?._military_zone_report);
+    const stored=response.data?.ai_extracted?._military_zone_report,saved=backgroundReports(job,stored);
     reports.splice(0,reports.length,...saved);$('[data-result]').replaceChildren();
     for(const report of saved)if(report.mode==='zone')showReport(report,report.source.page);
+    const groups=saved.length?savedReviewGroups(job,stored):null;
+    if(groups){
+     const labels={full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',education_records:'Освіта',work_records:'Трудова діяльність',relatives:'Родичі'};
+     const section=document.createElement('section');
+     section.innerHTML='<h3>Згруповані питання СПЛАВ · '+groups.length+'</h3><p>Розгорніть групу, щоб побачити всі вихідні питання. Дані картки не змінено.</p>'+
+      groups.map(rows=>'<details><summary>'+esc(labels[rows[0].key]||'Звірка документа')+' · '+rows.length+'</summary>'+rows.map(row=>'<p>№ '+row.number+' · '+esc(labels[row.key]||row.key)+' · '+(row.status==='conflict'?'Розбіжність':'Потрібна перевірка')+'</p>').join('')+'</details>').join('');
+     $('[data-result]').append(section);
+     if(sourceReady)crosscheck().catch(()=>{});
+    }
     $('[data-export]').hidden=!saved.length;$('[data-export]').disabled=!saved.length;status(saved.length?'Збережений звіт відкрито без нового AI.':'Збережений звіт не відповідає цьому дорученню; результат не застосовано.');
    }).catch(()=>{if(!closed&&viewVersion===backgroundViewVersion)status('Не вдалося відкрити збережений звіт. Оновіть документ; AI не запускався.');});
   }
@@ -566,5 +594,5 @@ async function open(doc,options={}){
  }catch(e){if(!closed){dialog.querySelector('h2').textContent='Документ · відкриття не завершено';dialog.querySelectorAll('p')[1].textContent='Не вдалося завершити відкриття документа. Перевірте повідомлення нижче.';status(e.message);lock(false)}}
  return dialog;
 }
-window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,loadOriginalFile,readOpeningDocument,backgroundSummary,backgroundReports,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,zoneSubjectWarningHTML,parentCardEvidenceHTML,readBackgroundStatus};
+window.CRMMilitaryZoneReview={open,openingPolicy,existingBackgroundJob,loadOriginalFile,readOpeningDocument,backgroundSummary,backgroundReports,savedReviewGroups,pageRerunEligible,savedReportView,selectedBox,textLayerZones,readingSummary,readingContext,sourceTarget,cardValueHTML,evidenceValueHTML,evidenceReviewHTML,evidenceTarget,evidenceURL,crosscheckHTML,zoneSubjectWarningHTML,parentCardEvidenceHTML,readBackgroundStatus};
 })();

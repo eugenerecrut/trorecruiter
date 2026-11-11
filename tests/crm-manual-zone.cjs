@@ -1,4 +1,13 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+test('saved groups are shown only for the same completed report with every original issue',()=>{
+ const ctx={window:{}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
+ const render=ctx.window.CRMMilitaryZoneReview.savedReviewGroups,saved={saved_at:'current',status:'complete_with_gaps'};
+ const job={_detailed:true,state:'needs_review',zone_summary:{},result:{...saved,crosscheck:{issues:[{key:'full_name'},{key:'full_name'}]},review_shadow:{original_count:2,group_count:1,groups:[{items:[0,1]}]}}};
+ assert.equal(render(job,saved)[0].length,2);
+ assert.equal(render(job,{...saved,saved_at:'other'}),null);
+ assert.equal(render({...job,zone_summary:{source_changed:true}},saved),null);
+ job.result.review_shadow.groups[0].items=[0,0];assert.equal(render(job,saved),null);
+});
 test('saved foreign-subject reading has a visible alert without trusting clear OCR or changing receipts',()=>{
  const ctx={window:{}};vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../military-zone-review.js'),'utf8'),ctx);
  const api=ctx.window.CRMMilitaryZoneReview,evidence=[{key:'zone_subject',status:'needs_review',current:'Тестенко Іван',zone_crosscheck:true,reason:'Звірте оригінал',sources:[{value:'<script>інша особа</script>',document_id:'d',file_name:'x.pdf',kind:'zone_reading',page:1}]}],before=JSON.stringify(evidence);

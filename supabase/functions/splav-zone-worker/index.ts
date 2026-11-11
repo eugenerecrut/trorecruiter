@@ -4,4 +4,4 @@ import {getLibrary} from '../_shared/pdfium-library.mjs';
 import {createZoneWorker} from './core.mjs';
 import {crosscheckZoneContinuation} from '../_shared/zone-crosscheck.mjs';
 Deno.serve(createZoneWorker({createClient,getLibrary,crosscheck:crosscheckZoneContinuation,planner:(globalThis as any).CRMMilitaryAutopilot,
- env:(name:string)=>Deno.env.get(name)}));
+ env:(name:string)=>Deno.env.get(name),log:(event:unknown)=>console.log('splav-zone-worker',JSON.stringify(event))}));
