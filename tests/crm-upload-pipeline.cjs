@@ -81,6 +81,18 @@ test('save-only upload stores an explicitly typed file without OCR or queue dele
  await assert.rejects(c.processOneDocument({name:'birth.pdf',type:'application/pdf',size:100},'',{id:'u'},[],'c',null,{deferRecognition:true}),/виберіть тип/);
  assert.equal(state.uploads.length,0);
 });
+test('explicitly starting a saved-only file delegates the full cycle without reupload',async()=>{
+ const actual=setup({queue:true,deferRecognition:true,requirementId:'r0'});
+ await actual.upload(['birth.pdf']);
+ const {c,state}=actual;
+ c.alert=()=>{};c.activeDocumentsCandidateId=null;
+ const source=read('documents.js');
+ vm.runInContext(source.slice(source.indexOf('async function retryDocumentAI('),source.indexOf('async function openDocument(')),c);
+ await c.retryDocumentAI(state.docs[0].id);
+ assert.equal(state.uploads.length,1);
+ assert.equal(state.autopilotRequests,1);
+ assert.equal(state.calls.length,0);
+});
 test('batch upload classifies, persists facts, isolates exceptions, reloads and feeds service record',async()=>{
  const {c,state,upload}=setup();const report=await upload(['birth.pdf','diploma.pdf','fail.pdf','work.pdf','rl.pdf','other.pdf','birth.pdf']);
  assert.equal(state.docs.length,6);assert.equal(state.calls.length,6);assert.equal(state.uploads.length,6);assert(report.includes('точний дублікат'));assert(report.includes('Тестова помилка AI'));
