@@ -284,7 +284,7 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     if(cr.error)throw cr.error;
     const reqs=allReqs.filter(r=>requirementCondition(r,cr.data)!==false);
     const options='<option value="">AI визначить тип автоматично</option>'+reqs.map(r=>'<option value="'+docEscape(r.id)+'" '+(r.id===reqId?'selected':'')+'>'+docEscape(r.document_type)+'</option>').join('');
-    modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · СПЛАВ визначить типи документів, розпізнає та зіставить дані. Дочекайтеся підтвердження прийняття файлів. У фоновому режимі після цього вкладку можна закрити. Для документів без AI виберіть тип вручну.</p><details><summary>Додатково: указати тип вручну</summary><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label></details><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><div id="docDropZone" class="crm-dropzone" style="margin:14px 0;padding:24px 16px;border:2px dashed #94a3b8;border-radius:12px;background:#f8fafc;text-align:center;cursor:pointer;transition:border-color .15s ease,background-color .15s ease"><div style="font-size:32px;line-height:1;margin-bottom:8px">📥</div><div style="font-size:14px;font-weight:600;color:#1e293b">Перетягніть файли сюди (Drag & Drop)</div><div style="font-size:12px;color:#64748b;margin-top:4px">прямо з чату WhatsApp, папки або <u>натисніть для вибору</u></div><input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display:none"></div><small class="muted">JPG/JPEG автоматично перетворюються на PDF перед завантаженням. Один знімок — один PDF, зі збереженням пропорцій.</small><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
+    modal.innerHTML='<h2>'+ (replacementId?'Нова версія документа':'Додати документи') +'</h2><p class="muted">'+docEscape(CRMWorkspace.candidateName||'Кандидат')+' · СПЛАВ визначить типи документів, розпізнає та зіставить дані. Дочекайтеся підтвердження прийняття файлів. У фоновому режимі після цього вкладку можна закрити. Для документів без AI виберіть тип вручну.</p><details><summary>Додатково: указати тип вручну</summary><label>Тип документа <select id="docRequirement" class="crm-search">'+options+'</select></label></details><div class="crm-actions"><button type="button" id="docModalCamera">📷 Сканувати документ</button></div><div id="docDropZone" class="crm-dropzone" style="margin:14px 0;padding:24px 16px;border:2px dashed #94a3b8;border-radius:12px;background:#f8fafc;text-align:center;cursor:pointer;transition:border-color .15s ease,background-color .15s ease"><div style="font-size:32px;line-height:1;margin-bottom:8px">📥</div><div style="font-size:14px;font-weight:600;color:#1e293b">Перетягніть файли сюди (Drag & Drop)</div><div style="font-size:12px;color:#64748b;margin-top:4px">прямо з чату WhatsApp, папки або <u>натисніть для вибору</u></div><input id="docFileInput" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display:none"></div><small class="muted">JPG/JPEG автоматично перетворюються на PDF перед завантаженням. Один знімок — один PDF, зі збереженням пропорцій.</small><label><input type="checkbox" id="docDeferRecognition"> Зберегти без запуску розпізнавання</label><div id="docFilePlan"></div><div id="docUploadStatus" role="status" style="margin-top:14px;white-space:pre-line"></div><div class="crm-actions"><button id="docUploadButton" disabled>Завантажити документи</button><button id="closeDocModal">Закрити</button></div>';
     const notice=document.createElement('p');notice.className='crm-notice';notice.textContent='Завантаження доручає повний цикл СПЛАВ. Для кожного підтриманого односторінкового PDF: основне розпізнавання, за потреби до 13 зональних кроків і звірка. Можливі витрати AI; крок може мати кілька спроб сервісів. Початок зонального етапу дозволений протягом доби. Багатосторінкові файли проходять основне розпізнавання; їхні зони автоматично не запускаються. Ручні значення збережено.';modal.querySelector('#docUploadButton').parentElement.before(notice);
     modal.querySelector('#docUploadButton').textContent='Завантажити й опрацювати';
     if(replacementId)modal.querySelector('#docFileInput').removeAttribute('multiple');
@@ -302,9 +302,11 @@ async function makeDocumentInput(id,reqId='',replacementId=''){
     };
     const updateMode=()=>{
       const selections=[...plan.querySelectorAll('[data-file-type]')];
-      selections.forEach(select=>{const r=reqs.find(x=>x.id===select.value);plan.querySelector('[data-file-mode="'+select.dataset.fileType+'"]').textContent=r?(r.ai_enabled===false?'Збереження без AI/OCR':'Збереження та AI/OCR-розпізнавання'):'AI визначить тип і розпізнає дані'});
-      upload.disabled=!selections.length;
+      const deferred=modal.querySelector('#docDeferRecognition').checked;
+      selections.forEach(select=>{const r=reqs.find(x=>x.id===select.value);plan.querySelector('[data-file-mode="'+select.dataset.fileType+'"]').textContent=deferred?(r?'Лише збереження':'Спочатку виберіть тип документа'):r?(r.ai_enabled===false?'Збереження без AI/OCR':'Збереження та AI/OCR-розпізнавання'):'AI визначить тип і розпізнає дані'});
+      upload.disabled=!selections.length||(deferred&&selections.some(s=>!reqs.some(r=>r.id===s.value)));
     };
+    modal.querySelector('#docDeferRecognition').addEventListener('change',updateMode);
     input.addEventListener('change',render);
     const dropZone = modal.querySelector('#docDropZone');
     const setDroppedFiles = (files) => {
@@ -519,18 +521,19 @@ if(/\bid\b|id[\s-]*карт/.test(type))return'ID';
 if(type.includes('паспорт'))return'passport';
 return null;
 }
-async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId,replacementId=null,{autopilot=false}={}){
+async function processOneDocument(file,requirementId,user,candidates,forcedCandidateId,replacementId=null,{autopilot=false,deferRecognition=false}={}){
 if(CRMUploadPDF.isJPEG(file)){const status=document.getElementById('docUploadStatus');if(status)status.textContent='Перетворення JPEG у PDF: '+file.name;}
 file=await CRMUploadPDF.prepare(file);
 const name=String(file.name||'').toLowerCase(),mime=String(file.type||'').toLowerCase();
 const ok=mime==='application/pdf'||mime==='image/jpeg'||mime==='image/png'||mime==='application/msword'||mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'||/\.(pdf|jpe?g|png|docx?)$/i.test(name);if(!ok)throw new Error('Підтримуються PDF, JPG, JPEG, PNG, DOC та DOCX');if(file.size>DOC_MAX_SIZE)throw new Error('Файл більший за 20 МБ');
 const reqs=await getDocumentRequirements();
 let forced=reqs.find(r=>r.id===requirementId);
+if(deferRecognition&&!forced)throw Error('Для збереження без розпізнавання виберіть тип документа.');
 if(!forced){
   forced=guessRequirementFromFilename(file.name,reqs);
 }
 const tempType=forced?.document_type||'Обробка AI';
-const aiEnabled=forced?.ai_enabled!==false;
+const aiEnabled=!deferRecognition&&forced?.ai_enabled!==false;
 const ext=(name.match(/\.[a-z0-9]+$/i)||[''])[0].toLowerCase();
 const safeName=Date.now()+'_'+Math.random().toString(36).slice(2,10)+ext;
 const path=forcedCandidateId+'/incoming/'+safeName;
@@ -558,7 +561,7 @@ return{file:file.name,type:aiType,confidence:Number(ai?.confidence||0),candidate
 async function uploadSelectedDocuments(){
   const modal=document.getElementById('documentModal');if(!modal||CRMWorkspace.busy)return;
   const files=Array.from(modal.querySelector('#docFileInput').files||[]),id=modal.dataset.candidateId;
-  const types=[...modal.querySelectorAll('[data-file-type]')].map(s=>s.value);
+  const types=[...modal.querySelectorAll('[data-file-type]')].map(s=>s.value),deferRecognition=modal.querySelector('#docDeferRecognition')?.checked===true;
   if(!files.length)return;
   if(modal.dataset.replacementId&&files.length!==1)return alert("Для нової версії виберіть один файл.");
   const user=await getCurrentUser();if(!user)return alert('Увійдіть повторно.');
@@ -573,7 +576,7 @@ async function uploadSelectedDocuments(){
         const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await files[i].arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
         if(hashes.has(digest)){results.push('↪ '+files[i].name+' — точний дублікат у цьому пакеті, пропущено.');continue;}
         hashes.add(digest);
-        const result=await processOneDocument(files[i],types[i],user,candidates,id,modal.dataset.replacementId||null,{autopilot:modal.dataset.autopilot==='true'});
+        const result=await processOneDocument(files[i],types[i],user,candidates,id,modal.dataset.replacementId||null,{autopilot:modal.dataset.autopilot==='true',deferRecognition});
         if(result.queued)queuedCount++;
         results.push('✓ '+files[i].name+' — '+result.type+(result.skipped?' · без AI/OCR':result.queued?' · прийнято до фонової черги':result.syncState==='completed'?' · розпізнано й узгоджено':result.syncState==='needs_review'?' · розпізнано, потрібна звірка':result.syncState==='failed'?' · розпізнано, узгодження не завершено':result.syncState==='superseded'?' · стан документа вже оновлено':' · розпізнано')+(result.warnings.length?'\n  '+result.warnings.join('; '):''));
       }catch(e){results.push('✕ '+files[i].name+' — '+e.message)}

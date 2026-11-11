@@ -61,8 +61,8 @@ function setup(options={}){
   for(const s of selections){if(s.target==='sync_guard')continue;if(s.target==='sync_conflict'){doc.ai_warnings=[...new Set([...(doc.ai_warnings||[]),'[CRM AI sync] '+s.incoming])];continue;}const dest=s.target==='candidate'?state.candidate:state.candidate.profile_data;dest[s.key]=structuredClone(s.incoming);}
   state.rpcs++;return {};
  }};
- const elements={'#docFileInput':{files:[]},'#docUploadStatus':{textContent:''},'#closeDocModal':{},'#docUploadButton':{}};
- const modal={dataset:{candidateId:'c',...(options.autopilot?{autopilot:'true'}:{})},querySelector:s=>elements[s],querySelectorAll:()=>[]};
+ const elements={'#docFileInput':{files:[]},'#docUploadStatus':{textContent:''},'#closeDocModal':{},'#docUploadButton':{},'#docDeferRecognition':{checked:options.deferRecognition===true}};
+ const modal={dataset:{candidateId:'c',...(options.autopilot?{autopilot:'true'}:{})},querySelector:s=>elements[s],querySelectorAll:s=>s==='[data-file-type]'&&options.deferRecognition?[{value:options.requirementId||''}]:[]};
  const c=vm.createContext({console,structuredClone,crypto:webcrypto,TextEncoder,URL,supabaseClient:client,CRMWorkspace:{busy:false},CRMUploadPDF:{isJPEG:()=>false,prepare:async f=>f},DOC_MAX_SIZE:20e6,DOC_BUCKET:'test',AI_DOC_FUNCTION:'test-ai',document:{getElementById:id=>id==='documentModal'?modal:null},getCurrentUser:async()=>({id:'u'}),getCandidates:async()=>[structuredClone(state.candidate)],getDocumentRequirements:async()=>requirements,alert:m=>{throw Error(m)}});c.window=c;
  for(const f of ['supabase/functions/_shared/document-data-policy.js','education-document.js','work-document.js','document-ai-sync.js','candidate-field-registry.js','service-record-readiness.js','crm-service-record.js'])vm.runInContext(read(f),c);
  const automate=c.CRMDocumentSync.automate;c.CRMDocumentSync.automate=async(...args)=>{state.automations++;return automate(...args)};
@@ -71,6 +71,16 @@ function setup(options={}){
  async function upload(names){elements['#docFileInput'].files=names.map(n=>({name:n,type:'application/pdf',size:100,arrayBuffer:async()=>new TextEncoder().encode(n).buffer}));await c.uploadSelectedDocuments();return elements['#docUploadStatus'].textContent;}
  return {c,state,upload};
 }
+test('save-only upload stores an explicitly typed file without OCR or queue delegation',async()=>{
+ const {c,state,upload}=setup({queue:true,autopilot:true,deferRecognition:true,requirementId:'birth'});
+ const req=(await c.getDocumentRequirements()).find(r=>/народження/.test(r.document_type));
+ const actual=setup({queue:true,autopilot:true,deferRecognition:true,requirementId:req.id});
+ await actual.upload(['birth.pdf']);
+ assert.equal(actual.state.docs.length,1);assert.equal(actual.state.docs[0].processing_status,'Завантажено');
+ assert.equal(actual.state.autopilotRequests||0,0);assert.equal(actual.state.calls.length,0);
+ await assert.rejects(c.processOneDocument({name:'birth.pdf',type:'application/pdf',size:100},'',{id:'u'},[],'c',null,{deferRecognition:true}),/виберіть тип/);
+ assert.equal(state.uploads.length,0);
+});
 test('batch upload classifies, persists facts, isolates exceptions, reloads and feeds service record',async()=>{
  const {c,state,upload}=setup();const report=await upload(['birth.pdf','diploma.pdf','fail.pdf','work.pdf','rl.pdf','other.pdf','birth.pdf']);
  assert.equal(state.docs.length,6);assert.equal(state.calls.length,6);assert.equal(state.uploads.length,6);assert(report.includes('точний дублікат'));assert(report.includes('Тестова помилка AI'));
