@@ -485,7 +485,31 @@ try{
  await assert.rejects(finalStep('final',{crosscheck:comparison}),/crosscheck required/);checks++;comparison.binding=(await finalStep('load')).crosscheck_binding;
  comparison.issues.push({key:'birth_place',status:'needs_review',source_ids:[id(200)]});
  const groups=[{items:[0,1],action:'compare_sources'}];
- const final=await finalStep('final',{crosscheck:comparison,review_groups:groups});assert.equal(final.status,'complete_with_gaps');checks++;
+ const {createZoneWorker}=await import('../supabase/functions/splav-zone-worker/core.mjs');
+ const live=process.env.SPLAV_SQL_USE_OLLAMA==='1';let modelCalls=0;
+ const worker=createZoneWorker({planner:pilot,env:key=>({SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic',
+  SPLAV_REVIEW_SHADOW:'1',SPLAV_REVIEW_SHADOW_JOB_ID:continued.job_id,SPLAV_REVIEW_SHADOW_MODEL:live?'qwen2.5:7b':'synthetic',OPENROUTER_API_KEY:'synthetic'})[key],
+  createClient:()=>({rpc:async(name,p)=>{assert.equal(name,'crm_splav_zone_step');return{data:await call(name,[p.p_job,p.p_token,p.p_operation,p.p_data])};}}),
+  crosscheck:async({context})=>({...comparison,binding:context.crosscheck_binding}),
+  fetchImpl:async(url,request)=>{
+   assert.equal(url,'https://openrouter.ai/api/v1/chat/completions');modelCalls++;
+   assert.deepEqual(JSON.parse(JSON.parse(request.body).messages[1].content),
+    [{i:0,field:'birth_place',kind:'conflict'},{i:1,field:'birth_place',kind:'needs_review'}]);
+   if(live){
+    const answer=await fetch('http://127.0.0.1:11434/v1/chat/completions',{method:'POST',redirect:'error',
+     signal:AbortSignal.timeout(90000),headers:{'Content-Type':'application/json'},body:request.body});
+    assert.equal(answer.ok,true);
+    const value=await answer.clone().json();
+    groups.splice(0,groups.length,...JSON.parse(value.choices[0].message.content).groups);
+    return answer;
+   }
+   return Response.json({choices:[{message:{content:JSON.stringify({groups})}}]});
+  }});
+ const response=await worker(new Request('https://synthetic.invalid/worker',{method:'POST',headers:{Authorization:'Bearer synthetic'},
+  body:JSON.stringify({job_id:continued.job_id,lease_token:id(203)})}));
+ assert.equal(response.status,200);
+ const final=await response.json();assert.equal(final.report_status,'complete_with_gaps');
+ assert.equal(final.state,'needs_review');assert.equal(modelCalls,1);checks+=4;
  await actor(1);const visible=await call('crm_splav_job_status',[continued.job_id]);
  assert.deepEqual(visible.result.review_shadow,{original_count:2,group_count:1,groups});checks++;
  assert.deepEqual(visible.result.crosscheck.issues,comparison.issues);checks++;
@@ -530,6 +554,6 @@ try{
  await db.query('update public.crm_staff set active=false where user_id=$1',[id(1)]);await actor(2);
  await assert.rejects(call('crm_splav_validate',[authorized.id,id(702)]),/Delegation revoked/);checks++;
  await owner();assert.equal((await db.query("select has_function_privilege('anon','public.crm_splav_enqueue_autopilot(uuid)','EXECUTE') allowed")).rows[0].allowed,false);checks++;
- console.log('PASS:',checks,'delegated zonal worker SQL checks; no live AI.');
+ console.log('PASS:',checks,'delegated zonal worker SQL checks;',live?'one local Ollama call.':'no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
