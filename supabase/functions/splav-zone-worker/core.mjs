@@ -87,8 +87,13 @@ export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck
      finalData={crosscheck:await crosscheck({client,context:fresh})};
     }
     const issues=finalData.crosscheck?.issues,pilotJob=env('SPLAV_REVIEW_SHADOW_JOB_ID');
-    // The optional pilot is bound to the authenticated, leased job, not a candidate or caller flag.
-    const suggest=uuid(pilotJob)&&pilotJob===body.job_id?openRouterReviewSuggest(env,fetchImpl):undefined;
+    const pilotDocument=env('SPLAV_REVIEW_SHADOW_DOCUMENT_ID'),pilotHash=env('SPLAV_REVIEW_SHADOW_FILE_SHA256');
+    // The source scope can be configured before a continuation job ID exists.
+    // If a job ID is supplied, never fall back to the source scope.
+    const scoped=pilotJob?uuid(pilotJob)&&pilotJob===body.job_id:
+     uuid(pilotDocument)&&/^[a-f0-9]{64}$/.test(pilotHash||'')&&
+     context.document?.id===pilotDocument&&context.source?.document_id===pilotDocument&&context.source?.file_sha256===pilotHash;
+    const suggest=scoped?openRouterReviewSuggest(env,fetchImpl):undefined;
     const shadow=await groupReviewIssues(issues,suggest);
     if(shadow&&shadow.group_count<shadow.original_count)finalData.review_groups=shadow.groups;
     const saved=await rpc('final',finalData);
