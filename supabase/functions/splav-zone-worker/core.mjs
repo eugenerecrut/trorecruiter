@@ -1,5 +1,6 @@
 import {readBoundedPDF} from '../_shared/pdf-raster.js';
 import {renderPDFZone} from '../_shared/pdf-zone-raster.mjs';
+import {groupReviewIssues,openRouterReviewSuggest} from '../_shared/case-review-shadow.mjs';
 const json=(status,value)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const base64=bytes=>{let out='';for(let i=0;i<bytes.length;i+=8192)out+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(out);};
@@ -88,8 +89,9 @@ export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck
     const saved=await rpc('final',finalData);
     // Queue exhaustion is not proof of a complete report. Use the persisted verdict.
     const confirmed=saved?.status==='complete'||saved?.status==='complete_with_gaps';
+    const shadow=confirmed?await groupReviewIssues(finalData.crosscheck?.issues,openRouterReviewSuggest(env,fetchImpl)):null;
     return json(200,{state:saved?.status==='complete'?'finished':'needs_review',
-     report_status:confirmed?saved.status:'unconfirmed'});
+     report_status:confirmed?saved.status:'unconfirmed',...(shadow?{review_shadow:shadow}:{})});
    }
    await rpc('yield');return json(200,{state:'queued'});
   }catch{

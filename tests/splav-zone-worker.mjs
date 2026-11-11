@@ -30,10 +30,11 @@ async function fixture(options={}){
  const heap=new Float32Array(32),put=values=>heap.set(values,4),module={HEAPF32:heap,wasmExports:{malloc:()=>16,free(){}},_FPDFPage_GetRotation:()=>0,_FPDFPage_GetAnnotCount:()=>0,
   _FPDFPage_GetMediaBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPage_GetCropBox:()=>{put([0,0,1800,100]);return 1;},_FPDFPageObj_GetBounds:i=>{put([100,80-i*(options.splitNative?30:15),500,90-i*(options.splitNative?30:15)]);return 1;}};
  const native=options.native?{module,pageIdx:1,getObjectCount:()=>options.graphics?4:3,getObject:i=>({type:options.graphics&&i===3?'path':'text',objectIdx:i,getText:()=> 'Synthetic native paragraph containing enough characters.'})}:{};
- const dependencies={planner,crosscheck:options.crosscheck,env:key=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public'})[key],createClient:(_url,key,opts)=>{assert.equal(key,'public');assert.equal(opts.global.headers.Authorization,'Bearer processor');return client;},
+ const dependencies={planner,crosscheck:options.crosscheck,env:key=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public',...options.env})[key],createClient:(_url,key,opts)=>{assert.equal(key,'public');assert.equal(opts.global.headers.Authorization,'Bearer processor');return client;},
  getLibrary:async()=>({loadDocument:async()=>({getPageCount:()=>options.pages??1,destroy(){},getPage:()=>({...native,getOriginalSize:()=>({originalWidth:1800,originalHeight:100}),close(){},render:async({width,height})=>({width,height,data:new Uint8Array(width*height)})})})}),
  fetchImpl:async(url,init)=>{
   if(url.includes('/storage/'))return new Response(bytes,{headers:{'content-length':String(bytes.length)}});
+  if(url==='https://openrouter.ai/api/v1/chat/completions'){calls.push('shadow');return options.shadowFetch?.(init,rpc);}
   assert.equal(url,'https://test.supabase.co/functions/v1/ai-military-zone');
   const body=JSON.parse(init.body);assert.equal(body.job_id,id);assert.equal(body.lease_token,token);assert.equal(body.coordinator_version,context.version);ai.push(body.mode);
   context.in_flight_response={state:'dispatched'};
@@ -118,4 +119,21 @@ test('failed post-zone comparison retries without finalization or another AI ste
 });
 test('continued worker without comparator cannot announce completion',async()=>{
  const f=await fixture({continued:true});await f.invoke();assert.equal((await f.invoke()).status,503);assert(!f.rpc.includes('final'));assert.equal(f.rpc.at(-1),'retry');
+});
+test('optional shadow grouping runs after finalization and cannot change the stored verdict',async()=>{
+ const issues=[{key:'full_name',status:'conflict'},{key:'full_name',status:'needs_review'}];
+ for(const mode of ['off','success','provider-failure']){
+  const f=await fixture({continued:true,finalResult:{status:'complete_with_gaps'},
+   crosscheck:async()=>({status:'needs_review',issues}),
+   env:{SPLAV_REVIEW_SHADOW:mode==='off'?'0':'1',SPLAV_REVIEW_SHADOW_MODEL:'test',OPENROUTER_API_KEY:'test'},
+   shadowFetch:(_init,rpc)=>{assert.equal(rpc.at(-1),'final');
+    return mode==='provider-failure'?new Response(null,{status:503}):Response.json({choices:[{message:{content:'{"groups":[{"items":[0,1],"action":"check_identity"}]}'}}]});
+   }});
+  await f.invoke();const res=await f.invoke(),body=await res.json();
+  assert.equal(res.status,200);assert.equal(body.report_status,'complete_with_gaps');assert.equal(body.state,'needs_review');
+  assert.equal(f.calls.filter(x=>x==='shadow').length,mode==='off'?0:1);
+  assert.equal(body.review_shadow?.group_count,mode==='success'?1:undefined);
+  assert.deepEqual(f.rpcPayloads.at(-1).p_data,{crosscheck:{status:'needs_review',issues}});
+  assert(!f.rpc.includes('retry'));
+ }
 });
