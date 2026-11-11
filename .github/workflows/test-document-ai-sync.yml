@@ -58,5 +58,7 @@ jobs:
         run: node tests/crm-zone-checkpoints-sql.cjs
       - name: Verify delegated zonal worker in isolated PostgreSQL
         run: node tests/crm-zone-worker-sql.cjs
+      - name: Verify saved review grouping in isolated PostgreSQL
+        run: node --test tests/splav-review-groups-postgres.mjs
       - name: Verify retained archive write guard in isolated PostgreSQL
         run: node tests/crm-archive-write-sql.cjs
