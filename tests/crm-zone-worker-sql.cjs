@@ -485,7 +485,23 @@ try{
  await assert.rejects(finalStep('final',{crosscheck:comparison}),/crosscheck required/);checks++;comparison.binding=(await finalStep('load')).crosscheck_binding;
  comparison.issues.push({key:'birth_place',status:'needs_review',source_ids:[id(200)]});
  const groups=[{items:[0,1],action:'compare_sources'}];
- const final=await finalStep('final',{crosscheck:comparison,review_groups:groups});assert.equal(final.status,'complete_with_gaps');checks++;
+ const {createZoneWorker}=await import('../supabase/functions/splav-zone-worker/core.mjs');
+ let modelCalls=0;
+ const worker=createZoneWorker({planner:pilot,env:key=>({SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic',
+  SPLAV_REVIEW_SHADOW:'1',SPLAV_REVIEW_SHADOW_JOB_ID:continued.job_id,SPLAV_REVIEW_SHADOW_MODEL:'synthetic',OPENROUTER_API_KEY:'synthetic'})[key],
+  createClient:()=>({rpc:async(name,p)=>{assert.equal(name,'crm_splav_zone_step');return{data:await call(name,[p.p_job,p.p_token,p.p_operation,p.p_data])};}}),
+  crosscheck:async({context})=>({...comparison,binding:context.crosscheck_binding}),
+  fetchImpl:async(url,request)=>{
+   assert.equal(url,'https://openrouter.ai/api/v1/chat/completions');modelCalls++;
+   assert.deepEqual(JSON.parse(JSON.parse(request.body).messages[1].content),
+    [{i:0,field:'birth_place',kind:'conflict'},{i:1,field:'birth_place',kind:'needs_review'}]);
+   return Response.json({choices:[{message:{content:JSON.stringify({groups})}}]});
+  }});
+ const response=await worker(new Request('https://synthetic.invalid/worker',{method:'POST',headers:{Authorization:'Bearer synthetic'},
+  body:JSON.stringify({job_id:continued.job_id,lease_token:id(203)})}));
+ assert.equal(response.status,200);
+ const final=await response.json();assert.equal(final.report_status,'complete_with_gaps');
+ assert.equal(final.state,'needs_review');assert.equal(modelCalls,1);checks+=4;
  await actor(1);const visible=await call('crm_splav_job_status',[continued.job_id]);
  assert.deepEqual(visible.result.review_shadow,{original_count:2,group_count:1,groups});checks++;
  assert.deepEqual(visible.result.crosscheck.issues,comparison.issues);checks++;
