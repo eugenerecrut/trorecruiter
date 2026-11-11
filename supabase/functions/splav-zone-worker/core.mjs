@@ -4,7 +4,7 @@ import {groupReviewIssues,openRouterReviewSuggest} from '../_shared/case-review-
 const json=(status,value)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const base64=bytes=>{let out='';for(let i=0;i<bytes.length;i+=8192)out+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(out);};
-export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck,fetchImpl=fetch}) {
+export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck,fetchImpl=fetch,log=()=>{}}) {
  let busy=false;
  return async req=>{
   if(req.method!=='POST')return json(405,{error:'Method not allowed'});
@@ -86,12 +86,17 @@ export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck
      if(!fresh.crosscheck_binding||fresh.reports_truncated)throw Error('Fresh crosscheck context unavailable');
      finalData={crosscheck:await crosscheck({client,context:fresh})};
     }
+    const issues=finalData.crosscheck?.issues,suggest=openRouterReviewSuggest(env,fetchImpl);
+    const shadow=await groupReviewIssues(issues,suggest);
+    if(shadow&&shadow.group_count<shadow.original_count)finalData.review_groups=shadow.groups;
     const saved=await rpc('final',finalData);
     // Queue exhaustion is not proof of a complete report. Use the persisted verdict.
     const confirmed=saved?.status==='complete'||saved?.status==='complete_with_gaps';
-    const shadow=confirmed?await groupReviewIssues(finalData.crosscheck?.issues,openRouterReviewSuggest(env,fetchImpl)):null;
+    if(confirmed&&suggest&&issues?.length>=2&&issues.length<=24){
+     try{log({event:'review_shadow',original_count:issues.length,group_count:shadow?.group_count??issues.length,accepted:!!shadow});}catch{/* Diagnostics must not retry finalized work. */}
+    }
     return json(200,{state:saved?.status==='complete'?'finished':'needs_review',
-     report_status:confirmed?saved.status:'unconfirmed',...(shadow?{review_shadow:shadow}:{})});
+     report_status:confirmed?saved.status:'unconfirmed',...(confirmed&&shadow?{review_shadow:shadow}:{})});
    }
    await rpc('yield');return json(200,{state:'queued'});
   }catch{

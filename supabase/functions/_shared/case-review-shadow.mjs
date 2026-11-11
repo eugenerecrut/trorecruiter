@@ -1,6 +1,9 @@
 // Send only enumerated issue metadata. No document text, values or source IDs.
 const fields=new Set(['full_name','birth_date','birth_place','rnokpp','education_records','work_records','military_service','relatives','document']);
 const actions=new Set(['check_identity','compare_sources','check_dates','review_document']);
+// A single document may describe multiple relatives, degrees, or work periods.
+// Until the server report carries stable entity IDs, keep those questions separate.
+const groupable=new Set(['full_name','birth_date','birth_place','rnokpp']);
 export async function groupReviewIssues(issues, suggest) {
  if(!Array.isArray(issues)||issues.length<2||issues.length>24||typeof suggest!=='function')return null;
  const input=issues.map((issue,i)=>({i,field:fields.has(issue.key)?issue.key:'other',kind:issue.status==='conflict'?'conflict':'needs_review'}));
@@ -19,7 +22,7 @@ export async function groupReviewIssues(issues, suggest) {
    if(group.items.length>1){
     const [first,...rest]=group.items,field=input[first].field;
     const sources=i=>Array.isArray(issues[i].source_ids)?issues[i].source_ids:[];
-    if(field==='other'||rest.some(i=>input[i].field!==field)||
+    if(!groupable.has(field)||rest.some(i=>input[i].field!==field)||
      !sources(first).some(id=>typeof id==='string'&&id&&rest.every(i=>sources(i).includes(id))))return null;
    }
   }

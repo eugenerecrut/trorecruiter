@@ -39,3 +39,9 @@ test('same field cannot merge issues without one common source across the group'
  const separate=[['a'],['a','b'],['b']].map(source_ids=>({key:'full_name',status:'conflict',source_ids}));
  assert.equal(await groupReviewIssues(separate,async()=>[{items:[0,1,2],action:'check_identity'}]),null);
 });
+test('a common file does not equate distinct relatives or work periods',async()=>{
+ for(const key of ['relatives','work_records','education_records']){
+  const rows=[0,1].map(()=>({key,status:'conflict',source_ids:['shared']}));
+  assert.equal(await groupReviewIssues(rows,async()=>[{items:[0,1],action:'compare_sources'}]),null);
+ }
+});
