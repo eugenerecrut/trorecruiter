@@ -14,6 +14,14 @@ export async function groupReviewIssues(issues, suggest) {
     if(!Number.isInteger(i)||i<0||i>=issues.length||seen.has(i))return null;
     seen.add(i);
    }
+   // Require a known field and at least one source common to the entire group.
+   // Source IDs stay in the worker; the model receives only issue metadata.
+   if(group.items.length>1){
+    const [first,...rest]=group.items,field=input[first].field;
+    const sources=i=>Array.isArray(issues[i].source_ids)?issues[i].source_ids:[];
+    if(field==='other'||rest.some(i=>input[i].field!==field)||
+     !sources(first).some(id=>typeof id==='string'&&id&&rest.every(i=>sources(i).includes(id))))return null;
+   }
   }
   if(seen.size!==issues.length)return null;
   return {original_count:issues.length,group_count:groups.length,groups};

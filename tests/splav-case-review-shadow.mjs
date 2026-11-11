@@ -4,7 +4,7 @@ import {groupReviewIssues,openRouterReviewSuggest} from '../supabase/functions/_
 
 const issues=[
  {key:'full_name',status:'conflict',source_ids:['private-source']},
- {key:'full_name',status:'needs_review',value:'private-name'},
+ {key:'full_name',status:'needs_review',value:'private-name',source_ids:['private-source']},
  {key:'birth_date',status:'conflict'}
 ];
 const groups=[{items:[0,1],action:'check_identity'},{items:[2],action:'check_dates'}];
@@ -31,4 +31,11 @@ test('provider is opt-in and request only carries the allowed metadata',async()=
   return Response.json({choices:[{message:{content:JSON.stringify({groups})}}]});
  });
  assert.equal((await groupReviewIssues(issues,suggest)).group_count,2);
+});
+test('model cannot merge questions about different fields',async()=>{
+ assert.equal(await groupReviewIssues(issues,async()=>[{items:[0,2],action:'check_identity'},{items:[1],action:'compare_sources'}]),null);
+});
+test('same field cannot merge issues without one common source across the group',async()=>{
+ const separate=[['a'],['a','b'],['b']].map(source_ids=>({key:'full_name',status:'conflict',source_ids}));
+ assert.equal(await groupReviewIssues(separate,async()=>[{items:[0,1,2],action:'check_identity'}]),null);
 });

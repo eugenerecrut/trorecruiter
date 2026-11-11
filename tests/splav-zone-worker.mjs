@@ -121,7 +121,7 @@ test('continued worker without comparator cannot announce completion',async()=>{
  const f=await fixture({continued:true});await f.invoke();assert.equal((await f.invoke()).status,503);assert(!f.rpc.includes('final'));assert.equal(f.rpc.at(-1),'retry');
 });
 test('optional shadow grouping runs after finalization and cannot change the stored verdict',async()=>{
- const issues=[{key:'full_name',status:'conflict'},{key:'full_name',status:'needs_review'}];
+ const issues=[{key:'full_name',status:'conflict',source_ids:[doc]},{key:'full_name',status:'needs_review',source_ids:[doc]}];
  for(const mode of ['off','success','provider-failure']){
   const f=await fixture({continued:true,finalResult:{status:'complete_with_gaps'},
    crosscheck:async()=>({status:'needs_review',issues}),
