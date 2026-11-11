@@ -122,19 +122,21 @@ test('continued worker without comparator cannot announce completion',async()=>{
 });
 test('optional review groups travel with finalization and cannot change the verdict',async()=>{
  const issues=[{key:'full_name',status:'conflict',source_ids:[doc]},{key:'full_name',status:'needs_review',source_ids:[doc]}];
- for(const mode of ['off','success','provider-failure']){
+ for(const mode of ['off','other-job','unscoped','success','provider-failure']){
   const logs=[];
+  const enabled=mode==='success'||mode==='provider-failure';
   const f=await fixture({continued:true,finalResult:{status:'complete_with_gaps'},log:event=>{logs.push(event);throw Error('logger unavailable');},
    crosscheck:async()=>({status:'needs_review',issues}),
-   env:{SPLAV_REVIEW_SHADOW:mode==='off'?'0':'1',SPLAV_REVIEW_SHADOW_MODEL:'test',OPENROUTER_API_KEY:'test'},
+   env:{SPLAV_REVIEW_SHADOW:mode==='off'?'0':'1',SPLAV_REVIEW_SHADOW_MODEL:'test',OPENROUTER_API_KEY:'test',
+    SPLAV_REVIEW_SHADOW_JOB_ID:mode==='other-job'?token:mode==='unscoped'?undefined:id},
    shadowFetch:(_init,rpc)=>{assert.equal(rpc.at(-1),'load');
     return mode==='provider-failure'?new Response(null,{status:503}):Response.json({choices:[{message:{content:'{"groups":[{"items":[0,1],"action":"check_identity"}]}'}}]});
    }});
   await f.invoke();const res=await f.invoke(),body=await res.json();
   assert.equal(res.status,200);assert.equal(body.report_status,'complete_with_gaps');assert.equal(body.state,'needs_review');
-  assert.equal(f.calls.filter(x=>x==='shadow').length,mode==='off'?0:1);
+  assert.equal(f.calls.filter(x=>x==='shadow').length,enabled?1:0);
   assert.equal(body.review_shadow?.group_count,mode==='success'?1:undefined);
-  assert.deepEqual(logs,mode==='off'?[]:[{event:'review_shadow',original_count:2,group_count:mode==='success'?1:2,accepted:mode==='success'}]);
+  assert.deepEqual(logs,enabled?[{event:'review_shadow',original_count:2,group_count:mode==='success'?1:2,accepted:mode==='success'}]:[]);
   assert.deepEqual(f.rpcPayloads.at(-1).p_data,{crosscheck:{status:'needs_review',issues},
    ...(mode==='success'?{review_groups:[{items:[0,1],action:'check_identity'}]}:{})});
   assert(!f.rpc.includes('retry'));

@@ -86,7 +86,9 @@ export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck
      if(!fresh.crosscheck_binding||fresh.reports_truncated)throw Error('Fresh crosscheck context unavailable');
      finalData={crosscheck:await crosscheck({client,context:fresh})};
     }
-    const issues=finalData.crosscheck?.issues,suggest=openRouterReviewSuggest(env,fetchImpl);
+    const issues=finalData.crosscheck?.issues,pilotJob=env('SPLAV_REVIEW_SHADOW_JOB_ID');
+    // The optional pilot is bound to the authenticated, leased job, not a candidate or caller flag.
+    const suggest=uuid(pilotJob)&&pilotJob===body.job_id?openRouterReviewSuggest(env,fetchImpl):undefined;
     const shadow=await groupReviewIssues(issues,suggest);
     if(shadow&&shadow.group_count<shadow.original_count)finalData.review_groups=shadow.groups;
     const saved=await rpc('final',finalData);
