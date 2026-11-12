@@ -28,6 +28,15 @@
       const button=document.createElement('button');button.type='button';button.id=id;button.textContent=label;button.disabled=true;
       button.addEventListener('click',()=>task(async()=>{await api({action});await loadWorkerState();await loadUsers();}));panel.append(button);
     }
+    const isolated=document.createElement('button');isolated.type='button';isolated.textContent='Створити ізольований тестовий акаунт';
+    const isolatedStatus=document.createElement('p');isolatedStatus.setAttribute('role','status');
+    isolated.addEventListener('click',()=>task(async()=>{
+      isolatedStatus.textContent='';
+      const result=await api({action:'provision_isolated_splav'});
+      isolatedStatus.textContent=result.message;
+      await loadUsers();
+    }));
+    panel.append(isolated,isolatedStatus);
     byId('users-content').prepend(panel);
     const probe=document.createElement('button');probe.type='button';probe.id='splav-probe';probe.textContent='Перевірити доступ';probe.disabled=true;
     probe.addEventListener('click',()=>task(async()=>{const result=await api({action:'probe_splav'});notice(result.probe?.idle_isolation===true?'СПЛАВ: вхід працює; доступ поза дорученнями й адміністрування заборонені.':'СПЛАВ: службовий вхід і заборона адміністрування перевірені. Перевірку порожньої черги пропущено, оскільки є активне доручення.');}));panel.append(probe);
