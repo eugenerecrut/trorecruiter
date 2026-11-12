@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {createIsolatedStorageReader,createIsolatedStepDispatcher,runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
+import {createIsolatedStorageReader,createIsolatedStepDispatcher,runConfiguredIsolatedStep,runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
 
 const id=n=>'00000000-0000-0000-0000-'+String(n).padStart(12,'0');
 const bytes=new TextEncoder().encode('synthetic fixture');
@@ -55,6 +55,11 @@ test('dispatcher uses only the exact lease on the fixed root and zone endpoints'
   ['https://example.supabase.co/functions/v1/splav-zone-worker',{job_id:scope.jobId,lease_token:lease}],
   ['https://example.supabase.co/functions/v1/process-id-document',{job_id:scope.rootId,lease_token:lease,document_id:scope.documentId}]
  ]);
+});
+test('configured runner rejects a session belonging to any other account',async()=>{
+ const result=await runConfiguredIsolatedStep({scope,authenticate:async()=>({userId:id(9),jwt:'test'}),
+  query:async()=>assert.fail('No database read allowed'),fetchImpl:async()=>assert.fail('No HTTP call allowed')});
+ assert.deepEqual(result,{state:'denied'});
 });
 test('wrong source never executes; missing or expired lease never reads',async()=>{
  for(const extra of [{readSource:async()=>null},{readSource:async()=>new Uint8Array([1])},

@@ -53,7 +53,10 @@ returns uuid language plpgsql volatile set search_path='' as $$
 declare deadline timestamptz; token uuid;
 begin
  if p_executor is null then return null;end if;
- perform 1 from crm_private.splav_isolated_permits where root_job_id=p_root and executor_id=p_executor for update;
+ perform 1 from crm_private.splav_isolated_permits p where p.root_job_id=p_root and p.executor_id=p_executor
+  and not exists(select 1 from crm_private.splav_worker w where w.user_id=p.executor_id)
+  and exists(select 1 from public.crm_staff s where s.user_id=p.executor_id and s.active and s.role='processor')
+  for update;
  if not found then return null;end if;
  perform 1 from crm_private.splav_jobs where id=p_root for update;
  perform 1 from crm_private.splav_jobs where id=p_job for update;

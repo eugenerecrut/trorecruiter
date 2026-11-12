@@ -48,6 +48,17 @@ export function createIsolatedStepDispatcher({projectURL,publicKey,processorJWT,
   return {state:response.ok?'responded':'rejected',status:response.status};
  };
 }
+// Configuration comes from the server, never from a request body. Authenticate
+// the dedicated processor independently before constructing the Storage client.
+export async function runConfiguredIsolatedStep({scope,query,authenticate,projectURL,publicKey,fetchImpl=fetch,now=Date.now}){
+ const fixed=Object.freeze({...scope});
+ if(![fixed.rootId,fixed.jobId,fixed.documentId,fixed.executorId].every(uuid)||!/^[a-f0-9]{64}$/.test(fixed.sha256||''))return {state:'denied'};
+ const session=await authenticate();
+ if(session?.userId!==fixed.executorId||typeof session.jwt!=='string'||!session.jwt)return {state:'denied'};
+ const config={projectURL,publicKey,processorJWT:session.jwt,fetchImpl};
+ return runIsolatedStep({scope:fixed,now,...createIsolatedPermitStore(query),
+  readSource:createIsolatedStorageReader(config),execute:createIsolatedStepDispatcher(config)});
+}
 export async function runIsolatedStep({scope,authorizeSource,readSource,claim,check,execute,now=Date.now}){
  const {rootId,jobId,documentId,executorId,sha256}=scope||{};
  if(![rootId,jobId,documentId,executorId].every(uuid)||!/^[a-f0-9]{64}$/.test(sha256||''))return {state:'denied'};

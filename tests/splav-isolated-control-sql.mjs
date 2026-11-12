@@ -15,11 +15,14 @@ test('migration policy accepts only a current root or its recorded continuation'
  const id=n=>'00000000-0000-0000-0000-'+String(n).padStart(12,'0'),hash=createHash('sha256').update(bytes).digest('hex');
  try{
   await db.exec(`create role anon;create role authenticated;create schema crm_private;
+   create table crm_private.splav_worker(user_id uuid);
+   create table public.crm_staff(user_id uuid,active boolean,role text);
    create table crm_private.splav_jobs(id uuid primary key,kind text,document_id uuid,state text,stage text,
     original_source jsonb,current_source jsonb,result jsonb,
     leased_by uuid,lease_token uuid,lease_until timestamptz,attempts int default 0,updated_at timestamptz);`);
   await db.exec(await readFile(new URL('../supabase/migrations/20261112050343_splav_isolated_permit.sql',import.meta.url),'utf8'));
   const source=JSON.stringify({storage_path:'synthetic.pdf',revision:'original'});
+  await db.query("insert into public.crm_staff values($1,true,'processor')",[id(7)]);
   for(const [job,kind,doc] of [[1,'root',9],[2,'zone',9],[3,'zone',9],[4,'root',8]]){
    await db.query("insert into crm_private.splav_jobs(id,kind,document_id,state,stage,original_source,current_source) values($1,$2,$3,'queued','waiting',$4,$4)",[id(job),kind,id(doc),source]);
   }
@@ -31,6 +34,9 @@ test('migration policy accepts only a current root or its recorded continuation'
   const claim=async(job,executor=7)=>(await db.query('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as token',[id(1),id(job),id(9),hash,id(executor)])).rows[0].token;
   assert.equal(await claim(1,8),null);
   assert.equal(await claim(4),null);
+  await db.query('insert into crm_private.splav_worker values($1)',[id(7)]);
+  assert.equal(await claim(1),null);
+  await db.exec('delete from crm_private.splav_worker');
   const scope={rootId:id(1),jobId:id(1),documentId:id(9),executorId:id(7),sha256:hash};
   let reads=0,steps=0;
   const runner={scope,
