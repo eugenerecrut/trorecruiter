@@ -554,6 +554,20 @@ try{
  await db.query('update public.crm_staff set active=false where user_id=$1',[id(1)]);await actor(2);
  await assert.rejects(call('crm_splav_validate',[authorized.id,id(702)]),/Delegation revoked/);checks++;
  await owner();assert.equal((await db.query("select has_function_privilege('anon','public.crm_splav_enqueue_autopilot(uuid)','EXECUTE') allowed")).rows[0].allowed,false);checks++;
+ await db.exec(file('supabase/migrations/20261112050343_splav_isolated_permit.sql'));
+ await db.exec(file('supabase/migrations/20261112052220_splav_isolated_queue_guards.sql'));
+ await db.query("update public.crm_staff set active=true where user_id=$1",[id(1)]);
+ await db.query(`insert into crm_private.splav_isolated_permits(root_job_id,document_id,executor_id,file_sha256,root_source,expires_at)
+  select id,document_id,$2,$3,original_source,now()+interval '5 minutes' from crm_private.splav_jobs where id=$1`,[authorized.id,id(2),hash]);
+ await actor(2);
+ await assert.rejects(call('crm_splav_claim'),/cannot claim from shared queue/);
+ await assert.rejects(call('crm_splav_zone_claim'),/cannot claim from shared queue/);
+ assert.equal((await call('crm_splav_validate',[authorized.id,id(702)])).document_id,id(701));
+ await assert.rejects(call('crm_splav_validate',[authorized.id,id(999)]),/Isolated SPLAV permit denied/);
+ await assert.rejects(call('crm_splav_zone_step',[continued.job_id,id(203),'load',{}]),/Isolated SPLAV permit denied/);
+ await owner();await db.exec('update crm_private.splav_isolated_permits set closed_at=now()');
+ await actor(2);await assert.rejects(call('crm_splav_validate',[authorized.id,id(702)]),/Isolated SPLAV permit denied/);
+ await assert.rejects(call('crm_splav_claim'),/cannot claim from shared queue/);checks+=7;
  console.log('PASS:',checks,'delegated zonal worker SQL checks;',live?'one local Ollama call.':'no live AI.');
 }finally{await db.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
