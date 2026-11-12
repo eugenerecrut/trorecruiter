@@ -15,7 +15,8 @@ create table crm_private.splav_isolated_permits(
 alter table crm_private.splav_isolated_permits enable row level security;
 revoke all on crm_private.splav_isolated_permits from public,anon,authenticated;
 
--- The caller must supply the digest computed from the actual file bytes.
+-- Compare the scope to the configured digest. The runner verifies the
+-- actual bytes after the scoped lease enables Storage and before execution.
 -- A positive answer is a deadline, not a lease or authentication credential.
 create function crm_private.splav_isolated_deadline(p_root uuid,p_job uuid,p_document uuid,p_verified_sha256 text)
 returns timestamptz language sql volatile set search_path='' as $$
@@ -32,6 +33,18 @@ returns timestamptz language sql volatile set search_path='' as $$
      and root.result#>>'{continuation,job_id}'=j.id::text))
 $$;
 revoke all on function crm_private.splav_isolated_deadline(uuid,uuid,uuid,text) from public,anon,authenticated;
+
+-- Private source authorization for the runner, before opening Storage.
+-- Its caller authenticates the executor; the response never contains a signed URL.
+create function crm_private.splav_isolated_source(
+ p_root uuid,p_job uuid,p_document uuid,p_expected_sha256 text,p_executor uuid
+) returns jsonb language sql volatile set search_path='' as $$
+ select jsonb_build_object('path',p.root_source->>'storage_path','deadline',scope.deadline)
+ from crm_private.splav_isolated_permits p
+ cross join lateral (select crm_private.splav_isolated_deadline(p_root,p_job,p_document,p_expected_sha256) deadline) scope
+ where p.root_job_id=p_root and p.executor_id=p_executor and scope.deadline>clock_timestamp()
+$$;
+revoke all on function crm_private.splav_isolated_source(uuid,uuid,uuid,text,uuid) from public,anon,authenticated;
 
 -- Private primitive: the future runner must authenticate the executor before
 -- passing p_executor. This is intentionally not callable through a public RPC.

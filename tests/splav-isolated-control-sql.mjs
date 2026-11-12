@@ -35,9 +35,8 @@ test('migration policy accepts only a current root or its recorded continuation'
   const args=s=>[s.rootId,s.jobId,s.documentId,s.sha256];
   let reads=0,steps=0;
   const runner={scope,
-   authorizeSource:async s=>(await db.query(`select crm_private.splav_isolated_deadline($1,$2,$3,$4)::text as value
-    where exists(select 1 from crm_private.splav_isolated_permits where root_job_id=$1 and executor_id=$5)`,[...args(s),s.executorId])).rows[0]?.value,
-   readSource:async(_s,signal)=>{assert(!signal.aborted);reads++;return bytes;},
+   authorizeSource:async s=>(await db.query('select crm_private.splav_isolated_source($1,$2,$3,$4,$5) as value',[...args(s),s.executorId])).rows[0]?.value,
+   readSource:async(path,signal)=>{assert.equal(path,'synthetic.pdf');assert(!signal.aborted);reads++;return bytes;},
    claim:async s=>(await db.query('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as value',[...args(s),s.executorId])).rows[0].value,
    check:async s=>(await db.query('select crm_private.splav_isolated_step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...args(s),s.executorId,s.lease])).rows[0].value,
    execute:async ({signal})=>{assert(!signal.aborted);steps++;return {state:'synthetic_step'};}
@@ -79,6 +78,7 @@ test('migration policy accepts only a current root or its recorded continuation'
   assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.splav_isolated_deadline(uuid,uuid,uuid,text)','execute') as allowed")).rows[0].allowed,false);
   assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.splav_isolated_claim(uuid,uuid,uuid,text,uuid)','execute') as allowed")).rows[0].allowed,false);
   assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.splav_isolated_step_deadline(uuid,uuid,uuid,text,uuid,uuid)','execute') as allowed")).rows[0].allowed,false);
+  assert.equal((await db.query("select has_function_privilege('authenticated','crm_private.splav_isolated_source(uuid,uuid,uuid,text,uuid)','execute') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });
 
