@@ -3,13 +3,16 @@ import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
 
 test('migration policy accepts only a current root or its recorded continuation',async()=>{
  const require=createRequire(new URL('./sql-runtime/package.json',import.meta.url));
  const path=process.env.SPLAV_PGLITE_MODULE;
  const {PGlite}=path?await import(pathToFileURL(path).href):require('@electric-sql/pglite');
  const db=new PGlite();
- const id=n=>'00000000-0000-0000-0000-'+String(n).padStart(12,'0'),hash='a'.repeat(64);
+ const bytes=new TextEncoder().encode('isolated synthetic PDF bytes');
+ const id=n=>'00000000-0000-0000-0000-'+String(n).padStart(12,'0'),hash=createHash('sha256').update(bytes).digest('hex');
  try{
   await db.exec(`create role anon;create role authenticated;create schema crm_private;
    create table crm_private.splav_jobs(id uuid primary key,kind text,document_id uuid,state text,stage text,
@@ -28,7 +31,21 @@ test('migration policy accepts only a current root or its recorded continuation'
   const claim=async(job,executor=7)=>(await db.query('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as token',[id(1),id(job),id(9),hash,id(executor)])).rows[0].token;
   assert.equal(await claim(1,8),null);
   assert.equal(await claim(4),null);
-  assert.match(await claim(1),/^[a-f0-9-]{36}$/);
+  const scope={rootId:id(1),jobId:id(1),documentId:id(9),executorId:id(7),sha256:hash};
+  const args=s=>[s.rootId,s.jobId,s.documentId,s.sha256];
+  let reads=0,steps=0;
+  const runner={scope,
+   authorizeSource:async s=>(await db.query(`select crm_private.splav_isolated_deadline($1,$2,$3,$4)::text as value
+    where exists(select 1 from crm_private.splav_isolated_permits where root_job_id=$1 and executor_id=$5)`,[...args(s),s.executorId])).rows[0]?.value,
+   readSource:async(_s,signal)=>{assert(!signal.aborted);reads++;return bytes;},
+   claim:async s=>(await db.query('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as value',[...args(s),s.executorId])).rows[0].value,
+   check:async s=>(await db.query('select crm_private.splav_isolated_step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...args(s),s.executorId,s.lease])).rows[0].value,
+   execute:async ({signal})=>{assert(!signal.aborted);steps++;return {state:'synthetic_step'};}
+  };
+  assert.deepEqual(await runIsolatedStep({...runner,scope:{...scope,jobId:id(4)}}),{state:'denied'});
+  assert.equal(reads,0);
+  assert.deepEqual(await runIsolatedStep(runner),{state:'synthetic_step'});
+  assert.equal(reads,1);assert.equal(steps,1);
   assert.equal(await claim(1),null);
   await db.query("update crm_private.splav_jobs set stage='finished',state='completed',result=$2 where id=$1",[id(1),JSON.stringify({continuation:{job_id:id(2)}})]);
   assert.equal(await allowed(1),false);
@@ -52,6 +69,8 @@ test('migration policy accepts only a current root or its recorded continuation'
    from crm_private.splav_jobs j cross join crm_private.splav_isolated_permits p
    where j.state='running'`)).rows,[{attempts:1,bounded:true}]);
   await db.exec('update crm_private.splav_isolated_permits set closed_at=now()');
+  assert.deepEqual(await runIsolatedStep({...runner,scope:{...scope,jobId:id(2)}}),{state:'denied'});
+  assert.equal(reads,1);assert.equal(steps,1);
   assert.equal(await allowed(2),false);
   assert.equal(await step(),false);
   await db.exec("update crm_private.splav_isolated_permits set closed_at=null,created_at=now()-interval '2 minutes',expires_at=now()-interval '1 minute'");
