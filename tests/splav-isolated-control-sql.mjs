@@ -4,14 +4,14 @@ import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {createIsolatedPermitStore,runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
+import {advanceConfiguredIsolatedRun,createIsolatedPermitStore,runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
 
 test('migration policy accepts only a current root or its recorded continuation',async()=>{
  const require=createRequire(new URL('./sql-runtime/package.json',import.meta.url));
  const path=process.env.SPLAV_PGLITE_MODULE;
  const {PGlite}=path?await import(pathToFileURL(path).href):require('@electric-sql/pglite');
  const db=new PGlite();
- const bytes=new TextEncoder().encode('isolated synthetic PDF bytes');
+ const bytes=new TextEncoder().encode('%PDF-isolated synthetic bytes');
  const id=n=>'00000000-0000-0000-0000-'+String(n).padStart(12,'0'),hash=createHash('sha256').update(bytes).digest('hex');
  try{
   await db.exec(`create role anon;create role authenticated;create schema crm_private;
@@ -38,6 +38,10 @@ test('migration policy accepts only a current root or its recorded continuation'
   assert.equal(await claim(1),null);
   await db.exec('delete from crm_private.splav_worker');
   const scope={rootId:id(1),jobId:id(1),documentId:id(9),executorId:id(7),sha256:hash};
+  const store=createIsolatedPermitStore(db.query.bind(db));
+  assert.deepEqual(await store.next(scope),{job_id:id(1),state:'queued'});
+  assert.equal(await store.closeTerminal(scope),false);
+  assert.equal(await store.next({...scope,executorId:id(8)}),null);
   let reads=0,steps=0;
   const runner={scope,
    ...createIsolatedPermitStore(db.query.bind(db)),
@@ -46,12 +50,23 @@ test('migration policy accepts only a current root or its recorded continuation'
   };
   assert.deepEqual(await runIsolatedStep({...runner,scope:{...scope,jobId:id(4)}}),{state:'denied'});
   assert.equal(reads,0);
-  assert.deepEqual(await runIsolatedStep(runner),{state:'synthetic_step'});
+  const configured={scope,query:db.query.bind(db),authenticate:async()=>({userId:id(7),jwt:'synthetic'}),
+   projectURL:'https://example.supabase.co',publicKey:'synthetic',
+   fetchImpl:async(url,request)=>{
+    if(url.endsWith('/storage/v1/object/authenticated/candidate-documents/synthetic.pdf')){
+     assert.equal(request.headers.Authorization,'Bearer synthetic');reads++;return new Response(bytes);
+    }
+    assert.equal(url,'https://example.supabase.co/functions/v1/process-id-document');
+    assert.equal(JSON.parse(request.body).job_id,id(1));steps++;return new Response(null,{status:200});
+   }};
+  assert.deepEqual(await advanceConfiguredIsolatedRun(configured),{state:'responded',status:200,closed:false});
   assert.equal(reads,1);assert.equal(steps,1);
+  assert.deepEqual(await advanceConfiguredIsolatedRun(configured),{state:'running'});
   assert.equal(await claim(1),null);
   await db.query("update crm_private.splav_jobs set stage='finished',state='completed',result=$2 where id=$1",[id(1),JSON.stringify({continuation:{job_id:id(2)}})]);
   assert.equal(await allowed(1),false);
   assert.equal(await allowed(2),true);
+  assert.deepEqual(await store.next(scope),{job_id:id(2),state:'queued'});
   assert.equal(await allowed(3),false);
   assert.equal(await allowed(4),false);
   await db.query('update crm_private.splav_jobs set current_source=$2 where id=$1',[id(2),JSON.stringify({storage_path:'replacement.pdf'})]);
@@ -70,7 +85,11 @@ test('migration policy accepts only a current root or its recorded continuation'
   assert.deepEqual((await db.query(`select j.attempts,j.lease_until<=p.expires_at as bounded
    from crm_private.splav_jobs j cross join crm_private.splav_isolated_permits p
    where j.state='running'`)).rows,[{attempts:1,bounded:true}]);
-  await db.exec('update crm_private.splav_isolated_permits set closed_at=now()');
+  assert.equal(await store.closeTerminal(scope),false);
+  await db.query("update crm_private.splav_jobs set state='completed' where id=$1",[id(2)]);
+  assert.deepEqual(await advanceConfiguredIsolatedRun(configured),{state:'closed'});
+  assert.equal(await store.next(scope),null);
+  assert.equal(await store.closeTerminal(scope),false);
   assert.deepEqual(await runIsolatedStep({...runner,scope:{...scope,jobId:id(2)}}),{state:'denied'});
   assert.equal(reads,1);assert.equal(steps,1);
   assert.equal(await allowed(2),false);

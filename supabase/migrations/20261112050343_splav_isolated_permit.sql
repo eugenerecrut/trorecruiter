@@ -86,4 +86,34 @@ create function crm_private.splav_isolated_step_deadline(
  and j.lease_until>clock_timestamp() and scope.deadline>clock_timestamp()
 $$;
 revoke all on function crm_private.splav_isolated_step_deadline(uuid,uuid,uuid,text,uuid,uuid) from public,anon,authenticated;
+
+-- Return only the bound root or its recorded continuation. Never scan for
+-- available jobs. A running, expired or closed run is not retried here.
+create function crm_private.splav_isolated_next(p_root uuid,p_document uuid,p_sha text,p_executor uuid)
+returns jsonb language sql volatile set search_path='' as $$
+ select jsonb_build_object('job_id',j.id,'state',j.state)
+ from crm_private.splav_isolated_permits p
+ join crm_private.splav_jobs r on r.id=p.root_job_id and r.kind='root'
+ join crm_private.splav_jobs j on j.id::text=case when r.stage='finished'
+    then coalesce(r.result#>>'{continuation,job_id}',r.id::text) else r.id::text end
+ where p.root_job_id=p_root and p.document_id=p_document and p.file_sha256=p_sha and p.executor_id=p_executor
+ and p.closed_at is null and p.expires_at>clock_timestamp()
+ and r.document_id=p.document_id and j.document_id=p.document_id and r.original_source=p.root_source
+ and j.current_source->>'storage_path'=p.root_source->>'storage_path'
+ and (j.id=r.id or j.kind='zone')
+$$;
+revoke all on function crm_private.splav_isolated_next(uuid,uuid,text,uuid) from public,anon,authenticated;
+
+create function crm_private.splav_isolated_close_terminal(p_root uuid,p_document uuid,p_sha text,p_executor uuid)
+returns boolean language sql volatile set search_path='' as $$
+ with closed as (
+  update crm_private.splav_isolated_permits p set closed_at=clock_timestamp()
+  where p.root_job_id=p_root and p.document_id=p_document and p.file_sha256=p_sha and p.executor_id=p_executor
+  and p.closed_at is null and (
+   p.expires_at<=clock_timestamp() or
+   crm_private.splav_isolated_next(p_root,p_document,p_sha,p_executor)->>'state' in ('completed','needs_review','uncertain','superseded','cancelled')
+  ) returning 1
+ ) select exists(select 1 from closed)
+$$;
+revoke all on function crm_private.splav_isolated_close_terminal(uuid,uuid,text,uuid) from public,anon,authenticated;
 commit;

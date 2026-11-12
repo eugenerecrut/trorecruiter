@@ -10,11 +10,14 @@ const validPath=path=>typeof path==='string'&&!!path&&!/[\\:?#%\x00-\x1f]/.test(
 export function createIsolatedPermitStore(query){
  if(typeof query!=='function')throw Error('Server database query required');
  const params=s=>[s.rootId,s.jobId,s.documentId,s.sha256,s.executorId];
+ const runParams=s=>[s.rootId,s.documentId,s.sha256,s.executorId];
  const value=async(sql,args)=>(await query(sql,args)).rows[0]?.value??null;
  return {
   authorizeSource:s=>value('select crm_private.splav_isolated_source($1,$2,$3,$4,$5) as value',params(s)),
   claim:s=>value('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as value',params(s)),
-  check:s=>value('select crm_private.splav_isolated_step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...params(s),s.lease])
+  check:s=>value('select crm_private.splav_isolated_step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...params(s),s.lease]),
+  next:s=>value('select crm_private.splav_isolated_next($1,$2,$3,$4) as value',runParams(s)),
+  closeTerminal:s=>value('select crm_private.splav_isolated_close_terminal($1,$2,$3,$4) as value',runParams(s))
  };
 }
 export function createIsolatedStorageReader({projectURL,publicKey,processorJWT,fetchImpl=fetch}){
@@ -58,6 +61,18 @@ export async function runConfiguredIsolatedStep({scope,query,authenticate,projec
  const config={projectURL,publicKey,processorJWT:session.jwt,fetchImpl};
  return runIsolatedStep({scope:fixed,now,...createIsolatedPermitStore(query),
   readSource:createIsolatedStorageReader(config),execute:createIsolatedStepDispatcher(config)});
+}
+// Single invocation takes at most one step. A running job is never stolen.
+export async function advanceConfiguredIsolatedRun(config){
+ const fixed=Object.freeze({...config.scope});
+ if(![fixed.rootId,fixed.documentId,fixed.executorId].every(uuid)||!/^[a-f0-9]{64}$/.test(fixed.sha256||''))return {state:'denied'};
+ const store=createIsolatedPermitStore(config.query),next=await store.next(fixed);
+ if(next?.state!=='queued'){
+  const closed=await store.closeTerminal(fixed);
+  return {state:closed?'closed':next?.state==='running'?'running':'denied'};
+ }
+ const result=await runConfiguredIsolatedStep({...config,scope:{...fixed,jobId:next.job_id}});
+ return {...result,closed:await store.closeTerminal(fixed)};
 }
 export async function runIsolatedStep({scope,authorizeSource,readSource,claim,check,execute,now=Date.now}){
  const {rootId,jobId,documentId,executorId,sha256}=scope||{};
