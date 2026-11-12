@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {createIsolatedStorageReader,runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
+import {createIsolatedStorageReader,createIsolatedStepDispatcher,runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
 
 const id=n=>'00000000-0000-0000-0000-'+String(n).padStart(12,'0');
 const bytes=new TextEncoder().encode('synthetic fixture');
@@ -41,6 +41,20 @@ test('Storage reader uses fixed private bucket and rejects unsafe paths without 
   assert.equal(await reader(path,signal),null);
  assert.equal(new TextDecoder().decode(await reader('test/synthetic.pdf',signal)),'%PDF-synthetic');
  assert.equal(count,1);
+});
+test('dispatcher uses only the exact lease on the fixed root and zone endpoints',async()=>{
+ const calls=[];
+ const dispatch=createIsolatedStepDispatcher({projectURL:'https://example.supabase.co',publicKey:'public',processorJWT:'test',
+  fetchImpl:async(url,o)=>{calls.push([url,JSON.parse(o.body)]);assert.equal(o.redirect,'error');return new Response(null,{status:202});}});
+ const signal=new AbortController().signal,lease=id(5);
+ assert.deepEqual(await dispatch({scope,lease,signal}),{state:'responded',status:202});
+ assert.deepEqual(await dispatch({scope:{...scope,jobId:scope.rootId},lease,signal}),{state:'responded',status:202});
+ assert.deepEqual(await dispatch({scope,lease:'invalid',signal}),{state:'denied'});
+ assert.deepEqual(await dispatch({scope,lease,signal:AbortSignal.abort()}),{state:'denied'});
+ assert.deepEqual(calls,[
+  ['https://example.supabase.co/functions/v1/splav-zone-worker',{job_id:scope.jobId,lease_token:lease}],
+  ['https://example.supabase.co/functions/v1/process-id-document',{job_id:scope.rootId,lease_token:lease,document_id:scope.documentId}]
+ ]);
 });
 test('wrong source never executes; missing or expired lease never reads',async()=>{
  for(const extra of [{readSource:async()=>null},{readSource:async()=>new Uint8Array([1])},

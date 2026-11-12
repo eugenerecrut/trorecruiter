@@ -29,6 +29,25 @@ export function createIsolatedStorageReader({projectURL,publicKey,processorJWT,f
   return readBoundedPDF(response.body,response.headers.get('content-length'));
  };
 }
+// Dispatch the already leased job directly. This never calls the scheduler or
+// a generic claim endpoint. The target must still enforce the permit server-side.
+export function createIsolatedStepDispatcher({projectURL,publicKey,processorJWT,fetchImpl=fetch}){
+ const project=new URL(projectURL);
+ if(project.protocol!=='https:'||project.username||project.password||project.pathname!=='/'||project.search||project.hash||
+  !publicKey||!processorJWT)throw Error('Invalid isolated dispatch configuration');
+ return async({scope,lease,signal})=>{
+  const {rootId,jobId,documentId}=scope||{};
+  if(![rootId,jobId,documentId,lease].every(uuid)||!signal||signal.aborted)return {state:'denied'};
+  const root=jobId===rootId;
+  const response=await fetchImpl(project.origin+'/functions/v1/'+(root?'process-id-document':'splav-zone-worker'),{
+   method:'POST',redirect:'error',signal,
+   headers:{'Content-Type':'application/json',apikey:publicKey,Authorization:'Bearer '+processorJWT},
+   body:JSON.stringify({job_id:jobId,lease_token:lease,...(root?{document_id:documentId}:{})})
+  });
+  await response.body?.cancel();
+  return {state:response.ok?'responded':'rejected',status:response.status};
+ };
+}
 export async function runIsolatedStep({scope,authorizeSource,readSource,claim,check,execute,now=Date.now}){
  const {rootId,jobId,documentId,executorId,sha256}=scope||{};
  if(![rootId,jobId,documentId,executorId].every(uuid)||!/^[a-f0-9]{64}$/.test(sha256||''))return {state:'denied'};
