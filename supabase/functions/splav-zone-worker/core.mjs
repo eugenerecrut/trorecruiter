@@ -1,4 +1,4 @@
-import {readBoundedPDF} from '../_shared/pdf-raster.js';
+import {createIsolatedStorageReader} from '../_shared/splav-isolated-runner.mjs';
 import {renderPDFZone} from '../_shared/pdf-zone-raster.mjs';
 import {groupReviewIssues,openRouterReviewSuggest} from '../_shared/case-review-shadow.mjs';
 const json=(status,value)=>Response.json(value,{status,headers:{'Cache-Control':'no-store'}});
@@ -37,13 +37,9 @@ export function createZoneWorker({createClient,env,getLibrary,planner,crosscheck
     read:async task=>{let dispatched=false;
      try{
       if(context.native_only===true&&task.mode!=='overview'){structuralFailure=true;throw Error('Native canary permits overview only');}
-      const signed=await client.storage.from('candidate-documents').createSignedUrl(context.document.storage_path,120);
-      if(signed.error||!signed.data?.signedUrl)throw Error('Source unavailable');
-      const target=new URL(signed.data.signedUrl),backend=new URL(url);
-      if(target.origin!==backend.origin||!target.pathname.startsWith('/storage/v1/object/sign/candidate-documents/'))throw Error('Unexpected source destination');
-      const original=await fetchImpl(target.href,{signal:AbortSignal.timeout(30000),redirect:'error'});
-      if(!original.ok)throw Error('Source unavailable');
-      const bytes=await readBoundedPDF(original.body,original.headers.get('content-length'));
+      const readSource=createIsolatedStorageReader({projectURL:url,publicKey:key,processorJWT:authorization.slice(7),fetchImpl});
+      const bytes=await readSource(context.document.storage_path,AbortSignal.timeout(30000));
+      if(!bytes)throw Error('Source unavailable');
       const rendered=await renderPDFZone({bytes,page:task.page,mode:task.mode,box:task.box,
        expected_sha256:context.source.file_sha256,getLibrary});
       if(rendered.metrics.pages!==state.snapshot().pages){structuralFailure=true;throw Error('Source page count changed');}
