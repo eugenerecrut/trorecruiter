@@ -5,6 +5,18 @@ const hex=bytes=>Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'
 const MAX_BYTES=20_000_000;
 const validPath=path=>typeof path==='string'&&!!path&&!/[\\:?#%\x00-\x1f]/.test(path)&&
  !path.split('/').some(p=>!p||p==='.'||p==='..');
+// Use only a trusted server-side database connection. Never expose these
+// statements as browser RPCs or accept an executor identity from a request.
+export function createIsolatedPermitStore(query){
+ if(typeof query!=='function')throw Error('Server database query required');
+ const params=s=>[s.rootId,s.jobId,s.documentId,s.sha256,s.executorId];
+ const value=async(sql,args)=>(await query(sql,args)).rows[0]?.value??null;
+ return {
+  authorizeSource:s=>value('select crm_private.splav_isolated_source($1,$2,$3,$4,$5) as value',params(s)),
+  claim:s=>value('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as value',params(s)),
+  check:s=>value('select crm_private.splav_isolated_step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...params(s),s.lease])
+ };
+}
 export function createIsolatedStorageReader({projectURL,publicKey,processorJWT,fetchImpl=fetch}){
  const project=new URL(projectURL);
  if(project.protocol!=='https:'||project.username||project.password||project.pathname!=='/'||project.search||project.hash||

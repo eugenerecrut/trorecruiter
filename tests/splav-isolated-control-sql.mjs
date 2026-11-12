@@ -4,7 +4,7 @@ import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
+import {createIsolatedPermitStore,runIsolatedStep} from '../supabase/functions/_shared/splav-isolated-runner.mjs';
 
 test('migration policy accepts only a current root or its recorded continuation',async()=>{
  const require=createRequire(new URL('./sql-runtime/package.json',import.meta.url));
@@ -32,13 +32,10 @@ test('migration policy accepts only a current root or its recorded continuation'
   assert.equal(await claim(1,8),null);
   assert.equal(await claim(4),null);
   const scope={rootId:id(1),jobId:id(1),documentId:id(9),executorId:id(7),sha256:hash};
-  const args=s=>[s.rootId,s.jobId,s.documentId,s.sha256];
   let reads=0,steps=0;
   const runner={scope,
-   authorizeSource:async s=>(await db.query('select crm_private.splav_isolated_source($1,$2,$3,$4,$5) as value',[...args(s),s.executorId])).rows[0]?.value,
+   ...createIsolatedPermitStore(db.query.bind(db)),
    readSource:async(path,signal)=>{assert.equal(path,'synthetic.pdf');assert(!signal.aborted);reads++;return bytes;},
-   claim:async s=>(await db.query('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as value',[...args(s),s.executorId])).rows[0].value,
-   check:async s=>(await db.query('select crm_private.splav_isolated_step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...args(s),s.executorId,s.lease])).rows[0].value,
    execute:async ({signal})=>{assert(!signal.aborted);steps++;return {state:'synthetic_step'};}
   };
   assert.deepEqual(await runIsolatedStep({...runner,scope:{...scope,jobId:id(4)}}),{state:'denied'});
