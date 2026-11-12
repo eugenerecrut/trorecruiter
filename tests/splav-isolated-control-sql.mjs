@@ -21,6 +21,13 @@ test('migration policy accepts only a current root or its recorded continuation'
     original_source jsonb,current_source jsonb,result jsonb,
     leased_by uuid,lease_token uuid,lease_until timestamptz,attempts int default 0,updated_at timestamptz);`);
   await db.exec(await readFile(new URL('../supabase/migrations/20261112050343_splav_isolated_permit.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../supabase/migrations/20261112054500_splav_isolated_dispatch_role.sql',import.meta.url),'utf8'));
+  await db.exec('set role crm_splav_isolated_dispatch');
+  await assert.rejects(db.query('select * from crm_private.splav_jobs'),{code:'42501'});
+  await assert.rejects(db.query('select * from crm_private.splav_isolated_permits'),{code:'42501'});
+  await assert.rejects(db.query('select crm_private.splav_isolated_deadline(null,null,null,null)'),{code:'42501'});
+  assert.deepEqual((await db.query('select crm_private.splav_isolated_claim(null,null,null,null,null) as lease')).rows,[{lease:null}]);
+  await db.exec('reset role');
   const source=JSON.stringify({storage_path:'synthetic.pdf',revision:'original'});
   await db.query("insert into public.crm_staff values($1,true,'processor')",[id(7)]);
   for(const [job,kind,doc] of [[1,'root',9],[2,'zone',9],[3,'zone',9],[4,'root',8]]){
