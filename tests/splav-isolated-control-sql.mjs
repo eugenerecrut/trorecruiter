@@ -26,7 +26,7 @@ test('migration policy accepts only a current root or its recorded continuation'
   await assert.rejects(db.query('select * from crm_private.splav_jobs'),{code:'42501'});
   await assert.rejects(db.query('select * from crm_private.splav_isolated_permits'),{code:'42501'});
   await assert.rejects(db.query('select crm_private.splav_isolated_deadline(null,null,null,null)'),{code:'42501'});
-  assert.deepEqual((await db.query('select crm_private.splav_isolated_claim(null,null,null,null,null) as lease')).rows,[{lease:null}]);
+  assert.deepEqual((await db.query('select crm_splav_dispatch.claim(null,null,null,null,null) as lease')).rows,[{lease:null}]);
   await db.exec('reset role');
   const source=JSON.stringify({storage_path:'synthetic.pdf',revision:'original'});
   await db.query("insert into public.crm_staff values($1,true,'processor')",[id(7)]);
@@ -57,7 +57,11 @@ test('migration policy accepts only a current root or its recorded continuation'
   };
   assert.deepEqual(await runIsolatedStep({...runner,scope:{...scope,jobId:id(4)}}),{state:'denied'});
   assert.equal(reads,0);
-  const configured={scope,query:db.query.bind(db),authenticate:async()=>({userId:id(7),jwt:'synthetic'}),
+  const dispatchQuery=async(sql,params)=>{
+   await db.exec('set role crm_splav_isolated_dispatch');
+   try{return await db.query(sql,params);}finally{await db.exec('reset role');}
+  };
+  const configured={scope,query:dispatchQuery,authenticate:async()=>({userId:id(7),jwt:'synthetic'}),
    projectURL:'https://example.supabase.co',publicKey:'synthetic',
    fetchImpl:async(url,request)=>{
     if(url.endsWith('/storage/v1/object/authenticated/candidate-documents/synthetic.pdf')){

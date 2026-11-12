@@ -13,11 +13,11 @@ export function createIsolatedPermitStore(query){
  const runParams=s=>[s.rootId,s.documentId,s.sha256,s.executorId];
  const value=async(sql,args)=>(await query(sql,args)).rows[0]?.value??null;
  return {
-  authorizeSource:s=>value('select crm_private.splav_isolated_source($1,$2,$3,$4,$5) as value',params(s)),
-  claim:s=>value('select crm_private.splav_isolated_claim($1,$2,$3,$4,$5) as value',params(s)),
-  check:s=>value('select crm_private.splav_isolated_step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...params(s),s.lease]),
-  next:s=>value('select crm_private.splav_isolated_next($1,$2,$3,$4) as value',runParams(s)),
-  closeTerminal:s=>value('select crm_private.splav_isolated_close_terminal($1,$2,$3,$4) as value',runParams(s))
+  authorizeSource:s=>value('select crm_splav_dispatch.source($1,$2,$3,$4,$5) as value',params(s)),
+  claim:s=>value('select crm_splav_dispatch.claim($1,$2,$3,$4,$5) as value',params(s)),
+  check:s=>value('select crm_splav_dispatch.step_deadline($1,$2,$3,$4,$5,$6)::text as value',[...params(s),s.lease]),
+  next:s=>value('select crm_splav_dispatch.next($1,$2,$3,$4) as value',runParams(s)),
+  closeTerminal:s=>value('select crm_splav_dispatch.close_terminal($1,$2,$3,$4) as value',runParams(s))
  };
 }
 export function createIsolatedStorageReader({projectURL,publicKey,processorJWT,fetchImpl=fetch}){
