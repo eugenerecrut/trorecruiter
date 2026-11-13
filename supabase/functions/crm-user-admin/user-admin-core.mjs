@@ -60,9 +60,10 @@ export function createHandler(createClient, env) {
         if(body.action==='disable_splav'&&status.data?.id){const banned=await admin.auth.admin.updateUserById(status.data.id,{ban_duration:'876000h'});if(banned.error)throw banned.error;}
         return reply(200,{worker:status.data});
       }
-      if (body.action === 'provision_splav' || body.action === 'activate_splav') {
+      if (body.action === 'provision_splav' || body.action === 'activate_splav' || body.action === 'provision_isolated_splav') {
         // Owner-authorized, deliberately inactive bootstrap. No credential leaves this function.
-        const email = 'splav-worker@trorecruiter.invalid';
+        const isolated=body.action==='provision_isolated_splav';
+        const email = isolated?'splav-isolated@trorecruiter.invalid':'splav-worker@trorecruiter.invalid';
         let worker = null;
         for (let page=1; page<=100; page++) {
           const {data,error} = await admin.auth.admin.listUsers({page,perPage:100});
@@ -94,12 +95,15 @@ export function createHandler(createClient, env) {
           const random = new Uint8Array(32);crypto.getRandomValues(random);
           const password = 'Aa9!'+Array.from(random,byte=>byte.toString(16).padStart(2,'0')).join('').slice(4);
           const {data,error} = await admin.auth.admin.createUser({email,password,email_confirm:true,ban_duration:'876000h',
-            app_metadata:{crm_account_type:'splav_processor'},user_metadata:{full_name:'СПЛАВ',username:'splav-worker'}});
+            app_metadata:{crm_account_type:'splav_processor',...(isolated?{splav_isolated:true}:{})},
+            user_metadata:{full_name:isolated?'СПЛАВ · тест':'СПЛАВ',username:isolated?'splav-isolated':'splav-worker'}});
           if (error) return reply(409,{error:'Не вдалося створити службовий запис. Перевірте стан перед повторною спробою'});
           worker = data.user;
         }
         const {data:staff,error} = await admin.from('crm_staff').select('role,active').eq('user_id',worker.id).single();
         if (error || staff?.role!=='processor' || staff?.active!==false) return reply(409,{error:'Стан доступу СПЛАВ потребує перевірки; активацію не виконано'});
+        if(isolated&&(worker.app_metadata?.splav_isolated!==true||!(Date.parse(worker.banned_until||'')>Date.now())))
+          return reply(409,{error:'Ізольований службовий акаунт не має очікуваної позначки або блокування'});
         return reply(200,{worker:{id:worker.id,display_name:'СПЛАВ',role:'processor',active:false,ready:false},message:'Службовий запис створено без доступу. Активація — після перевірки черги.'});
       }
       if (body.action === 'list') {
@@ -125,7 +129,7 @@ export function createHandler(createClient, env) {
         const login = String(body.login || '').trim().toLowerCase();
         if ((!/^[a-z0-9._-]{3,64}$/.test(login) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login)) || login.length > 254) return reply(400, {error: 'Вкажіть email або логін із 3–64 латинських літер, цифр, крапки, дефіса чи підкреслення'});
         const email = login.includes('@') ? login : login + '@trorecruiter.invalid';
-        if(email==='splav-worker@trorecruiter.invalid')return reply(409,{error:'Цей логін зарезервовано для панелі СПЛАВ'});
+        if(['splav-worker@trorecruiter.invalid','splav-isolated@trorecruiter.invalid'].includes(email))return reply(409,{error:'Цей логін зарезервовано для панелі СПЛАВ'});
         const {data, error} = await admin.auth.admin.createUser({email, password: body.password, email_confirm: true,
           user_metadata: {...fields, username: login.includes('@') ? undefined : login}});
         if (error) return reply(400, {error: /already|registered|exists/i.test(error.message) ? 'Такий користувач уже існує' : 'Не вдалося створити користувача. Перевірте логін і вимоги до пароля'});

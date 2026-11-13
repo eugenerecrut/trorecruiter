@@ -60,5 +60,7 @@ jobs:
         run: node tests/crm-zone-worker-sql.cjs
       - name: Verify saved review grouping in isolated PostgreSQL
         run: node --test tests/splav-review-groups-postgres.mjs
+      - name: Verify single-job control in isolated PostgreSQL
+        run: node --test tests/splav-isolated-runner.mjs tests/splav-isolated-control-sql.mjs tests/splav-isolated-control-http.mjs
       - name: Verify retained archive write guard in isolated PostgreSQL
         run: node tests/crm-archive-write-sql.cjs

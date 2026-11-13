@@ -4,7 +4,7 @@ async function setup(options={}){
  const {createHandler,OWNER_ID}=await import('../supabase/functions/crm-user-admin/user-admin-core.mjs');
  const calls=[],ops=[];const users=options.existing?[options.existing]:[];let active=!!options.active;
  const admin={auth:{getUser:async()=>({data:{user:{id:options.foreign?'other':OWNER_ID}}}),admin:{
-  listUsers:async()=>({data:{users}}),createUser:async body=>{calls.push(body);const user={id:'worker',...body};users.push(user);return {data:{user}};},
+  listUsers:async()=>({data:{users}}),createUser:async body=>{calls.push(body);const user={id:'worker',...body,banned_until:'2099-01-01T00:00:00Z'};users.push(user);return {data:{user}};},
   updateUserById:async(id,patch)=>{ops.push({update:id,patch});return {data:{user:{id}}};}
  }},rpc:async(name,args)=>{ops.push({name,args});if(name==='crm_splav_worker_bootstrap')return {data:{email,password:'server-only'}};if(name==='crm_splav_configure_worker'){if(options.configureError)return {error:{message:'test SQL failure'}};active=true;}if(name==='crm_splav_disable_worker')active=false;return {data:{id:'worker',created:true,active,enabled:active,running:0}};},from:()=>({select:()=>({eq:()=>({single:async()=>({data:options.badRole?{role:'recruiter',active:true}:{role:'processor',active:false}})})})})};
  const processor={auth:{signInWithPassword:async()=>({data:{user:{id:'worker'}}}),signOut:async()=>{}},rpc:async()=>({error:{code:'42501'}}),functions:{invoke:async()=>({error:{context:{status:options.probeNetworkFailure?500:403}}})},storage:{from:()=>({list:async()=>({data:[],error:null})})},from:()=>{const q={select:()=>q,eq:()=>q,single:async()=>({data:{role:'processor',active:true}}),then:(a,b)=>Promise.resolve({count:0,error:null}).then(a,b)};return q;}};
@@ -18,6 +18,14 @@ test('provision creates a banned processor with a server-generated password and 
  const again=await s.invoke();assert.equal(again.response.status,200);assert.equal(s.calls.length,1);
 });
 test('existing human login is never converted or changed',async()=>{const s=await setup({existing:{id:'human',email,app_metadata:{}}});assert.equal((await s.invoke()).response.status,409);assert.equal(s.calls.length,0);});
+test('isolated provision creates only a separate banned processor and never activates a queue',async()=>{
+ const s=await setup({existing:{id:'general',email,app_metadata:{crm_account_type:'splav_processor'}}});
+ const r=await s.invoke('provision_isolated_splav');assert.equal(r.response.status,200);
+ assert.equal(s.calls[0].email,'splav-isolated@trorecruiter.invalid');
+ assert.deepEqual(s.calls[0].app_metadata,{crm_account_type:'splav_processor',splav_isolated:true});
+ assert.equal(r.data.worker.active,false);assert.equal(s.ops.length,0);assert(!JSON.stringify(r.data).includes(s.calls[0].password));
+ const foreign=await setup({foreign:true});assert.equal((await foreign.invoke('provision_isolated_splav')).response.status,403);
+});
 test('unexpected role or activation fails closed without trying to repair access',async()=>{const s=await setup({badRole:true});assert.equal((await s.invoke()).response.status,409);assert.equal(s.calls.length,1);});
 
 const worker={id:'worker',email,app_metadata:{crm_account_type:'splav_processor'}};

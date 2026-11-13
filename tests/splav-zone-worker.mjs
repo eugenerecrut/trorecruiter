@@ -5,7 +5,7 @@ const id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',token='bbbbbbbb-bbbb-bbbb-bbbb-b
 const bytes=new TextEncoder().encode('%PDF-synthetic');
 async function fixture(options={}){
  const hash=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex');
- const context={id:doc,version:0,native_only:options.nativeOnly===true,source:{document_id:doc,file_sha256:options.hashMismatch?'0'.repeat(64):hash,revision:'r1'},document:{id:doc,storage_path:'source.pdf',document_type:options.documentType},reports:[]};
+ const context={id:doc,version:0,native_only:options.nativeOnly===true,source:{document_id:doc,file_sha256:options.hashMismatch?'0'.repeat(64):hash,revision:'r1'},document:{id:doc,storage_path:options.foreign?'https://foreign.invalid/source.pdf':'source.pdf',document_type:options.documentType},reports:[]};
  context.snapshot=planner.create(1,{source:context.source,budget:options.budget??2600}).snapshot();
  const calls=[],ai=[],rpc=[],rpcPayloads=[];let failed=false;
  if(options.continued)context.crosscheck_binding={document_id:doc,candidate_id:"synthetic",candidate_revision:"r"};
@@ -33,7 +33,11 @@ async function fixture(options={}){
  const dependencies={planner,crosscheck:options.crosscheck,log:options.log,env:key=>({SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'public',...options.env})[key],createClient:(_url,key,opts)=>{assert.equal(key,'public');assert.equal(opts.global.headers.Authorization,'Bearer processor');return client;},
  getLibrary:async()=>({loadDocument:async()=>({getPageCount:()=>options.pages??1,destroy(){},getPage:()=>({...native,getOriginalSize:()=>({originalWidth:1800,originalHeight:100}),close(){},render:async({width,height})=>({width,height,data:new Uint8Array(width*height)})})})}),
  fetchImpl:async(url,init)=>{
-  if(url.includes('/storage/'))return new Response(bytes,{headers:{'content-length':String(bytes.length)}});
+  if(url.includes('/storage/')){
+   assert.equal(url,'https://test.supabase.co/storage/v1/object/authenticated/candidate-documents/source.pdf');
+   assert.equal(init.headers.Authorization,'Bearer processor');assert.equal(init.redirect,'error');
+   calls.push('source.pdf');return new Response(bytes,{headers:{'content-length':String(bytes.length)}});
+  }
   if(url==='https://openrouter.ai/api/v1/chat/completions'){calls.push('shadow');return options.shadowFetch?.(init,rpc);}
   assert.equal(url,'https://test.supabase.co/functions/v1/ai-military-zone');
   const body=JSON.parse(init.body);assert.equal(body.job_id,id);assert.equal(body.lease_token,token);assert.equal(body.coordinator_version,context.version);ai.push(body.mode);
@@ -60,7 +64,7 @@ test('unknown dispatched result blocks a second AI request after cold restart',a
  const f=await fixture({transport:true});assert.equal((await f.invoke()).status,503);assert.deepEqual(f.ai,['overview']);
  assert.equal((await f.invoke()).status,200);assert.deepEqual(f.ai,['overview']);assert.equal(f.rpc.at(-1),'block');
 });
-test('changed digest, page count or foreign signed URL never reaches AI',async()=>{
+test('changed digest, page count or foreign path never reaches AI',async()=>{
  for(const options of [{hashMismatch:true},{pages:2},{foreign:true}]){const f=await fixture(options);await f.invoke();assert.deepEqual(f.ai,[]);}
 });
 

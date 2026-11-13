@@ -112,7 +112,7 @@ if(staff[0].role==='processor'){
  if(!checked.ok||lease?.document_id!==body.document_id||lease?.stage!=='waiting')return json({error:'Доручення СПЛАВ недійсне або виклик AI вже виконано',code:'INVALID_SPLAV_LEASE'},403);
  queueDispatch=args;
 }
-let storedMime='';
+let storedMime='',authenticatedSource=false;
 if(body.document_id){
  const id=String(body.document_id);if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))return json({error:'Некоректний ID документа'},400);
  const dr=await timedFetch(backend+'/rest/v1/documents?id=eq.'+encodeURIComponent(id)+'&select=id,candidate_id,storage_path,file_name,mime_type,deleted_at,version_group_id,version_number&limit=1',{headers:authHeaders});
@@ -125,17 +125,23 @@ if(body.document_id){
   const newer=await vr.json();if(!Array.isArray(newer))return json({error:'Некоректна відповідь перевірки версії'},502);if(newer.length)return json({error:'Документ замінений новою версією'},409);
  }
  const path=String(doc.storage_path);if(!path.startsWith(String(doc.candidate_id)+'/')||path.split('/').some(p=>p==='..'||p==='.')||/[\\?#]/.test(path))return json({error:'Некоректний шлях документа'},400);
+ if(queueDispatch){
+  authenticatedSource=true;
+  fileUrl=backend+'/storage/v1/object/authenticated/candidate-documents/'+path.split('/').map(encodeURIComponent).join('/');
+ }else{
  const signed=await timedFetch(backend+'/storage/v1/object/sign/candidate-documents/'+path.split('/').map(encodeURIComponent).join('/'),{method:'POST',headers:{...authHeaders,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:120})});
  if(!signed.ok)return json({error:'Немає доступу до файла документа'},403);
  const link=await signed.json();if(typeof link.signedURL!=='string')return json({error:'Не вдалося відкрити файл документа'},502);
  fileUrl=link.signedURL.startsWith('/object/sign/')?backend+'/storage/v1'+link.signedURL:link.signedURL.startsWith('/storage/v1/object/sign/')?backend+link.signedURL:link.signedURL;
+ }
  fileName=String(doc.file_name||'document');storedMime=String(doc.mime_type||'');text='';
 }
 if(!text&&!fileUrl)return json({error:'Не передано текст або файл'},400);
 let mime=String(storedMime||body.mime_type||'').split(';')[0],bytes:Uint8Array|null=null;
 if(fileUrl){
- if(!fileUrl.startsWith(backend+'/storage/v1/object/sign/candidate-documents/'))return json({error:'Дозволені лише документи з приватного сховища CRM'},400);
- const fr=await timedFetch(fileUrl,{},20000);if(!fr.ok)return json({error:'Не вдалося прочитати файл: HTTP '+fr.status},502);
+ const allowedPath=authenticatedSource?'/storage/v1/object/authenticated/candidate-documents/':'/storage/v1/object/sign/candidate-documents/';
+ if(!fileUrl.startsWith(backend+allowedPath))return json({error:'Дозволені лише документи з приватного сховища CRM'},400);
+ const fr=await timedFetch(fileUrl,authenticatedSource?{headers:authHeaders,redirect:'error'}:{},20000);if(!fr.ok)return json({error:'Не вдалося прочитати файл: HTTP '+fr.status},502);
  const declared=Number(fr.headers.get('content-length'));if(declared>30000000)return json({error:'Файл перевищує ліміт безпечної обробки CRM 30 МБ. Оригінал збережено.'},413);
  const chunks:Uint8Array[]=[];let size=0;const reader=fr.body?.getReader();if(!reader)return json({error:'Порожня відповідь сховища'},502);
  while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>30000000){await reader.cancel();return json({error:'Файл перевищує ліміт безпечної обробки CRM 30 МБ. Оригінал збережено.'},413);}chunks.push(value);}
