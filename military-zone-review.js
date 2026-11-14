@@ -421,6 +421,16 @@ async function open(doc,options={}){
   dialog.querySelector('h2').textContent=detailState==='loading'?'Документ · завантаження результату':['unavailable','timeout'].includes(detailState)?'Документ · стан недоступний':'Документ · результат СПЛАВ';
   dialog.querySelectorAll('p')[1].textContent=detailState==='ready'?'Показано збережений стан опрацювання. Перегляд не запускає нове розпізнавання.':detailState==='loading'?'Отримуємо лише збережений стан. Нове розпізнавання не запускається.':'Збережений стан недоступний. Нове розпізнавання не запускалося.';
  }
+ function appendSavedGroups(job,stored){
+    const groups=savedReviewGroups(job,stored);
+    if(groups){
+     const labels={full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',education_records:'Освіта',work_records:'Трудова діяльність',relatives:'Родичі'};
+     const section=document.createElement('section');
+     section.innerHTML='<h3>Згруповані питання СПЛАВ · '+groups.length+'</h3><p>Розгорніть групу, щоб побачити всі вихідні питання. Дані картки не змінено.</p>'+
+      groups.map(rows=>'<details><summary>'+esc(labels[rows[0].key]||'Звірка документа')+' · '+rows.length+'</summary>'+rows.map(row=>'<p>№ '+row.number+' · '+esc(labels[row.key]||row.key)+' · '+(row.status==='conflict'?'Розбіжність':'Потрібна перевірка')+'</p>').join('')+'</details>').join('');
+     $('[data-result]').append(section);
+    }
+ }
  function showBackground(job){
   const viewVersion=++backgroundViewVersion;
   if(job._detailed)reportBinding=!job.zone_summary?.source_changed?job.zone_binding:null;
@@ -447,6 +457,7 @@ async function open(doc,options={}){
   if(job._detailed&&(!backgroundReportLoaded||reportsKey!==backgroundReportsKey)&&Array.isArray(job.zone_reports)&&job.zone_reports.length&&job.zone_summary&&!job.zone_summary.source_changed&&job.state!=='superseded'){
    backgroundReportLoaded=true;backgroundReportsKey=reportsKey;reports.splice(0,reports.length,...job.zone_reports.filter(r=>r?.review_only===true&&r.source?.document_id===doc.id));$('[data-result]').replaceChildren();
    for(const report of reports)if(report.mode==='zone')showReport(report,report.source.page);
+   if(reports.length)appendSavedGroups(job,doc.ai_extracted?._military_zone_report);
    $('[data-export]').hidden=!reports.length;$('[data-export]').disabled=!reports.length;status('Відновлено збережені читання. Новий AI-запит не виконувався.');
    crosscheck().catch(()=>{if(!closed&&viewVersion===backgroundViewVersion)status('Збережені читання відкрито, але зіставлення не завершено. AI не запускався.');});
   }
@@ -457,15 +468,7 @@ async function open(doc,options={}){
     const stored=response.data?.ai_extracted?._military_zone_report,saved=backgroundReports(job,stored);
     reports.splice(0,reports.length,...saved);$('[data-result]').replaceChildren();
     for(const report of saved)if(report.mode==='zone')showReport(report,report.source.page);
-    const groups=saved.length?savedReviewGroups(job,stored):null;
-    if(groups){
-     const labels={full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження',rnokpp:'РНОКПП',education_records:'Освіта',work_records:'Трудова діяльність',relatives:'Родичі'};
-     const section=document.createElement('section');
-     section.innerHTML='<h3>Згруповані питання СПЛАВ · '+groups.length+'</h3><p>Розгорніть групу, щоб побачити всі вихідні питання. Дані картки не змінено.</p>'+
-      groups.map(rows=>'<details><summary>'+esc(labels[rows[0].key]||'Звірка документа')+' · '+rows.length+'</summary>'+rows.map(row=>'<p>№ '+row.number+' · '+esc(labels[row.key]||row.key)+' · '+(row.status==='conflict'?'Розбіжність':'Потрібна перевірка')+'</p>').join('')+'</details>').join('');
-     $('[data-result]').append(section);
-     if(sourceReady)crosscheck().catch(()=>{});
-    }
+    if(saved.length)appendSavedGroups(job,stored);
     $('[data-export]').hidden=!saved.length;$('[data-export]').disabled=!saved.length;status(saved.length?'Збережений звіт відкрито без нового AI.':'Збережений звіт не відповідає цьому дорученню; результат не застосовано.');
    }).catch(()=>{if(!closed&&viewVersion===backgroundViewVersion)status('Не вдалося відкрити збережений звіт. Оновіть документ; AI не запускався.');});
   }
