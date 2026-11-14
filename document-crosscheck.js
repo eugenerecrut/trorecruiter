@@ -34,7 +34,18 @@ function birthplaceReview(sources,current){
  // A real source/card value must contain every explicit token; do not synthesize a merged address.
  return lists.every(tokens=>{const remaining=[...fullest];return tokens.length>=2&&tokens.every(t=>{const k=remaining.indexOf(t);if(k<0)return false;remaining.splice(k,1);return true;});});
 }
-function facts(d){const e=obj(d.ai_extracted),p=obj(e.personal);return Object.fromEntries(keys.map(k=>[k,e[k]??p[k]]));}
+function biographyEvidence(d,e){
+ return /автобіограф/iu.test(d.ai_document_type||d.document_type||'')?obj(e.autobiography):{};
+}
+function facts(d){
+ const e=obj(d.ai_extracted),p=obj(e.personal),bio=biographyEvidence(d,e),nested=obj(bio.personal);
+ if(!Object.keys(bio).length)return Object.fromEntries(keys.map(k=>[k,e[k]??p[k]]));
+ const bioFacts={birth_date:bio.owner_birth_date,birth_place:nested.birth_place};
+ return Object.fromEntries(keys.map(k=>{
+  const values=[e[k],p[k],bioFacts[k]].filter(v=>typeof v==='string'&&v.trim());
+  return [k,new Set(values.map(norm)).size===1?values[0]:null];
+ }));
+}
 function parentNameParts(value){
  const names=root.CRMParentNames||(typeof module!=='undefined'&&module.exports?require('./parent-names.js'):null);
  return names?.parts(value)||null;
@@ -65,7 +76,9 @@ function eligibleDocuments(documents,candidate){
   if(!old||Number(d.version_number||1)>Number(old.version_number||1)||Number(d.version_number||1)===Number(old.version_number||1)&&String(d.created_at||'')>String(old.created_at||''))latest.set(group,d);
  }
  const eligible=[...latest.values()].filter(d=>{
-  const e=obj(d.ai_extracted),p=obj(e.personal),name=e.full_name||p.full_name;
+  const e=obj(d.ai_extracted),p=obj(e.personal),bio=biographyEvidence(d,e),name=e.full_name||p.full_name||bio.owner_full_name;
+  if(bio.multiple_owners===true||bio.owner_full_name&&norm(bio.owner_full_name)!==norm(name)||
+   /^\d{4}-\d{2}-\d{2}$/.test(bio.owner_birth_date||'')&&candidate.birth_date&&bio.owner_birth_date!==candidate.birth_date)return false;
   if(/послужний список|анкета на контракт|перелік документів|реєстр кандидата|титульний/iu.test(d.document_type||''))return false;
   if(root.CRMDocumentPolicy?.isChildBirth?.(d)??[d.document_type,d.ai_document_type,d.requirement_type].some(t=>/народження.*(?:дитин|дітей)/iu.test(String(t||''))))return false;
   if(/дітей|шлюб|змін.{0,12}(імен|прізв)/iu.test(d.document_type||''))return false;
