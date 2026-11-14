@@ -162,6 +162,7 @@
     const registry=/Резерв\s*\+|приписн|військовий облік/iu.test(type)||/^(?:копія\s+)?посвідчення\s+про\s+приписку\s+до\s+призовної\s+дільниці$/iu.test(String(type||'').trim());
     const militaryFacts=!!root.CRMMilitaryFacts?.isDocument(type);
     const biography=/автобіограф/iu.test(type);
+    const bio=biography?object(e.autobiography):{};
     const ancillary=['education','residence','driver','ubd'].includes(policy?.category)||/довідка.*МВС|несудиміст/i.test(type);
     if(!recommendation&&!birth&&!marriage&&!tax&&!ancillary&&!identity&&!military&&!work&&!vlk&&!registry&&!militaryFacts&&!biography)return {document,candidate,rows,selections,supported:false};
     const marriageCheck=marriage?root.CRMDocumentPolicy?.marriage(e,candidate):null;
@@ -189,6 +190,8 @@
     const educationOwnerMatch=policy?.category==='education'&&document.verification_status==='Підтверджено'&&
       (e.education_records||[]).length>0&&(e.education_records||[]).every(r=>!r.requires_review&&equal(r.owner_full_name,e.full_name)&&root.CRMEducation?.ownerMatches(r,candidate,p.education_records||[],true));
     let ownerIssue='';
+    if(biography&&empty(e.full_name)&&!empty(bio.owner_full_name))e.full_name=bio.owner_full_name;
+    if(biography&&empty(e.birth_date)&&date(bio.owner_birth_date))e.birth_date=bio.owner_birth_date;
     const confidence=Number(document.ai_confidence);
     if(document.verification_status!=='Підтверджено'&&document.ai_confidence!=null&&(!Number.isFinite(confidence)||confidence<0.85||confidence>1))ownerIssue='Недостатня впевненість AI: потрібна перевірка рекрутера';
     if(!empty(e.rnokpp)&&!empty(candidate.rnokpp)&&String(e.rnokpp)!==String(candidate.rnokpp))ownerIssue='РНОКПП іншої особи';
@@ -200,6 +203,9 @@
     if(/інш(?:а|ої|у|ого|ий|е).{0,60}(особ|кандидат|ПІБ)|згаду.{0,80}(особ|ПІБ)|different (?:person|candidate|name)|another (?:person|candidate)/i.test(warnings))ownerIssue='У документі згадано іншу особу: потрібна ручна перевірка';
     if(document.deleted_at)ownerIssue='Документ видалено';
     if(document.verification_status!=='Підтверджено'&&/AI REVIEW REQUIRED/.test(document.notes||''))ownerIssue='AI просить перевірити документ перед перенесенням';
+    if(biography&&(bio.multiple_owners===true||
+      (!empty(bio.owner_full_name)&&!equal(bio.owner_full_name,e.full_name))||
+      (date(bio.owner_birth_date)&&!empty(e.birth_date)&&!equal(bio.owner_birth_date,e.birth_date))))ownerIssue='Власник автобіографії потребує перевірки';
     if(marriageCheck?.blocked)ownerIssue=marriageCheck.issue;
     if(identity&&/ID[\s-]*карт/iu.test(type)){
       const check=root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate);
@@ -327,6 +333,18 @@
         if(residence?.address)propose('profile','registration_records',(e.registration_records||[]).map(r=>({...r,source_document_id:document.id})));
       }
       if(/довідка.*МВС|несудиміст/i.test(type)&&e.criminal_record_details)propose('profile','criminal_record_details',e.criminal_record_details);
+    }
+    if(biography&&!ownerIssue){
+      const place=object(bio.personal).birth_place;
+      if(!empty(place)&&!empty(candidate.birth_place)&&!equal(place,candidate.birth_place))
+        add('candidate','birth_place',place,'conflict','Місце народження в автобіографії відрізняється від картки');
+      const stored=Array.isArray(p.relatives)?p.relatives:[];
+      for(const r of Array.isArray(bio.relatives)?bio.relatives:[]){
+        if(!r||r.requires_review||!date(r.birth_date)||empty(r.full_name)||empty(r.relationship))continue;
+        const matches=stored.map((value,index)=>({value,index})).filter(({value})=>relativeKey(value)===relativeKey(r));
+        if(matches.length===1&&date(matches[0].value.birth_date)&&!equal(r.birth_date,matches[0].value.birth_date))
+          add('profile','relatives.'+matches[0].index+'.birth_date',r.birth_date,'conflict','Дата народження родича в автобіографії відрізняється від картки',matches[0].value.birth_date);
+      }
     }
     if(e.relatives.length){
       if(ownerIssue)add('profile','relatives',e.relatives,'conflict',ownerIssue);
