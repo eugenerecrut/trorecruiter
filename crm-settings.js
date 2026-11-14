@@ -37,6 +37,25 @@
       await loadUsers();
     }));
     panel.append(isolated,isolatedStatus);
+    const acceptance=document.createElement('button');acceptance.type='button';acceptance.textContent='Контроль СПЛАВ на синтетичному PDF';
+    const acceptanceStatus=document.createElement('p');acceptanceStatus.setAttribute('role','status');
+    acceptance.addEventListener('click',()=>task(async()=>{
+      acceptanceStatus.textContent='Виконується ізольований контроль…';
+      try{
+        const {data:{session},error}=await client.auth.getSession();
+        if(error||!session)throw Error('Сесія недоступна');
+        const response=await fetch('https://vhfysipxorlhuiaatxqi.supabase.co/functions/v1/splav-isolated-acceptance',{
+          method:'POST',headers:{apikey:'sb_publishable_o8ZTKE4Ek0m58zq1q0QpFQ_domIX0Yz',Authorization:'Bearer '+session.access_token}
+        });
+        const result=await response.json();
+        acceptanceStatus.textContent=response.ok&&result.state==='closed'
+          ?'Контрольний доступ закрито. Перевірте підсумок завдання.'
+          :result.state==='not_ready'?'Умови для одноразового тесту не виконано.'
+          :result.state==='cleanup_unconfirmed'?'Сервер не підтвердив закриття доступу. Потрібна перевірка стану.'
+          :'Контроль не підтверджено. Перевірте стан завдання перед повторною дією.';
+      }catch{acceptanceStatus.textContent='Не вдалося отримати результат. Перевірте стан завдання перед повторною дією.';}
+    }));
+    panel.append(acceptance,acceptanceStatus);
     byId('users-content').prepend(panel);
     const probe=document.createElement('button');probe.type='button';probe.id='splav-probe';probe.textContent='Перевірити доступ';probe.disabled=true;
     probe.addEventListener('click',()=>task(async()=>{const result=await api({action:'probe_splav'});notice(result.probe?.idle_isolation===true?'СПЛАВ: вхід працює; доступ поза дорученнями й адміністрування заборонені.':'СПЛАВ: службовий вхід і заборона адміністрування перевірені. Перевірку порожньої черги пропущено, оскільки є активне доручення.');}));panel.append(probe);
