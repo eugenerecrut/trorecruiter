@@ -11,7 +11,7 @@ function setup(){
  const client={auth:{getUser:()=>{const d=deferred();requests.push({kind:'auth',...d});return d.promise}},from:()=>{const chain={select(){return chain},eq(){return chain},single(){const d=deferred();requests.push({kind:'document',...d});return d.promise}};return chain},rpc:(name,args)=>{const d=deferred();requests.push({kind:'status',name,args,...d});return d.promise}};
  const context={backgroundReadScope:{},reports:[],doc:{id:'d'},closed:false,backgroundViewVersion:0,backgroundReportsKey:null,backgroundReportLoaded:false,backgroundSeen:false,backgroundPoll:null,reportBinding:null,crosscheckVersion:0,
   $:get,document:{createElement:node,createTextNode:text=>({textContent:text})},dialog:{querySelector:get,querySelectorAll:()=>[node(),node()]},
-  backgroundSummary:api.backgroundSummary,readBackgroundStatus:api.readBackgroundStatus,showReport:report=>get('[data-result]').append(report),crosscheck:()=>{checks++;return Promise.resolve()},backgroundReports:(_job,saved)=>saved?.reports||[],status:text=>statuses.push(text),supabaseClient:client,
+  backgroundSummary:api.backgroundSummary,readBackgroundStatus:api.readBackgroundStatus,savedReviewGroups:api.savedReviewGroups,esc:x=>String(x),showReport:report=>get('[data-result]').append(report),crosscheck:()=>{checks++;return Promise.resolve()},backgroundReports:(_job,saved)=>saved?.reports||[],status:text=>statuses.push(text),supabaseClient:client,
   rerunButton:node(),rerunIntents:new Map(),pageCanary:false,pageRerunEligible:()=>true,total:1,originalDigest:'hash',busy:false,autoActive:false,confirmed:true,
   window:{confirm:()=>context.confirmed},crypto:{randomUUID:()=>{context.uuidCalls++;return 'intent-'+context.uuidCalls}},uuidCalls:0,lock:value=>{context.busy=value},
   clearInterval(){},setInterval:fn=>{timers.push(fn);return timers.length}};
@@ -26,6 +26,17 @@ test('new saved readings replace the first overview; identical polling responses
 });
 test('a changed or superseded source clears visible readings and disables export',()=>{
  for(const changed of [{zone_summary:{source_changed:true}},{state:'superseded'}]){const f=setup();f.context.showBackground(job({zone_reports:[overview,zone],zone_binding:{document_id:'d'}}));f.context.showBackground(job({...changed,zone_reports:[overview,zone]}));assert.equal(f.context.reports.length,0);assert.equal(f.get('[data-result]').children.length,0);assert.equal(f.context.reportBinding,null);assert.equal(f.get('[data-export]').hidden,true);assert.equal(f.get('[data-export]').disabled,true);}
+});
+test('a matching terminal job with receipts renders saved groups and every original issue',()=>{
+ const f=setup(),saved={saved_at:'revision',status:'complete_with_gaps'};
+ f.context.doc.ai_extracted={_military_zone_report:saved};
+ const issues=[{key:'birth_place',status:'conflict'},{key:'birth_place',status:'conflict'}];
+ const result={...saved,crosscheck:{issues},review_shadow:{original_count:2,group_count:1,groups:[{items:[0,1]}]}};
+ f.context.showBackground(job({state:'needs_review',result,zone_reports:[zone]}));
+ const children=f.get('[data-result]').children;
+ assert.equal(children.length,2);
+ assert.match(children[1].innerHTML,/Згруповані питання СПЛАВ · 1/);
+ assert.match(children[1].innerHTML,/№ 1.*№ 2/);
 });
 test('late final-report loads cannot repopulate a superseded or newer view',async()=>{
  for(const next of [job({state:'superseded'}),job({zone_reports:[overview,zone]})]){const f=setup();f.context.showBackground(job({state:'completed',result:{saved_at:'now'}}));assert.equal(f.requests.length,1);f.context.showBackground(next);const before=JSON.stringify(f.context.reports);f.requests[0].resolve({data:{ai_extracted:{_military_zone_report:{reports:[zone]}}}});await flush();assert.equal(JSON.stringify(f.context.reports),before);}
