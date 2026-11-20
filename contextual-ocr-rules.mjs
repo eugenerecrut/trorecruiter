@@ -3,6 +3,7 @@ export const RULE_POLICY_VERSION='context-rules-1';
 export const RULE_CATEGORIES=Object.freeze(['personal','geography','military','education','phrases','templates']);
 const actions=new Set(['auto_normalize','suggest','needs_review']);
 const boilerplateFields=new Set(['template.oath_text','template.discharge_text']);
+const factualPath=/(?:^|\.)(?:.*_)?(?:rnokpp|passport(?:_[a-z_]+)?|birth_date|vos|military_specialty|unit|unit_number|diagnosis|diagnoses|order_number|order_date|document_number)(?:\.|$)/u;
 const text=v=>typeof v==='string'&&v.trim().length>0&&v.length<=2000;
 const key=v=>v.normalize('NFKC').replace(/[’ʼ]/g,"'").trim().replace(/\s+/g,' ').toLocaleLowerCase('uk');
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
@@ -80,6 +81,10 @@ export function createContextDictionary({version,rules}={}){
   if(matched.some(r=>r.match_kind==='partial_template'))return result('needs_review','incomplete_template',matched);
   if(new Set(matched.map(r=>key(r.canonical_value))).size>1)return result('needs_review','ambiguous_rules',matched);
   if(matched.every(r=>r.canonical_value===input.raw_value))return result('reject','already_canonical',matched);
+  // An alias is not evidence for a missing digit, unit, date or diagnosis.
+  // Keep even approved candidates review-only for factual identifiers.
+  if(factualPath.test(input.field_path)||[input.raw_value,...matched.map(r=>r.canonical_value)].some(v=>/\p{N}/u.test(v)))
+   return result('needs_review','factual_value_requires_review',matched);
   if(input.category==='personal'||matched.some(r=>r.allowed_action==='needs_review'))return result('needs_review','requires_human_review',matched);
   const decision=matched.every(r=>r.can_auto)?'auto_normalize':'suggest';
   return result(decision,decision==='auto_normalize'?'verified_boilerplate':'verified_contextual_alias',matched,matched[0].canonical_value);

@@ -98,7 +98,7 @@ test('automatic presentation is limited to whole fact-free boilerplate in design
  assert.equal(dictionary([r]).match(input).decision,'auto_normalize');
  for(const extra of [{matching_constraints:{context:{}}},{canonical_value:'Присяга 2020'}, {field_paths:['military.rank']}]){
   const changed={...r,...extra};
-  assert.equal(dictionary([changed]).match({...input,field_path:changed.field_paths[0]}).decision,'suggest');
+  assert.equal(dictionary([changed]).match({...input,field_path:changed.field_paths[0]}).decision,extra.canonical_value?'needs_review':'suggest');
  }
 });
 
@@ -120,6 +120,17 @@ test('canonical values do not produce redundant corrections and unknown payloads
  const r=rule();r.extra={fn(){}};r.extra.self=r.extra;
  const result=dictionary([r]).match(query({raw_value:r.canonical_value}));
  assert.equal(result.reason,'already_canonical');assert.equal(result.proposed_value,null);
+});
+
+test('an approved alias still cannot reconstruct factual identifiers, digits, dates or diagnoses',()=>{
+ for(const [field,raw,canonical] of [
+  ['military.vos','12345','123456'],['military.unit','А0001','Б0001'],['identity.birth_date','01.02.2000','2000-02-01'],
+  ['education.qualification','Кухар','Кухар п’ятого розряду 5'],['vlk.diagnosis','Неповний запис','Повний діагноз']
+ ]){
+  const d=dictionary([rule({field_paths:[field],aliases:[raw],canonical_value:canonical})]);
+  const result=d.match(query({field_path:field,raw_value:raw}));
+  assert.equal(result.reason,'factual_value_requires_review');assert.equal(result.proposed_value,null);
+ }
 });
 
 test('existing education vocabulary remains the source of canonical degree normalization',()=>{
