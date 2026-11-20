@@ -380,30 +380,11 @@
     }
     const evidenceFlag=window.CRMFeatureFlags?.identityEvidenceShadow;
     if(evidenceFlag!==false&&(evidenceFlag===true||new URLSearchParams(window.location.search).get('identityEvidenceShadow')==='1')){
-      const details=document.createElement('details'),title=document.createElement('summary');
-      title.textContent='Пріоритет джерел · попередня звірка';details.append(title);caseSummary.after(details);
-      details.addEventListener('toggle',async()=>{
-        if(!details.open||details.dataset.loaded)return;
-        details.dataset.loaded='1';
-        try{
-          const {previewFromSnapshot}=await import('./identity-evidence-preview.mjs?v=1');
-          if(!form.isConnected||!details.isConnected)return;
-          const fields={full_name:'ПІБ',birth_date:'Дата народження',birth_place:'Місце народження'};
-          const reasons={unsupported_field:'Поле не підтримується',no_eligible_evidence:'Немає придатного підтвердженого джерела',
-            same_source_disagreement:'Читання одного джерела відрізняються',independent_sources_disagree:'Джерела суперечать одне одному',
-            existing_value_protected:'Збережене значення захищене',conflicts_with_existing_value:'Є розбіжність зі збереженим значенням',
-            needs_verified_primary_source:'Потрібне перевірене первинне джерело',verified_primary_source:'Пропозиція з підтвердженого джерела'};
-          for(const row of previewFromSnapshot(candidate,documents)){
-            const p=document.createElement('p');
-            p.textContent=fields[row.field]+': '+(reasons[row.reason]||'Потрібна ручна звірка')+
-              (row.proposal?' · '+row.proposal.value:'');
-            details.append(p);
-          }
-        }catch{
-          const p=document.createElement('p');p.textContent='Попередня звірка джерел недоступна.';details.append(p);
-          delete details.dataset.loaded;
-        }
-      });
+      try{
+        const {mountIdentityEvidencePreview}=await import('./identity-evidence-preview-ui.mjs?v=1');
+        if(!form.isConnected)return;
+        mountIdentityEvidencePreview({form,host:caseSummary,getSnapshot:()=>({candidate:CRMWorkspace.card.candidate,documents:CRMWorkspace.card.documents})});
+      }catch{console.error('Identity evidence preview unavailable');}
     }
     const historyContent = history.querySelector('.cc-v3-history-content');
     if(historyContent) historyContent.textContent = '';
