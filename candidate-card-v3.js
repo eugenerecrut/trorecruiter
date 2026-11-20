@@ -378,6 +378,14 @@
         window.CRMCandidateFacts.render(factHost,model);
       }catch(error){factHost.textContent='Діагностика джерел недоступна. Чинні перевірки CRM працюють.';console.error('Facts shadow reader failed');}
     }
+    const evidenceFlag=window.CRMFeatureFlags?.identityEvidenceShadow;
+    if(evidenceFlag!==false&&(evidenceFlag===true||new URLSearchParams(window.location.search).get('identityEvidenceShadow')==='1')){
+      try{
+        const {mountIdentityEvidencePreview}=await import('./identity-evidence-preview-ui.mjs?v=1');
+        if(!form.isConnected)return;
+        mountIdentityEvidencePreview({form,host:caseSummary,getSnapshot:()=>({candidate:CRMWorkspace.card.candidate,documents:CRMWorkspace.card.documents})});
+      }catch{console.error('Identity evidence preview unavailable');}
+    }
     const historyContent = history.querySelector('.cc-v3-history-content');
     if(historyContent) historyContent.textContent = '';
     if (!events && historyContent) historyContent.textContent = 'Журнал зараз недоступний. Редагування картки працює.';

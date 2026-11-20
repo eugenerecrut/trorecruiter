@@ -1,0 +1,36 @@
+<!doctype html><html lang="uk"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Звірка джерел — синтетична перевірка</title>
+<style>body{font:16px system-ui;max-width:850px;margin:32px auto;padding:0 16px;color:#172630}label{display:block;margin:16px 0}input{display:block;padding:8px;width:95%;max-width:500px}details{padding:16px;border:1px solid #c7d6bd;border-radius:8px}summary,button{cursor:pointer}button{padding:10px}#status{padding:16px;background:#f0f5e9}</style>
+<h1>Звірка джерел</h1><p>Ізольована перевірка. Усі дані синтетичні; підключення до CRM та збереження відсутні.</p>
+<form id="identity">
+<label>ПІБ<input name="name_nominative" value="Прикладенко Тест Тестович"></label>
+<label>Дата народження<input name="birth_date" value="1991-04-15"></label>
+<label>Місце народження<input name="birth_place"></label>
+<label>РНОКПП<input name="rnokpp"></label>
+</form><section id="host"></section>
+<p><button id="check" type="button">Перевірити зміну та повторне відкриття</button></p><p id="status" role="status">Завантаження…</p>
+<script type="module">
+import {mountIdentityEvidencePreview} from '../identity-evidence-preview-ui.mjs';
+const snapshot={candidate:{id:'fixture',full_name:'Прикладенко Тест Тестович',birth_date:'1991-04-15'},documents:[{
+ id:'fixture-doc',candidate_id:'fixture',document_type:'Паспорт',verification_status:'Підтверджено',storage_path:'fixture.pdf',ai_processed_at:'revision',
+ ai_extracted:{full_name:'Прикладенко Тест Тестович',birth_date:'1991-04-15',birth_place:'Тестове місто'}}]};
+const form=document.getElementById('identity'),host=document.getElementById('host'),status=document.getElementById('status');
+const details=mountIdentityEvidencePreview({form,host,getSnapshot:()=>snapshot});
+status.textContent='Готово до перевірки';
+const settle=()=>new Promise(resolve=>setTimeout(resolve,80));
+document.getElementById('check').onclick=async()=>{
+ try{
+  const assert=(ok,message)=>{if(!ok)throw Error(message);};
+  details.open=true;await settle();assert(details.textContent.includes('Тестове місто'),'Немає початкової пропозиції');
+  const input=form.elements.birth_place;input.value='Ручний запис';input.dispatchEvent(new Event('input',{bubbles:true}));await settle();
+  assert(details.textContent.includes('Є незбережені зміни'),'Не захищено ручну правку');
+  assert(!details.textContent.includes('Тестове місто'),'Залишилася стара пропозиція');
+  input.value='';input.dispatchEvent(new Event('change',{bubbles:true}));await settle();
+  assert(details.textContent.includes('Тестове місто'),'Не відновилася актуальна звірка');
+  details.open=false;await settle();snapshot.documents[0].deleted_at='fixture-deleted';details.open=true;await settle();
+  assert(!details.textContent.includes('Тестове місто'),'Використано видалене джерело');
+  assert(!input.value,'Перегляд змінив поле');
+  status.textContent='PASS · ручна правка захищена; старі пропозиції прибрано; повторне відкриття звіряє поточні джерела; записів немає.';
+ }catch(error){status.textContent='FAIL · '+error.message;}
+};
+</script></html>
