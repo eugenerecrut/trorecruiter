@@ -7,7 +7,7 @@ const reasons={unsupported_field:'Поле не підтримується',no_e
 
 // Presentation only: reopening and editing always invalidate the old result.
 // No form values are assigned and no planner, OCR or save action is called.
-export function mountIdentityEvidencePreview({form,host,getSnapshot,load=()=>import('./identity-evidence-preview.mjs?v=2')}){
+export function mountIdentityEvidencePreview({form,host,getSnapshot,load=()=>import('./identity-evidence-preview.mjs?v=3')}){
  const doc=host.ownerDocument,details=doc.createElement('details'),title=doc.createElement('summary');
  details.dataset.identityEvidencePreview='';
  title.textContent='Пріоритет джерел · попередня звірка';details.append(title);host.after(details);

@@ -381,10 +381,19 @@
     const evidenceFlag=window.CRMFeatureFlags?.identityEvidenceShadow;
     if(evidenceFlag!==false&&(evidenceFlag===true||new URLSearchParams(window.location.search).get('identityEvidenceShadow')==='1')){
       try{
-        const {mountIdentityEvidencePreview}=await import('./identity-evidence-preview-ui.mjs?v=1');
+        const {mountIdentityEvidencePreview}=await import('./identity-evidence-preview-ui.mjs?v=2');
         if(!form.isConnected)return;
         mountIdentityEvidencePreview({form,host:caseSummary,getSnapshot:()=>({candidate:CRMWorkspace.card.candidate,documents:CRMWorkspace.card.documents})});
       }catch{console.error('Identity evidence preview unavailable');}
+    }
+    const rulesFlag=window.CRMFeatureFlags?.contextRulesShadow;
+    if(rulesFlag!==false&&(rulesFlag===true||new URLSearchParams(window.location.search).get('contextRulesShadow')==='1')){
+      try{
+        const {mountContextRulesPreview}=await import('./context-rules-preview-ui.mjs?v=1');
+        if(!form.isConnected)return;
+        mountContextRulesPreview({form,host:caseSummary,getSnapshot:()=>({candidate:CRMWorkspace.card.candidate,documents:CRMWorkspace.card.documents,dirty:CRMWorkspace.card.dirty===true}),
+          getDependencies:()=>({education:window.CRMEducation,planner:window.CRMDocumentSync,policy:window.CRMDocumentPolicy})});
+      }catch{console.error('Context rules preview unavailable');}
     }
     const historyContent = history.querySelector('.cc-v3-history-content');
     if(historyContent) historyContent.textContent = '';

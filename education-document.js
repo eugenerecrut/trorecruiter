@@ -46,5 +46,6 @@ return (Array.isArray(records)?records:[]).filter(r=>r&&!r.requires_review).map(
 function summary(p={},pf={}){
 return pf.education||p.education||historyText(p.education_records)||[p.education_institution,p.education_specialty,p.education_qualification,p.education_year].filter(Boolean).join(', ')||historyText(p.bio_education_claims);
 }
-root.CRMEducation={isDocument,review,ownerMatches,ranks,normalizeDegree,historyText,summary};
+const degreePolicy=Object.freeze({version:'education-degree-1',aliases:Object.freeze(Object.entries(degreeAliases).map(([alias,canonical])=>Object.freeze({alias,canonical})))});
+root.CRMEducation={isDocument,review,ownerMatches,ranks,normalizeDegree,historyText,summary,degreePolicy};
 })(typeof window==='undefined'?globalThis:window);

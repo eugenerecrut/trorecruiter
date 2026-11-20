@@ -1,4 +1,5 @@
 import {identityEvidencePreview} from './evidence-priority-shadow.mjs';
+import {currentEvidenceDocuments} from './evidence-source-snapshot.mjs';
 
 const fields=['full_name','birth_date','birth_place'];
 const norm=value=>typeof value==='string'?value.normalize('NFKC').replace(/[’ʼ]/g,"'").trim().replace(/\s+/g,' ').toLocaleLowerCase('uk'):'';
@@ -13,22 +14,11 @@ function role(type){
 }
 export function previewFromSnapshot(candidate,documents){
  if(!candidate?.id||candidate.profile_data?.merged_into||candidate.profile_data?.workflow?.archived_at)return [];
- const latest=new Map(),invalidGroups=new Set();
- for(const d of Array.isArray(documents)?documents:[]){
-  if(!d?.id||d.candidate_id!==candidate.id)continue;
-  const group=d.version_group_id||d.id,old=latest.get(group);
-  const version=d.version_number??1;
-  // Unknown version metadata must not revive an older original or let input
-  // order decide which document is trusted. Block that version family.
-  if(!['number','string'].includes(typeof version)||!/^\d+$/.test(String(version))||!Number.isSafeInteger(Number(version))||Number(version)<1){invalidGroups.add(group);continue;}
-  if(!old||Number(version)>Number(old.version_number??1))latest.set(group,d);
-  else if(Number(version)===Number(old.version_number??1)&&JSON.stringify(old)!==JSON.stringify(d))latest.set(group,{...old,ambiguous:true});
- }
  const claims=Object.fromEntries(fields.map(k=>[k,[]]));
- for(const [group,d] of latest){
+ for(const d of currentEvidenceDocuments(candidate,documents)){
   const kind=role(d.document_type),e=d.ai_extracted;
   const types=[d.document_type,d.ai_document_type,d.requirement_type].filter(norm);
-  if(!kind||types.some(t=>role(t)!==kind)||invalidGroups.has(group)||d.deleted_at||d.ambiguous||!norm(d.storage_path)||!object(e)||!d.ai_processed_at||d.verification_status!=='Підтверджено'||
+  if(!kind||types.some(t=>role(t)!==kind)||!object(e)||!d.ai_processed_at||d.verification_status!=='Підтверджено'||
     ['AI помилка','AI обробка'].includes(d.processing_status)||/AI REVIEW REQUIRED/.test(d.notes||''))continue;
   const warnings=[...(Array.isArray(d.ai_warnings)?d.ai_warnings:[]),...(Array.isArray(e.meta?.warnings)?e.meta.warnings:[])].join(' ');
   // Match the existing planner's owner warning guard; a human verification
