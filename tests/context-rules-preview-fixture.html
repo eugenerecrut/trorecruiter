@@ -1,0 +1,39 @@
+<!doctype html><html lang="uk"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Реєстр CRM — синтетична перевірка</title>
+<style>body{font:16px system-ui;max-width:900px;margin:32px auto;padding:0 16px;color:#172630}input{display:block;padding:9px;width:95%;max-width:500px}details{padding:16px;margin:20px 0;border:1px solid #c7d6bd;border-radius:8px}button,summary{cursor:pointer}button{padding:10px}a{color:#356316}#status{padding:16px;background:#f0f5e9}</style>
+<h1>Реєстр правил CRM</h1><p>Ізольований стенд. Синтетичний диплом, справжні нормалізатори CRM, без мережевих запитів до бази.</p>
+<form id="fixture-form"><label>Рівень освіти в картці<input name="education_level" id="level"></label></form>
+<section id="host"></section><button id="check" type="button">Перевірити всі сценарії</button><p id="status" role="status">Завантаження…</p>
+<script>window.qaErrors=[];window.addEventListener('error',e=>qaErrors.push(e.message));window.addEventListener('unhandledrejection',e=>qaErrors.push(String(e.reason)));</script>
+<script src="../candidate-name.js"></script><script src="../name-change-document.js"></script><script src="../education-document.js"></script><script src="../candidate-phone.js"></script><script src="../autobiography-document.js"></script><script src="../work-document.js"></script><script src="../candidate-conditions.js"></script><script src="../supabase/functions/_shared/document-data-policy.js"></script><script src="../document-ai-sync.js"></script>
+<script type="module">
+import {mountContextRulesPreview} from '../context-rules-preview-ui.mjs';
+const candidate={id:'fixture-case',full_name:'Прикладенко Тест Тестович',birth_date:'1990-05-04',rnokpp:'1234567890',profile_data:{}};
+const documentSource={id:'fixture-document',candidate_id:candidate.id,file_name:'Синтетичний диплом.pdf',document_type:'Копія диплома та атестата з додатками',
+ storage_path:'fixture.pdf',verification_status:'Підтверджено',processing_status:'AI готово',ai_processed_at:'revision',
+ ai_extracted:{full_name:candidate.full_name,birth_date:candidate.birth_date,rnokpp:candidate.rnokpp,education_records:[{
+  owner_full_name:candidate.full_name,owner_birth_date:candidate.birth_date,degree:'кваліфікований робітник',diploma_present:true,
+  diploma_number:'TEST-1',institution:'Тестовий заклад',graduation_year:2010,source_pages:[1]}]}};
+const snapshot={candidate,documents:[documentSource],dirty:false},form=document.getElementById('fixture-form'),status=document.getElementById('status'),level=document.getElementById('level');
+form.addEventListener('input',()=>{snapshot.dirty=true;});
+const details=mountContextRulesPreview({form,host:document.getElementById('host'),getSnapshot:()=>snapshot,
+ getDependencies:()=>({education:window.CRMEducation,planner:window.CRMDocumentSync,policy:window.CRMDocumentPolicy})});
+status.textContent='Готово до перевірки';
+const wait=async predicate=>{for(let n=0;n<200;n++){if(predicate())return;await new Promise(r=>setTimeout(r,25));}throw Error('Результат не з’явився');};
+const reopen=async()=>{details.open=false;await new Promise(r=>setTimeout(r,30));details.open=true;};
+document.getElementById('check').onclick=async()=>{
+ let checks=0;const assert=(ok,message)=>{if(!ok)throw Error(message);checks++;};
+ try{
+  details.open=true;await wait(()=>details.textContent.includes('→ професійна'));
+  assert(details.textContent.includes('стор. 1'),'Немає сторінки джерела');assert(details.textContent.includes('education-degree-1'),'Немає версії правила');
+  level.value='ручне значення';level.dispatchEvent(new Event('input',{bubbles:true}));await wait(()=>details.textContent.includes('Є незбережені зміни'));
+  assert(!details.textContent.includes('→ професійна'),'Застаріла пропозиція після ручної правки');
+  snapshot.dirty=false;candidate.profile_data.education_level=level.value;await reopen();await wait(()=>details.textContent.includes('Збережене значення захищене'));
+  assert(!details.textContent.includes('→ професійна'),'Перезапис ручного значення');
+  delete candidate.profile_data.education_level;level.value='';documentSource.deleted_at='fixture-deleted';await reopen();
+  await wait(()=>details.textContent.includes('Немає нових пропозицій'));assert(!details.textContent.includes('→ професійна'),'Використано видалений документ');
+  assert(candidate.profile_data.education_level===undefined,'Перегляд записав у картку');assert(qaErrors.length===0,'JS errors: '+qaErrors.join('; '));
+  status.textContent='PASS · '+checks+' перевірок · чинні планувальники · ручні дані захищені · запитів і записів у БД немає';
+ }catch(error){status.textContent='FAIL · '+error.message;}
+};
+</script></html>
