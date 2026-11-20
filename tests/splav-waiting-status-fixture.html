@@ -1,0 +1,35 @@
+<!doctype html><html lang="uk"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Черга СПЛАВ — синтетична перевірка</title>
+<style>body{font:15px system-ui;margin:30px auto;max-width:760px;padding:0 16px;color:#173040}.crm-document-file{border:1px solid #d9e2e8;border-radius:10px;padding:14px;margin:12px 0}button{padding:9px;margin:8px 8px 8px 0;cursor:pointer}.status{display:inline-block;padding:3px 8px;background:#e9eff3;border-radius:8px}#docBatchStatus,#qa-result{padding:14px;background:#f1f6e9}details{margin:8px 0}</style>
+<h1>Черга СПЛАВ</h1><p>Синтетичні файли. Тільки імітація RPC; без OCR та запитів до бази.</p>
+<p id="docBatchStatus" role="status">Перевірка стану…</p><div id="documentRows" data-splav-candidate="fixture"></div>
+<button id="verify" type="button">Перевірити сценарії</button><p id="qa-result">Завантаження…</p>
+<script src="../document-state.js"></script>
+<script type="module">
+const source=await(await fetch('../documents.js')).text();
+const docs=['one','two'].map((id,i)=>({id,candidate_id:'fixture',file_name:'Синтетичний витяг '+(i+1)+'.pdf',file_size:179649,processing_status:'AI очікує',verification_status:'Не перевірено'}));
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const render=new Function('docEscape','formatDocSize','documentDisplayState','CRMResponsibility','versionHistory','window',
+ source.slice(source.indexOf('function documentFileHtml('),source.indexOf('function manualZoneButtonHtml('))+';return documentFileHtml;')
+ (esc,()=> '175 КБ',d=>CRMDocumentState.fileState(d),{documentInfo:()=>'',canDelete:()=>false},()=>'',{});
+const rows=document.getElementById('documentRows');rows.innerHTML=docs.map(d=>render(d,{ai_enabled:true},docs,esc,true)).join('');
+let jobs=[],offline=false,starts=0;
+const resume=new Function('supabaseClient','activeDocumentsReadOnly','activeDocumentsCandidateId','document','CRMDocumentState','trackSplavJob',
+ source.slice(source.indexOf('async function resumeSplavJobs('),source.indexOf('function acceptedServerReconciliation('))+';return resumeSplavJobs;')
+ ({rpc:async()=>offline?{error:{message:'fixture offline'}}:{data:jobs}},false,'fixture',document,CRMDocumentState,()=>{});
+rows.onclick=async event=>{const id=event.target.closest('[data-doc-retry]')?.dataset.docRetry;if(id&&!jobs.some(j=>j.document_id===id)){starts++;jobs.push({id:'job-'+id,document_id:id,state:'queued',kind:'root'});await resume('fixture');}};
+await resume('fixture');document.getElementById('qa-result').textContent='Готово до перевірки';
+document.getElementById('verify').onclick=async()=>{
+ let n=0;const assert=(ok,text)=>{if(!ok)throw Error(text);n++;};
+ try{
+  assert(rows.textContent.includes('Не передано до черги СПЛАВ'),'Хибний початковий статус');
+  assert(document.getElementById('docBatchStatus').textContent.includes('без серверного доручення: 2'),'Немає лічильника непереданих');
+  const button=rows.querySelector('[data-splav-waiting-action="one"]');button.click();await resume('fixture');
+  assert(button.disabled&&button.textContent==='У черзі СПЛАВ','Немає підтвердження сервера');
+  button.click();assert(starts===1,'Дубльоване доручення');
+  assert(rows.querySelector('[data-splav-waiting-document="two"]').textContent==='Не передано до черги СПЛАВ','Переплутано однакові файли');
+  offline=true;await resume('fixture');assert(rows.textContent.includes('Стан черги СПЛАВ недоступний'),'Хибний статус при втраті відповіді');
+  offline=false;await resume('fixture');document.getElementById('qa-result').textContent='PASS · '+n+' перевірок · непередані файли відокремлені від серверної черги';
+ }catch(error){document.getElementById('qa-result').textContent='FAIL · '+error.message;}
+};
+</script></html>

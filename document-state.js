@@ -35,11 +35,22 @@
     ['Повна довідка про несудимість',/несудимість/iu],
     ['УБД',/УБД/iu,true], ['Посвідчення водія',/посвідчення водія/iu,true]
   ];
-  function fileState(d,aiEnabled=true) {
+  function fileState(d,aiEnabled=true,queueJob=undefined) {
     if(d.verification_status==='Підтверджено')return 'Перевірений';
     if(d.verification_status==='Потребує перевірки')return 'Є розбіжності';
     if(aiEnabled&&d.processing_status==='AI помилка')return 'Помилка розпізнавання';
-    if(aiEnabled&&d.processing_status==='AI очікує')return 'Очікує опрацювання СПЛАВ';
+    if(aiEnabled&&d.processing_status==='AI очікує'){
+      if(queueJob===null)return 'Не передано до черги СПЛАВ';
+      if(queueJob?.document_id===d.id){
+        if(queueJob.state==='queued')return 'У черзі СПЛАВ';
+        if(queueJob.state==='running')return 'СПЛАВ опрацьовує';
+        if(queueJob.state==='uncertain')return 'Результат СПЛАВ невідомий — потрібна перевірка';
+        if(queueJob.state==='superseded')return 'Доручення неактуальне — перевірте документ';
+        if(queueJob.state==='needs_review')return 'Потрібна перевірка результату СПЛАВ';
+        if(queueJob.state==='completed')return 'СПЛАВ завершив опрацювання — оновіть дані';
+      }
+      return 'Розпізнавання ще не розпочато';
+    }
     if(aiEnabled&&d.processing_status==='AI обробка')return 'Розпізнавання…';
     if(aiEnabled&&d.ai_extracted&&Object.keys(d.ai_extracted).length)return 'Розпізнано — перевірте дані';
     return 'Завантажено — перевірте документ';
