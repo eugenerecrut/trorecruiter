@@ -208,7 +208,7 @@
       (date(bio.owner_birth_date)&&!empty(e.birth_date)&&!equal(bio.owner_birth_date,e.birth_date))))ownerIssue='Власник автобіографії потребує перевірки';
     if(marriageCheck?.blocked)ownerIssue=marriageCheck.issue;
     if(identity&&/ID[\s-]*карт/iu.test(type)){
-      const check=root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate);
+      const check=root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate,document);
       if(!check||check.blocked)ownerIssue='ID-картка потребує перевірки реквізитів';
     }
     if(military&&root.CRMMilitary.review(e,candidate,p,document.id).blocked)ownerIssue='Потрібна перевірка власника військового документа';
@@ -269,7 +269,7 @@
       }
     }
     if(identity){
-      const check=/ID[\s-]*карт/iu.test(type)?root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate):null;
+      const check=/ID[\s-]*карт/iu.test(type)?root.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:document.ai_candidate_name,confidence:document.ai_confidence},candidate,document):null;
       if(check?.blocked)ownerIssue='ID-картка потребує перевірки реквізитів';
       for(const key of ['passport_number','passport_series','passport_issuer','passport_issue_date','passport_expiry_date','citizenship','unzr'])propose('profile',key,e[key]);
       propose('profile','identity_document_type',/ID[\s-]*карт/iu.test(type)?'ID':'passport');
