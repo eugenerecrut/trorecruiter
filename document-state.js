@@ -3,16 +3,25 @@
   'use strict';
   const conditions=()=>window.CRMCandidateConditions;
   const latest=docs=>window.CRMResponsibility?.latest(docs||[])||(docs||[]).filter(d=>!d.deleted_at);
+  const birthTitle=value=>/(?:свідоцтв|актов(?:ий|ого) запис|витяг).{0,45}народження/iu.test(String(value||''));
+  const childBirthTitle=value=>birthTitle(value)&&/дитин|дітей/iu.test(String(value||''));
   const match=(r,d)=>{
     if(!r||!d)return false;
-    if(r.id&&d.requirement_id&&r.id===d.requirement_id)return true;
     const rt=String(r.document_type||'').trim();
     const dt=String(d.document_type||d.document_name||'').trim();
+    const birthHints=[d.document_type,d.document_name,d.ai_document_type,d.requirement_type].filter(birthTitle);
+    if(birthTitle(rt)&&birthHints.length){
+      const childRequirement=r.condition_field==='has_children'||childBirthTitle(rt);
+      // A candidate's own act record never satisfies a child's requirement,
+      // including an obsolete explicit binding or a conflicting AI type hint.
+      if(childRequirement!==birthHints.some(childBirthTitle))return false;
+      return true;
+    }
+    if(r.id&&d.requirement_id&&r.id===d.requirement_id)return true;
     if(!rt||!dt)return false;
     if(rt.toLowerCase()===dt.toLowerCase())return true;
     if(/диплом.*атестат/i.test(rt)&&/освіт|диплом|атестат/i.test(dt))return true;
     if(/свідоцтв.*шлюб/i.test(rt)&&/шлюб/i.test(dt)&&!/розірван/i.test(dt))return true;
-    if(/свідоцтв.*дітей|народження дітей/i.test(rt)&&/народження/i.test(dt))return true;
     if(/трудов.*діяльн/i.test(rt)&&/трудов/i.test(dt))return true;
     if(/рекомендаційн/i.test(rt)&&/рекомендаційн/i.test(dt))return true;
     if(/банк.*iban/i.test(rt)&&/банк|рахунк|iban/i.test(dt))return true;
@@ -141,6 +150,16 @@
     }
     return {all:docs,current,excluded};
   }
+  function displayRows(c,requirements,documents) {
+    const output=rows(c,requirements,documents);
+    const displayed=new Set(output.flatMap(row=>row.files.map(d=>d.id)));
+    for(const d of scope(c,requirements,documents).current){
+      if(displayed.has(d.id))continue;
+      output.push({r:{id:'',document_type:d.document_name||d.document_type||'Інший документ',is_required:false,ai_enabled:!!d.ai_extracted},files:[d],condition:true});
+      displayed.add(d.id);
+    }
+    return output;
+  }
   function summary(c,requirements,documents) {
     const list=rows(c,requirements,documents), {all:docs,current,excluded}=scope(c,requirements,documents), seen=new Set();
     const required=list.filter(row=>{
@@ -175,5 +194,5 @@
     return {rows:output,ready:output.every(r=>!r.blocked),files:output.flatMap(r=>r.files),missing:output.filter(r=>r.blocked)};
   }
   function requirementFor(d,requirements) {return (requirements||[]).find(r=>match(r,d));}
-  window.CRMDocumentState={match,files,rows,scope,summary,fileState,packageState,requirementFor};
+  window.CRMDocumentState={match,files,rows,displayRows,scope,summary,fileState,packageState,requirementFor};
 })();
