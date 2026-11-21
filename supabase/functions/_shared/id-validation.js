@@ -1,5 +1,15 @@
 // One validation rule for the document review screen and Edge Function.
-export function reviewID(result, candidate = {}) {
+function humanVerifiedSource(source, result, candidate) {
+  if (!source || !candidate.id || source.candidate_id !== candidate.id || !source.id || source.deleted_at ||
+      source.processing_status !== 'AI оброблено' || source.verification_status !== 'Підтверджено' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source.verified_by || '')) return false;
+  const reviewed = Date.parse(source.verified_at), revision = Date.parse(source.ai_processed_at);
+  if (!Number.isFinite(reviewed) || !Number.isFinite(revision) || reviewed < revision ||
+      source.ai_confidence !== result.confidence || !source.ai_extracted) return false;
+  const fields = ['full_name','name_nominative','birth_date','birth_place','rnokpp','document_number','passport_number','document_issuer','passport_issuer','document_date','passport_issue_date','passport_expiry_date','unzr'];
+  return fields.every(key => JSON.stringify(source.ai_extracted[key] ?? null) === JSON.stringify(result.extracted?.[key] ?? null));
+}
+export function reviewID(result, candidate = {}, source = null) {
   const type = String(result.document_type || '');
   if (!/^(?:ID)$|(?:ID|ІД)[\s-]*картк/iu.test(type)) return { blocked: false, issues: [] };
   const e = result.extracted || {}, issues = [];
@@ -35,7 +45,7 @@ export function reviewID(result, candidate = {}) {
   if (e.unzr && !/^\d{8}-\d{5}$/.test(String(e.unzr))) issues.push('УНЗР в ID-картці має некоректний формат.');
   if (p.unzr && e.unzr && String(p.unzr) !== String(e.unzr)) issues.push('УНЗР не збігається з карткою кандидата.');
   const confidence = Number(result.confidence);
-  if (result.confidence === null || result.confidence === undefined || !Number.isFinite(confidence) || confidence <= 0 || confidence > 1) issues.push('AI не надав коректної впевненості розпізнавання ID-картки.');
+  if (!humanVerifiedSource(source, result, candidate) && (result.confidence === null || result.confidence === undefined || !Number.isFinite(confidence) || confidence <= 0 || confidence > 1)) issues.push('AI не надав коректної впевненості розпізнавання ID-картки.');
   if (result.review_required === true) issues.push('Сервер позначив результат ID-картки як такий, що потребує перевірки.');
   return { blocked: issues.length > 0, issues };
 }

@@ -652,7 +652,7 @@ async function reviewDocumentData(id){
   const nameChange=CRMNameHistory.isDocument(d.document_type)||CRMNameHistory.isDocument(d.ai_document_type),nameChangeCheck=nameChange?CRMNameHistory.review(e,c,d):null;
   const type=identityDocumentTypeValue(d.ai_document_type||d.document_type),changes=[];
   const childBirth=window.CRMDocumentPolicy?.isChildBirth?.(d)??[d.document_type,d.ai_document_type,d.requirement_type].some(t=>/народження.*(?:дитин|дітей)/iu.test(String(t||'')));
-  const idCheck=type==='ID'?(window.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:d.ai_candidate_name,confidence:d.ai_confidence},c)||{blocked:true,issues:['Перевірка ID-картки ще не завантажилась. Оновіть сторінку.']}):null;
+  const idCheck=type==='ID'?(window.CRMIDValidation?.review({document_type:'ID',extracted:e,candidate_name:d.ai_candidate_name,confidence:d.ai_confidence},c,d)||{blocked:true,issues:['Перевірка ID-картки ще не завантажилась. Оновіть сторінку.']}):null;
   // Restrict editable mapping to candidate identity documents and the established
   // recommendation/autobiography flow. Other people's certificates stay in their container.
   const ownIdentity=!childBirth&&!idCheck?.blocked&&!biography&&!residence&&(type==='ID'||type==='passport'||type==='birth');

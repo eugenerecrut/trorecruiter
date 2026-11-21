@@ -20,6 +20,13 @@
   function normalize(doc, requirement = '') {
     const extracted = structuredClone(doc.ai_extracted || {}), warnings = [], category = kind(doc, requirement);
     let type = doc.ai_document_type || doc.document_type;
+    // Exact title aliases only: a requirement hint cannot turn another extract into residence evidence.
+    if (category === 'residence' && [
+      'Довідка про місце проживання / Витяг про місце проживання (ДІЯ)',
+      'Витяг/довідка про зареєстроване місце проживання',
+      'Витяг з реєстру територіальної громади',
+      'Витяг про місце проживання', 'Довідка про місце проживання'
+    ].some(alias => norm(alias) === norm(type))) type = 'Довідка про місце проживання / Витяг про місце проживання (ДІЯ)';
     if (/^(?:витяг (?:з|із) )?резерв\+$/u.test(norm(type))) type = 'Військовий облік (витяг Резерв+ / приписне)';
     if (/^(?:копія )?рекомендаційн(?:ий лист|ого листа)$/u.test(norm(type))) type = 'Копія рекомендаційного листа';
     if (category === 'ubd') type = 'Копія УБД';
