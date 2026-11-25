@@ -36,3 +36,18 @@ test('service generator rejects mobilization before creating a form or PDF',asyn
  const generator={window:w,URL};vm.createContext(generator);vm.runInContext(fs.readFileSync(path.join(__dirname,'../crm-service-record.js'),'utf8'),generator);
  await assert.rejects(()=>w.CRMServiceRecord.open(c(),{},{save(){throw Error('must not save')}}),/не формується/);
 });
+
+test('workflow renders the medical card for mobilization independently of personal-file forms',async()=>{
+ for(const layout of ['desktop','mobile'])for(const mode of ['contract','mobilization','unit']){
+  const captured=Error('render captured');let html='';
+  const ctx={console,structuredClone,CRMWorkspace:{escape:String},CRMResponsibility:{latest:docs=>docs},CRMDocumentState:{rows:()=>[]},getDocumentRequirements:async()=>[],getCandidateDocuments:async()=>[],document:{documentElement:{dataset:{crmLayout:layout}}}};ctx.window=ctx;vm.createContext(ctx);
+  for(const file of ['candidate-conditions.js','crm-workflow.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),ctx);
+  const candidate={id:'synthetic',profile_data:{service_type:mode==='contract'?'За контрактом':'За мобілізацією',...(mode==='unit'?{case_mode:'unit'}:{})}};
+  const before=JSON.stringify(candidate),host={set innerHTML(value){html=value;throw captured;}};
+  await assert.rejects(ctx.CRMWorkflow.mount(candidate,{querySelector:()=>host}),e=>e===captured);
+  const button=attribute=>{const match=html.match(new RegExp('<button\\b[^>]*\\b'+attribute+'(?:\\s|>)'));assert(match,attribute);return match[0];};
+  assert.equal(/\bhidden\b/.test(button('data-card13')),mode==='unit',layout+'/'+mode);
+  for(const attribute of ['data-service','data-full-package','data-anketa'])assert.equal(/\bhidden\b/.test(button(attribute)),mode!=='contract',attribute+'/'+mode);
+  assert.equal(JSON.stringify(candidate),before);
+ }
+});
