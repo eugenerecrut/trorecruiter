@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import threading
 import uuid
 from datetime import datetime
@@ -12,6 +13,21 @@ PORT = 8765
 ROOT = Path(os.environ.get("PROGRAMDATA", Path.home())) / "PSK_Scanner_Agent"
 INBOX = ROOT / "inbox"
 INBOX.mkdir(parents=True, exist_ok=True)
+
+
+def _file_path_for_id(fid):
+    if not re.fullmatch(r"[0-9a-f]{32}", fid):
+        return None
+
+    try:
+        inbox = os.path.realpath(INBOX)
+        path = os.path.realpath(os.path.join(inbox, f"{fid}.pdf"))
+        if os.path.commonpath((inbox, path)) != inbox:
+            return None
+    except ValueError:
+        return None
+    return Path(path)
+
 
 try:
     import pythoncom
@@ -94,10 +110,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/file":
             fid = parse_qs(parsed.query).get("id", [""])[0]
-            if not fid or any(c in fid for c in "/\\"):
+            path = _file_path_for_id(fid)
+            if path is None:
                 self._json({"error": "Невірний id"}, 400)
                 return
-            path = INBOX / f"{fid}.pdf"
             if not path.exists():
                 self._json({"error": "Файл не знайдено"}, 404)
                 return

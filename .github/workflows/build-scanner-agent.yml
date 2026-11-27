@@ -7,6 +7,9 @@ on:
       - 'scanner_agent_windows.go'
       - '.github/workflows/build-scanner-agent.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build-windows:
     runs-on: windows-latest
